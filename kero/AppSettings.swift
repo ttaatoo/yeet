@@ -219,14 +219,6 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
-    /// Which emulator drives terminal panes. Only ever holds a backend this
-    /// build ships a surface for — see `TerminalBackend` — and a session binds
-    /// its backend at creation, so a change here reaches terminals opened
-    /// afterwards rather than live ones.
-    @Published var terminalBackend: TerminalBackend {
-        didSet { save() }
-    }
-
     private init() {
         let savedLanguage = AppLanguage.saved
         activeLanguage = savedLanguage
@@ -267,7 +259,6 @@ final class AppSettings: nonisolated ObservableObject {
         wrapLines = toml["editor.wrap-lines"]?.bool ?? false
         restoreTerminalHistory = toml["terminal.restore-history"]?.bool ?? false
         aiEnabled = toml["ai.enabled"]?.bool ?? false
-        terminalBackend = TerminalBackend(persisted: toml["terminal.backend"]?.string)
         applyAppearance()
         reloadThemeSelection()
         if existing == nil { save() }
@@ -324,7 +315,6 @@ final class AppSettings: nonisolated ObservableObject {
                 NSLog("kero: failed to disable AI support: \(error)")
             }
         }
-        terminalBackend = .fallback
     }
 
     /// Persist the setting only after every requested destination operation
@@ -407,9 +397,6 @@ final class AppSettings: nonisolated ObservableObject {
         }
         if aiEnabled {
             lines.append("ai.enabled = true")
-        }
-        if terminalBackend != .fallback {
-            lines.append("terminal.backend = \(TOML.quote(terminalBackend.rawValue))")
         }
         let dir = Self.configURL.deletingLastPathComponent()
         do {

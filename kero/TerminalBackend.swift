@@ -5,129 +5,6 @@
 
 import AppKit
 
-/// Which terminal emulator draws and drives Kero's panes.
-///
-/// Both backends implement Kero's own surface vocabulary, keeping emulator
-/// details out of sessions, panes, history, and find UI.
-enum TerminalBackend: String, CaseIterable, Identifiable, Sendable {
-    /// Ghostty's Metal-backed surface, embedded via `Vendor/libghostty-spm`.
-    case libghostty
-
-    /// Alacritty's emulator core, the `alacritty_terminal` crate, reached
-    /// through the Rust bridge in `Vendor/alacritty-bridge`. The crate ships
-    /// no renderer — Alacritty's own is OpenGL welded to winit — so the grid
-    /// is drawn by `AlacrittyTerminalView` with Metal and a CoreText glyph
-    /// atlas.
-    case alacritty
-
-    /// The backend Kero uses when the config names none, or names one this
-    /// build cannot create.
-    static let fallback = TerminalBackend.libghostty
-
-    var id: String { rawValue }
-
-    /// Kero's real surface identity, distinct from `TERM_PROGRAM`, which is a
-    /// compatibility hint for terminal protocols.
-    var environmentName: String {
-        switch self {
-        case .libghostty: "ghostty"
-        case .alacritty: "alacritty"
-        }
-    }
-
-    var displayName: String {
-        switch self {
-        case .libghostty: "Ghostty"
-        case .alacritty: "Alacritty"
-        }
-    }
-
-    var settingsIconName: String {
-        switch self {
-        case .libghostty: "TerminalBackendGhostty"
-        case .alacritty: "TerminalBackendAlacritty"
-        }
-    }
-
-    /// Whether ``makeSurface(launch:)`` returns a surface. Settings offers only
-    /// available backends and ``init(persisted:)`` refuses the rest, so a
-    /// hand-edited config can never leave a window full of dead panes.
-    var isAvailable: Bool {
-        switch self {
-        case .libghostty, .alacritty: true
-        }
-    }
-
-    /// The backends there is actually a choice between. Settings shows its
-    /// Backend row only once this holds more than one — a picker offering a
-    /// selection that cannot take effect would misreport what Kero will do.
-    static var selectable: [TerminalBackend] {
-        allCases.filter(\.isAvailable)
-    }
-
-    /// Scannable strengths and limitations shown below the backend name.
-    var settingsHighlights: [TerminalBackendHighlight] {
-        switch self {
-        case .libghostty:
-            [
-                .init(title: String(localized: "Excellent performance"), isPositive: true),
-                .init(title: String(localized: "GPU-accelerated"), isPositive: true),
-                .init(title: String(localized: "Higher memory footprint"), isPositive: false),
-                .init(title: String(localized: "Image rendering"), isPositive: true),
-            ]
-        case .alacritty:
-            [
-                .init(title: String(localized: "Excellent performance"), isPositive: true),
-                .init(title: String(localized: "GPU-accelerated"), isPositive: true),
-                .init(title: String(localized: "Lower memory footprint"), isPositive: true),
-                .init(title: String(localized: "Image rendering"), isPositive: true),
-            ]
-        }
-    }
-
-    /// What the shell reports as `TERM_PROGRAM`, and the version beside it.
-    /// Tools treat this as a capability identity. Both surfaces advertise the
-    /// Ghostty protocols Kero implements, including OSC 777 notifications and
-    /// OSC 9;4 progress reports.
-    var termProgram: (name: String, version: String) {
-        switch self {
-        case .libghostty: ("ghostty", "1.3.2-dev")
-        case .alacritty: ("ghostty", "1.3.2-dev")
-        }
-    }
-
-    /// Reads a persisted name, falling back for anything unknown or for a
-    /// backend this build cannot create.
-    init(persisted name: String?) {
-        guard let name,
-              let backend = TerminalBackend(rawValue: name),
-              backend.isAvailable
-        else {
-            self = .fallback
-            return
-        }
-        self = backend
-    }
-
-    /// Builds this backend's surface, or nil when this build has none for it.
-    @MainActor
-    func makeSurface(launch: TerminalLaunch) -> (any TerminalBackendSurface)? {
-        switch self {
-        case .libghostty:
-            return KeroTerminalView(launch: launch)
-        case .alacritty:
-            return AlacrittyTerminalView(launch: launch)
-        }
-    }
-}
-
-struct TerminalBackendHighlight: Identifiable, Sendable {
-    let title: String
-    let isPositive: Bool
-
-    var id: String { title }
-}
-
 /// Everything a backend needs to start one pane's shell. Kero resolves the
 /// login shell, the PID/replay shim, and the environment once, up front; how a
 /// backend spawns a PTY from there is its own business.
@@ -278,8 +155,7 @@ enum TerminalLinkTarget {
 }
 
 /// Backend-neutral OSC 133 command lifecycle reports. Alacritty extracts all
-/// four semantic markers at the PTY boundary; libghostty currently exposes
-/// the completed command with its measured duration.
+/// four semantic markers at the PTY boundary.
 enum TerminalShellIntegrationEvent: Equatable, Sendable {
     case promptStart
     case commandStart

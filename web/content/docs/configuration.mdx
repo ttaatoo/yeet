@@ -49,9 +49,9 @@ The color theme for each appearance. A theme recolors terminal panes, window
 chrome, sidebars, the editor, and diffs together. The built-in defaults keep
 Kero's translucent sidebar; other themes paint it to match their palette.
 
-Settings lists the curated theme catalog shared by both terminal backends. A
-hand-written name must match one of those display names exactly, including
-case, or Kero falls back to the corresponding default.
+Settings lists the curated theme catalog. A hand-written name must match one
+of those display names exactly, including case, or Kero falls back to the
+corresponding default.
 
 ### `toolbar.visibility`
 
@@ -98,9 +98,9 @@ controls keep their relative hierarchy as the base changes.
 boolean — default `false`
 
 Renders terminal glyphs with slightly heavier strokes, similar to classic
-macOS font smoothing. Both backends honor it, and the Settings preview shows
-the result. Older `font-thicken` configs are still read, then rewritten using
-the current dotted key.
+macOS font smoothing. The Settings preview shows the result. Older
+`font-thicken` configs are still read, then rewritten using the current dotted
+key.
 
 ### `editor.wrap-lines`
 
@@ -111,18 +111,6 @@ When false, long lines scroll horizontally. It does not change wrapping in a
 terminal or diff.
 
 ## Terminal
-
-### `terminal.backend`
-
-`"libghostty"` · `"alacritty"` — default `"libghostty"`
-
-Chooses the emulator used by terminals created from then on. Existing panes
-keep the backend they started with. Both choices are native, GPU-accelerated,
-support image rendering, and use the same Kero themes; Alacritty generally has
-the lower memory footprint.
-
-See [Terminal backends](/docs/terminal#terminal-backends) for the environment
-variables and compatibility contract.
 
 ### `terminal.macos-option-as-alt`
 
@@ -171,7 +159,6 @@ sidebar.font-size = 13
 toolbar.visibility = "auto"
 terminal.font-thicken = true
 terminal.macos-option-as-alt = false
-terminal.backend = "alacritty"
 terminal.restore-history = true
 editor.wrap-lines = true
 ai.enabled = true
@@ -189,6 +176,4 @@ Every key is optional. Delete a key to return that setting to its default.
 - **Window and layout state.** Window size, sidebar widths, selected panels,
   projects, tabs, panes, browser URLs, and diff control preferences live in
   Kero's macOS preferences and session snapshot.
-- **Backend config files.** Kero does not read `~/.config/ghostty` or an
-  Alacritty config. Kero's settings are the supported surface for both.
 - **Keybindings.** The [shortcuts](/docs/shortcuts) are fixed for now.

@@ -29,9 +29,6 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     /// reconciles foreground process identity with explicit lifecycle events.
     @Published var agentStatus: KeroAgentStatus?
 
-    /// The emulator driving this session. Fixed for the session's lifetime —
-    /// changing the setting only affects terminals opened afterwards.
-    let backend: TerminalBackend
     let surface: any TerminalBackendSurface
     let overlayScrollbar = OverlayScrollbarView()
     /// Find-in-terminal state for this session's pane (⌘F).
@@ -64,9 +61,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         let shellPath = directCommand?.first ?? Self.loginShell()
         let directory = Self.validWorkingDirectory(initialDirectory)
         let artifacts = Self.makeLaunchArtifacts(restoredHistory: restoredHistory)
-        let backend = AppSettings.shared.terminalBackend
         let script = Self.makeLaunchScript(
-            backend: backend,
             shellPath: shellPath,
             commandArguments: directCommand,
             pidFileURL: artifacts.pidFileURL,
@@ -85,15 +80,13 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
 
         id = sessionID
         self.shellPath = shellPath
-        self.backend = backend
         launchWorkingDirectory = directory
         launchDirectoryURL = artifacts.directoryURL
         shellPidFileURL = artifacts.pidFileURL
         title = (shellPath as NSString).lastPathComponent
         agentStatus = nil
 
-        let surface = Self.makeSurface(backend: backend, launch: launch)
-        self.surface = surface
+        self.surface = AlacrittyTerminalView(launch: launch)
         find = TerminalFind(surface: surface)
         lastHistorySnapshot = restoredHistory
         super.init()
@@ -110,16 +103,6 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         }
     }
 
-    /// `makeSurface` returns nil only for a backend this build has no surface
-    /// for, and `AppSettings` refuses to store one — so this is belt and
-    /// braces, preferring a working terminal over an empty pane.
-    private static func makeSurface(
-        backend: TerminalBackend, launch: TerminalLaunch
-    ) -> any TerminalBackendSurface {
-        if let surface = backend.makeSurface(launch: launch) { return surface }
-        NSLog("kero: no surface for terminal backend \(backend.rawValue)")
-        return KeroTerminalView(launch: launch)
-    }
 
     private func installOverlayScrollbar() {
         overlayScrollbar.alphaValue = 0
@@ -362,7 +345,6 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     /// any restored scrollback, advertise the emulator, then become either the
     /// requested argv or the user's login shell.
     private static func makeLaunchScript(
-        backend: TerminalBackend,
         shellPath: String,
         commandArguments: [String]?,
         pidFileURL: URL?,
@@ -386,14 +368,9 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         }
         // KERO_TERM exposes the actual surface. TERM_PROGRAM remains a
         // capability hint so tools select protocols Kero can actually render.
-        commands.append("export KERO_TERM=\(shellQuote(backend.environmentName))")
-        let termProgram = backend.termProgram
-        commands.append("export TERM_PROGRAM=\(shellQuote(termProgram.name))")
-        if !termProgram.version.isEmpty {
-            commands.append(
-                "export TERM_PROGRAM_VERSION=\(shellQuote(termProgram.version))"
-            )
-        } else {
+        commands.append("export KERO_TERM=\(shellQuote("alacritty"))")
+        commands.append("export TERM_PROGRAM=\(shellQuote("ghostty"))")
+        commands.append("export TERM_PROGRAM_VERSION=\(shellQuote("1.3.2-dev"))") else {
             commands.append("unset TERM_PROGRAM_VERSION")
         }
         if let commandArguments {

@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import GhosttyTerminal
 
 enum TerminalCursorShape: String, CaseIterable, Sendable {
     case block
@@ -20,14 +19,6 @@ enum TerminalCursorShape: String, CaseIterable, Sendable {
                 comment: "Thin vertical terminal cursor shape."
             )
         case .underline: String(localized: "Underline")
-        }
-    }
-
-    var ghosttyValue: TerminalCursorStyle {
-        switch self {
-        case .block: .block
-        case .bar: .bar
-        case .underline: .underline
         }
     }
 

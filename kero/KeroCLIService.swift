@@ -6,7 +6,6 @@
 import AppKit
 import Darwin
 import Foundation
-import GhosttyTheme
 
 /// Bridges the bundled `kero` executable back to its owning app process.
 ///

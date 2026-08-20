@@ -1,26 +1,11 @@
 ---
 title: The terminal
-description: Kero's terminal backends, shell environment, link handling, notifications, and safety features.
+description: Kero's terminal backend, shell environment, link handling, notifications, and safety features.
 ---
 
-Every terminal pane runs your real login shell and uses one of two native,
-GPU-accelerated terminal backends. Kero owns the surrounding behavior—pane
-focus, search, notifications, links, history, themes, and paste safety—so it is
-consistent whichever emulator you choose.
-
-## Terminal backends
-
-Choose a backend under **Settings → Terminal → Backend**:
-
-| Backend | Notes |
-| --- | --- |
-| **Ghostty** | The default |
-| **Alacritty** | Generally uses less memory |
-
-Both support GPU acceleration, image rendering, Kero's shared theme catalog,
-find, mouse reporting, notifications, and progress reports. A backend change
-applies to new terminals only—existing panes keep the emulator they started
-with.
+Every terminal pane runs your real login shell using a native, GPU-accelerated
+Alacritty terminal backend. Kero owns the surrounding behavior—pane focus,
+search, notifications, links, history, themes, and paste safety.
 
 ## Your shell, unchanged
 
@@ -28,31 +13,30 @@ Each session starts your account's login shell, so your prompt, aliases,
 functions, and dotfiles load as they do in any terminal. Kero adds capability
 and identity variables:
 
-| Variable | Value |
-| --- | --- |
-| `TERM_PROGRAM` | `ghostty` |
-| `TERM_PROGRAM_VERSION` | the Ghostty capability version Kero implements |
-| `KERO_TERM` | `ghostty` or `alacritty`, the actual pane backend |
+|| Variable | Value |
+|| --- | --- |
+|| `TERM_PROGRAM` | `ghostty` |
+|| `TERM_PROGRAM_VERSION` | the Ghostty capability version Kero implements |
+|| `KERO_TERM` | `alacritty` |
 
-Both backends advertise Ghostty through `TERM_PROGRAM` because image-aware and
-notification-aware CLIs use it as a capability hint. Use `KERO_TERM` only when
-you genuinely need to distinguish the renderer.
+Kero advertises Ghostty through `TERM_PROGRAM` because image-aware and
+notification-aware CLIs use it as a capability hint. `KERO_TERM` identifies the
+actual terminal implementation.
 
 <Callout type="info">
-Kero does not read `~/.config/ghostty` or an Alacritty config. Fonts, colors,
-input behavior, and the backend are configured in Kero's own
-[settings](/docs/configuration).
+Kero does not read an external Alacritty config. Fonts, colors, and input
+behavior are configured in Kero's own [settings](/docs/configuration).
 </Callout>
 
 ## Search
 
-| Action | Shortcut |
-| --- | --- |
-| Find | <kbd>Cmd</kbd>+<kbd>F</kbd> |
-| Find next | <kbd>Cmd</kbd>+<kbd>G</kbd> |
-| Find previous | <kbd>Shift</kbd>+<kbd>Return</kbd> in the find bar |
-| Use selection for find | <kbd>Cmd</kbd>+<kbd>E</kbd> |
-| Clear the terminal | <kbd>Cmd</kbd>+<kbd>K</kbd> |
+|| Action | Shortcut |
+|| --- | --- |
+|| Find | <kbd>Cmd</kbd>+<kbd>F</kbd> |
+|| Find next | <kbd>Cmd</kbd>+<kbd>G</kbd> |
+|| Find previous | <kbd>Shift</kbd>+<kbd>Return</kbd> in the find bar |
+|| Use selection for find | <kbd>Cmd</kbd>+<kbd>E</kbd> |
+|| Clear the terminal | <kbd>Cmd</kbd>+<kbd>K</kbd> |
 
 Find acts on the focused terminal or editor pane and remains active while its
 search field owns keyboard focus.

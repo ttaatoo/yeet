@@ -139,8 +139,7 @@ enum BottomToolbarLayout {
     static let idealHeight: CGFloat = 32
 
     static func height(for session: TerminalSession?) -> CGFloat {
-        guard session?.backend == .libghostty,
-              let cellHeight = session?.terminalCellSize?.height,
+        guard let cellHeight = session?.terminalCellSize?.height,
               cellHeight.isFinite, cellHeight > 0 else {
             return idealHeight
         }

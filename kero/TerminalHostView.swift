@@ -37,10 +37,10 @@ struct TerminalHostView: NSViewRepresentable {
         terminal.splitTarget.onNewFileTab = onNewFileTab
         terminal.splitTarget.onNewFilePane = onNewFilePane
         let scrollbar = session.overlayScrollbar
-        // Kero's visual insets live inside the backend as window padding (see
-        // KeroTerminalView+Ghostty), so that a padding-color of `extend` can
-        // flood them with the content's background and padding balance keeps
-        // the prompt near the pane's bottom edge. The surface keeps a hairline
+        // Kero's visual insets live inside the backend as window padding, so that
+        // a padding-color of `extend` can flood them with the content's background
+        // and padding balance keeps the prompt near the pane's bottom edge. The
+        // surface keeps a hairline
         // inset of pane background so a full-screen TUI's fill stops just
         // short of the pane edges.
         let frameInset: CGFloat = 2

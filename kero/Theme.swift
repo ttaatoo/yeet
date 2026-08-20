@@ -5,7 +5,6 @@
 
 import AppKit
 import Combine
-import GhosttyTheme
 import os
 
 /// The user's light/dark preference. Applied by overriding `NSApp.appearance`,
@@ -62,9 +61,8 @@ enum Theme {
         named: defaultLightThemeName, from: "GitHub Light Default", dark: false
     )
 
-    /// Popular themes that render through the shared palette path used by both
-    /// terminal backends. Each appearance has 29 catalog themes plus Kero's
-    /// default, keeping either Settings picker capped at 30 choices.
+    /// Popular themes from the catalog. Each appearance has 29 catalog themes
+    /// plus Kero's default, keeping either Settings picker capped at 30 choices.
     private nonisolated static let commonDarkCatalogThemeNames: Set<String> = [
         "Adwaita Dark",
         "Afterglow",
@@ -131,13 +129,13 @@ enum Theme {
 
     /// Kero's Default comes first; the duplicate GitHub Default catalog rows
     /// are intentionally omitted because the built-ins use those palettes.
-    nonisolated static let commonDarkThemes: [GhosttyThemeDefinition] =
-        [defaultDarkDefinition] + GhosttyThemeCatalog.allThemes.filter {
+    nonisolated static let commonDarkThemes: [TerminalThemeDefinition] =
+        [defaultDarkDefinition] + TerminalThemeCatalog.allThemes.filter {
             $0.isDark && commonDarkCatalogThemeNames.contains($0.name)
         }
 
-    nonisolated static let commonLightThemes: [GhosttyThemeDefinition] =
-        [defaultLightDefinition] + GhosttyThemeCatalog.allThemes.filter {
+    nonisolated static let commonLightThemes: [TerminalThemeDefinition] =
+        [defaultLightDefinition] + TerminalThemeCatalog.allThemes.filter {
             !$0.isDark && commonLightCatalogThemeNames.contains($0.name)
         }
 
@@ -153,10 +151,10 @@ enum Theme {
     )
 
     /// A kero built-in or catalog theme by name.
-    nonisolated static func definition(named name: String) -> GhosttyThemeDefinition? {
+    nonisolated static func definition(named name: String) -> TerminalThemeDefinition? {
         if name == defaultLightThemeName { return defaultLightDefinition }
         if name == defaultDarkThemeName { return defaultDarkDefinition }
-        return GhosttyThemeCatalog.theme(named: name)
+        return TerminalThemeCatalog.theme(named: name)
     }
 
     /// Re-resolves the selected themes by name. Called by `AppSettings` on
@@ -193,8 +191,8 @@ enum Theme {
         return true
     }
 
-    /// The selected ghostty theme for one appearance.
-    nonisolated static func terminal(dark: Bool) -> GhosttyThemeDefinition {
+    /// The selected terminal theme for one appearance.
+    nonisolated static func terminal(dark: Bool) -> TerminalThemeDefinition {
         selection.withLock { dark ? $0.dark : $0.light }
     }
 
@@ -207,10 +205,11 @@ enum Theme {
     /// A copy of a catalog theme under a kero-owned name.
     private nonisolated static func keroDefault(
         named name: String, from catalogName: String, dark: Bool
-    ) -> GhosttyThemeDefinition {
+    ) -> TerminalThemeDefinition {
         let base = fallback(named: catalogName, dark: dark)
-        return GhosttyThemeDefinition(
+        return TerminalThemeDefinition(
             name: name,
+            isDark: dark,
             background: base.background,
             foreground: base.foreground,
             cursorColor: base.cursorColor,
@@ -249,7 +248,7 @@ enum Theme {
     /// theme they were created under, so views re-rendered after a selection
     /// change would repaint with stale colors.
     private nonisolated static func dynamic(
-        _ resolve: @escaping @Sendable (GhosttyThemeDefinition) -> NSColor
+        _ resolve: @escaping @Sendable (TerminalThemeDefinition) -> NSColor
     ) -> NSColor {
         NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
@@ -258,19 +257,20 @@ enum Theme {
     }
 
     /// Last-resort definition should a default name ever leave the catalog.
-    private nonisolated static func fallback(named name: String, dark: Bool) -> GhosttyThemeDefinition {
-        GhosttyThemeCatalog.theme(named: name) ?? GhosttyThemeDefinition(
+    private nonisolated static func fallback(named name: String, dark: Bool) -> TerminalThemeDefinition {
+        TerminalThemeCatalog.theme(named: name) ?? TerminalThemeDefinition(
             name: name,
+            isDark: dark,
             background: dark ? "0d1117" : "ffffff",
             foreground: dark ? "e6edf3" : "1f2328"
         )
     }
 }
 
-/// UI-facing colors for a ghostty theme definition. The definition stores
+/// UI-facing colors for a terminal theme definition. The definition stores
 /// terminal colors as hex strings; window chrome derives its palette here.
 /// Nonisolated so the dynamic color providers can resolve on any thread.
-nonisolated extension GhosttyThemeDefinition {
+nonisolated extension TerminalThemeDefinition {
     /// Whether this is one of kero's built-in Default themes, which keep the
     /// pre-theme chrome (material sidebar, label-based hairlines).
     var isKeroDefault: Bool {

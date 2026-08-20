@@ -7,7 +7,7 @@ A native terminal workspace for macOS.
 ## Features
 
 - Native AppKit interface for projects, tabs, and split panes
-- libghostty by default, with an optional Alacritty backend
+- GPU-accelerated Alacritty terminal backend
 - Integrated browser tabs and panes
 - File tree, Git status, and editable diffs
 - Command palette, project-wide file search, and local path links

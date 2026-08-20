@@ -5,8 +5,6 @@
 
 import AppKit
 import Darwin
-import GhosttyTerminal
-import GhosttyTheme
 import IOSurface
 import Metal
 import QuartzCore

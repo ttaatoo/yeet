@@ -4,7 +4,6 @@
 //
 
 import AppKit
-import GhosttyTheme
 import SwiftUI
 
 /// The app settings window (Cmd+,).
@@ -161,22 +160,6 @@ struct SettingsView: View {
             }
 
             Section("Terminal") {
-                // Only show this once there is a real choice. `selectable`
-                // omits backends this build cannot create, so every tab here
-                // takes effect instead of silently producing a dead pane.
-                if TerminalBackend.selectable.count > 1 {
-                    HStack(alignment: .top) {
-                        Text("Backend")
-                        Spacer()
-                        VStack(alignment: .leading, spacing: 8) {
-                            TerminalBackendPicker(selection: $settings.terminalBackend)
-                            Text("Changes apply to new terminals")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
                 TerminalCursorShapeSettingsRow(
                     shape: settings.cursorShape,
                     onChange: { settings.cursorShape = $0 }
@@ -262,8 +245,7 @@ struct SettingsView: View {
                         && settings.toolbarVisibility == AppSettings.defaultToolbarVisibility
                         && !settings.wrapLines
                         && !settings.restoreTerminalHistory
-                        && !settings.aiEnabled
-                        && settings.terminalBackend == .fallback)
+                        && !settings.aiEnabled)
                 }
             }
         }
@@ -495,97 +477,6 @@ private struct ThemeOption: View {
         .buttonStyle(.plain)
         .accessibilityLabel(theme.title)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-    }
-}
-
-/// Keeps every available engine visible, following the same selection model
-/// as the Appearance tabs above while leaving room for capability differences.
-private struct TerminalBackendPicker: View {
-    @Binding var selection: TerminalBackend
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 6) {
-            ForEach(TerminalBackend.selectable) { backend in
-                TerminalBackendOption(
-                    backend: backend,
-                    isSelected: selection == backend,
-                    select: { selection = backend }
-                )
-            }
-        }
-        .frame(maxWidth: 310)
-    }
-}
-
-private struct TerminalBackendOption: View {
-    let backend: TerminalBackend
-    let isSelected: Bool
-    let select: () -> Void
-
-    var body: some View {
-        Button(action: select) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Image(backend.settingsIconName)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 24, height: 24)
-                    Text(backend.displayName)
-                        .font(.callout)
-                        .foregroundStyle(.primary)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(backend.settingsHighlights) { highlight in
-                        TerminalBackendHighlightRow(highlight: highlight)
-                    }
-                }
-                .padding(.top, 2)
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(8)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.accentColor.opacity(isSelected ? 0.15 : 0))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(
-                        isSelected ? Color.accentColor : Color.primary.opacity(0.12),
-                        lineWidth: isSelected ? 2 : 0.5
-                    )
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 10))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(backend.displayName)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-    }
-}
-
-private struct TerminalBackendHighlightRow: View {
-    let highlight: TerminalBackendHighlight
-
-    var body: some View {
-        let availability = highlight.isPositive
-            ? String(localized: "Available", comment: "Accessibility description for a supported terminal feature.")
-            : String(localized: "Unavailable", comment: "Accessibility description for an unsupported terminal feature.")
-        HStack(spacing: 4) {
-            Image(systemName: highlight.isPositive
-                ? "checkmark.circle.fill"
-                : "exclamationmark.circle.fill")
-                .foregroundStyle(highlight.isPositive ? Color.green : Color.orange)
-            Text(highlight.title)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-        }
-        .font(.caption)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            String(
-                localized: "\(availability): \(highlight.title)",
-                comment: "Accessibility label for a terminal feature and whether it is available."
-            )
-        )
     }
 }
 
