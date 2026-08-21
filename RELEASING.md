@@ -1,5 +1,19 @@
 # Releasing kero
 
+> **This fork (ttaatoo/kero):** there is no Apple Developer ID. Do not run
+> `bun scripts/release.ts` expecting a notarized R2 upload or an
+> `egoist/homebrew-tap` bump. Ad-hoc zip: `scripts/package.sh` →
+> `dist/Kero.zip`. Push a `v*` tag (or run the Release workflow) to attach
+> that zip to a GitHub Release. The in-repo tap is `Casks/kero.rb` /
+> `Formula/kero.rb`. After a real zip exists, replace `sha256 :no_check` in
+> the cask with the digest. Packaged Release builds clear `SUFeedURL` so
+> Sparkle cannot replace this fork with official egoist Kero from
+> `https://releases.kero.sh`.
+>
+> GitHub-hosted macOS runners may fail: this Xcode project uses format 110
+> and has already failed locally on Xcode 26.5. If CI cannot build, produce
+> `dist/Kero.zip` on a Mac with a new-enough Xcode + Rust and upload it.
+
 kero auto-updates with [Sparkle](https://sparkle-project.org). Releases live in a
 **Cloudflare R2** bucket served at **`https://releases.kero.sh`**. New users
 download a notarized **`.dmg`**; existing users get smaller in-app delta updates

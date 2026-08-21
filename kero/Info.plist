@@ -65,10 +65,13 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>A program running within Kero would like to use your microphone.</string>
 
-	<!-- Sparkle auto-update configuration.
-	     Appcast feed hosted on Cloudflare R2 (releases.kero.sh); see RELEASING.md. -->
+	<!-- Sparkle. Official egoist builds consume https://releases.kero.sh/appcast.xml.
+	     This fork is ad-hoc signed and must not: a Sparkle update from that
+	     feed would replace the fork with notarized upstream Kero. Debug keeps
+	     the official URL (the updater is not started in DEBUG). Release and
+	     scripts/package.sh leave KERO_SU_FEED_URL empty. -->
 	<key>SUFeedURL</key>
-	<string>https://releases.kero.sh/appcast.xml</string>
+	<string>$(KERO_SU_FEED_URL)</string>
 	<key>SUPublicEDKey</key>
 	<string>gv9GLMPjH5yMQkZMFXnoNfHOyL8/7KGzl/jzAqlzZZY=</string>
 </dict>

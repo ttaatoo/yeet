@@ -1,6 +1,10 @@
 # Release artifacts produced by scripts/release.ts
 /build/
 
+# Ad-hoc package.sh output (Homebrew formula / GitHub Release zip)
+/dist/
+/.derived/
+
 # Bun / node deps
 /node_modules/
 

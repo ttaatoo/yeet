@@ -10,10 +10,10 @@ import SwiftUI
 /// App-wide Sparkle updater. A single instance owns the update lifecycle; the
 /// "Check for Updates…" menu item and the Settings toggle both drive it.
 ///
-/// The feed URL and the public EdDSA key are read from Info.plist, injected via
-/// the `INFOPLIST_KEY_SUFeedURL` and `INFOPLIST_KEY_SUPublicEDKey` build
-/// settings. See RELEASING.md for generating the signing keys and publishing
-/// updates.
+/// The feed URL and the public EdDSA key are read from Info.plist
+/// (`SUFeedURL`, `SUPublicEDKey`). Release / packaged builds of this fork
+/// leave the feed empty so Sparkle cannot replace the app with official
+/// egoist Kero from releases.kero.sh. See RELEASING.md.
 @MainActor
 final class Updater: ObservableObject {
     static let shared = Updater()
@@ -29,27 +29,47 @@ final class Updater: ObservableObject {
     /// it and writes changes straight back through.
     @Published var automaticallyChecksForUpdates: Bool {
         didSet {
+            // Same bundle id as official Kero (`sh.kero`) can inherit a
+            // persisted "check automatically" from an earlier egoist install.
+            // Never honor that when this build has no feed of its own.
+            if Self.sparkleFeedURL.isEmpty {
+                controller.updater.automaticallyChecksForUpdates = false
+                if automaticallyChecksForUpdates {
+                    automaticallyChecksForUpdates = false
+                }
+                return
+            }
             controller.updater.automaticallyChecksForUpdates = automaticallyChecksForUpdates
         }
+    }
+
+    private static var sparkleFeedURL: String {
+        (Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     private init() {
         // Don't run the updater in debug builds. Starting it schedules a
         // background check and pops Sparkle's "check for updates
         // automatically?" permission prompt, which is just noise while
-        // developing. Release builds start it and behave normally.
+        // developing. Release starts it only when a feed is configured.
         #if DEBUG
         let startImmediately = false
         #else
-        let startImmediately = true
+        let startImmediately = !Self.sparkleFeedURL.isEmpty
         #endif
         controller = SPUStandardUpdaterController(
             startingUpdater: startImmediately,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
-        // Seed from Sparkle's persisted value; didSet doesn't fire here.
-        automaticallyChecksForUpdates = controller.updater.automaticallyChecksForUpdates
+        if Self.sparkleFeedURL.isEmpty {
+            controller.updater.automaticallyChecksForUpdates = false
+            automaticallyChecksForUpdates = false
+        } else {
+            // Seed from Sparkle's persisted value; didSet doesn't fire here.
+            automaticallyChecksForUpdates = controller.updater.automaticallyChecksForUpdates
+        }
         controller.updater.publisher(for: \.canCheckForUpdates)
             .assign(to: &$canCheckForUpdates)
 
@@ -67,6 +87,7 @@ final class Updater: ObservableObject {
 
     /// Runs Sparkle's user-facing update check (progress window and prompts).
     func checkForUpdates() {
+        guard !Self.sparkleFeedURL.isEmpty else { return }
         controller.checkForUpdates(nil)
     }
 }
