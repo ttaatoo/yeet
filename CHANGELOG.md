@@ -18,6 +18,7 @@ the original feature bullet instead of adding separate entries for them.
 
 - Ship this fork as Kerox (`Kerox.app`, bundle id `sh.kerox`, settings in `~/.config/kerox`) so it can sit beside official Kero. Install with `brew tap ttaatoo/kero https://github.com/ttaatoo/kero` then `brew install --cask ttaatoo/kero/kerox` (or `--formula --HEAD` until a GitHub Release zip exists). This is not `brew install egoist/tap/kero`.
 - Paste into the terminal without a “potentially unsafe paste” warning. Kerox still asks before a program reads the clipboard.
+- Global hotkey to summon or hide Kerox from any app, configurable in Settings (default: ⌥Space)
 
 ## [0.1.47]
 

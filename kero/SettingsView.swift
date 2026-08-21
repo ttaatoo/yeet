@@ -61,6 +61,13 @@ struct SettingsView: View {
                     .labelsHidden()
                 }
 
+                GlobalHotKeySettingsRow(
+                    keyCombo: settings.globalHotkey,
+                    registrationFailed: settings.globalHotkeyRegistrationFailed,
+                    onChange: { settings.globalHotkey = $0 }
+                )
+                .frame(minHeight: 44)
+
                 if settings.languageRequiresRelaunch {
                     HStack(alignment: .firstTextBaseline) {
                         Text("Relaunch Kero to apply the language change.")
@@ -245,7 +252,8 @@ struct SettingsView: View {
                         && settings.toolbarVisibility == AppSettings.defaultToolbarVisibility
                         && !settings.wrapLines
                         && !settings.restoreTerminalHistory
-                        && !settings.aiEnabled)
+                        && !settings.aiEnabled
+                        && settings.globalHotkey == KeyCombo.default)
                 }
             }
         }

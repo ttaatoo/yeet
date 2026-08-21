@@ -220,6 +220,19 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
+    /// Global hotkey that summons or hides Kerox from any app.
+    /// `nil` means none is registered. Default is Option+Space.
+    @Published var globalHotkey: KeyCombo? {
+        didSet {
+            registerGlobalHotkey()
+            save()
+        }
+    }
+
+    /// Last Carbon register for `globalHotkey` failed. Settings shows this
+    /// so Debug vs Release both fighting ⌥Space is visible, not log-only.
+    @Published private(set) var globalHotkeyRegistrationFailed = false
+
     private init() {
         let savedLanguage = AppLanguage.saved
         activeLanguage = savedLanguage
@@ -260,8 +273,11 @@ final class AppSettings: nonisolated ObservableObject {
         wrapLines = toml["editor.wrap-lines"]?.bool ?? false
         restoreTerminalHistory = toml["terminal.restore-history"]?.bool ?? false
         aiEnabled = toml["ai.enabled"]?.bool ?? false
+        globalHotkey = Self.parseGlobalHotkey(toml)
         applyAppearance()
         reloadThemeSelection()
+        // didSet does not run during init (same as applyAppearance).
+        registerGlobalHotkey()
         if existing == nil { save() }
     }
 
@@ -309,6 +325,7 @@ final class AppSettings: nonisolated ObservableObject {
         macosOptionAsAlt = false
         wrapLines = false
         restoreTerminalHistory = false
+        globalHotkey = KeyCombo.default
         if aiEnabled {
             do {
                 try setAIEnabled(false)
@@ -399,6 +416,13 @@ final class AppSettings: nonisolated ObservableObject {
         if aiEnabled {
             lines.append("ai.enabled = true")
         }
+        if let hotkey = globalHotkey {
+            lines.append("global-hotkey.key-code = \(TOML.number(Double(hotkey.keyCode)))")
+            lines.append("global-hotkey.modifiers = \(TOML.number(Double(hotkey.modifiers)))")
+        } else {
+            // Cleared must persist; missing keys would default to Option+Space.
+            lines.append("global-hotkey.enabled = false")
+        }
         let dir = Self.configURL.deletingLastPathComponent()
         do {
             try FileManager.default.createDirectory(
@@ -408,6 +432,35 @@ final class AppSettings: nonisolated ObservableObject {
         } catch {
             NSLog("kero: failed to write \(Self.configURL.path): \(error)")
         }
+    }
+
+    private static func parseGlobalHotkey(_ toml: [String: TOML.Value]) -> KeyCombo? {
+        if toml["global-hotkey.enabled"]?.bool == false {
+            return nil
+        }
+
+        if let keyCode = toml["global-hotkey.key-code"]?.double.map(Int.init),
+           let modifiers = toml["global-hotkey.modifiers"]?.double.map(Int.init) {
+            let combo = KeyCombo(keyCode: keyCode, modifiers: modifiers)
+            if combo.isValid {
+                return combo
+            }
+            NSLog("kero: ignoring invalid global-hotkey from config (Shift-only not allowed)")
+            return KeyCombo.default
+        }
+
+        return KeyCombo.default
+    }
+
+    /// Registers the current combo. `didSet` does not run in `init`, so that
+    /// path calls this explicitly. Returns whether Carbon accepted the binding.
+    @discardableResult
+    func registerGlobalHotkey() -> Bool {
+        let succeeded = GlobalHotKeyManager.shared.register(keyCombo: globalHotkey) {
+            KeroApplicationDelegate.shared?.toggleKeroWindow()
+        }
+        globalHotkeyRegistrationFailed = globalHotkey != nil && !succeeded
+        return succeeded
     }
 
     /// Settings from releases that stored config in UserDefaults.

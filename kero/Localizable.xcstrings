@@ -1170,6 +1170,22 @@
         }
       }
     },
+    "Clear global hotkey" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "グローバルホットキーをクリア"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除全局快捷键"
+          }
+        }
+      }
+    },
     "Close" : {
       "localizations" : {
         "ja" : {
@@ -3277,6 +3293,22 @@
         }
       }
     },
+    "Global hotkey" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "グローバルホットキー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全局快捷键"
+          }
+        }
+      }
+    },
     "GPU-accelerated" : {
       "localizations" : {
         "ja" : {
@@ -4375,6 +4407,23 @@
         }
       }
     },
+    "None" : {
+      "comment" : "Button state when no global hotkey is set",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "なし"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无"
+          }
+        }
+      }
+    },
     "Not selected" : {
       "localizations" : {
         "ja" : {
@@ -4716,6 +4765,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "端口"
+          }
+        }
+      }
+    },
+    "Press keys…" : {
+      "comment" : "Button state when recording a keyboard shortcut",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーを押す…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按键…"
           }
         }
       }
@@ -5084,6 +5150,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在刷新 Git 状态"
+          }
+        }
+      }
+    },
+    "Registration failed. Another app may be using this shortcut." : {
+      "comment" : "Error shown when global hotkey registration fails",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登録に失敗しました。別のアプリがこのショートカットを使用している可能性があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "注册失败。其他应用程序可能正在使用此快捷键。"
           }
         }
       }
@@ -6397,6 +6480,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "停止载入"
+          }
+        }
+      }
+    },
+    "Summons or hides Kerox from any app. Click to record a new shortcut. Default ⌥Space is also Raycast's default." : {
+      "comment" : "Explanation of what the global hotkey does.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "どのアプリからでもKeroxを呼び出すか隠します。クリックして新しいショートカットを記録します。デフォルトの⌥SpaceはRaycastのデフォルトでもあります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从任何应用程序召唤或隐藏 Kerox。点击以录制新快捷键。默认的⌥Space也是Raycast的默认快捷键。"
           }
         }
       }

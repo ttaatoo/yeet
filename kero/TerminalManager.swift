@@ -324,6 +324,19 @@ final class TerminalManager: nonisolated ObservableObject {
         requestWindowForPendingDirectories()
     }
 
+    /// Same reopen path Finder/pending directories use: order an existing
+    /// `main` window front (works after `NSApp.hide`), and only call the
+    /// SwiftUI `openWindow` opener when none exists.
+    static func revealMainWindow() {
+        if let window = NSApp.windows.first(where: {
+            $0.identifier?.rawValue.hasPrefix("main") == true
+        }) {
+            window.makeKeyAndOrderFront(nil)
+        } else if let windowOpener {
+            windowOpener()
+        }
+    }
+
     private static func requestWindowForPendingDirectories() {
         guard !pendingDirectories.isEmpty,
               !registry.contains(where: { $0.window != nil }),

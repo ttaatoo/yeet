@@ -9,7 +9,10 @@ import AppKit
 /// Info.plist; AppKit forwards matching service requests to this object.
 @MainActor
 final class KeroApplicationDelegate: NSObject, NSApplicationDelegate {
+    static weak var shared: KeroApplicationDelegate?
+
     func applicationWillFinishLaunching(_ notification: Notification) {
+        Self.shared = self
         // AppSettings is first initialized from SwiftUI's App.init(), where
         // NSApp may not exist yet. Reapply the saved override once AppKit is
         // ready, before SwiftUI creates the first window.
@@ -18,6 +21,25 @@ final class KeroApplicationDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.servicesProvider = self
+    }
+
+    /// Toggles Kerox: hide when a main workspace window is already key;
+    /// otherwise unhide, activate, and reveal a main window.
+    ///
+    /// Uses `TerminalManager.revealMainWindow()` rather than the private
+    /// `windowOpener` so hide → summon does not open a second `main` window
+    /// or land on Settings.
+    func toggleKeroWindow() {
+        if NSApp.isActive,
+           let keyWindow = NSApp.keyWindow,
+           keyWindow.identifier?.rawValue.hasPrefix("main") == true {
+            NSApp.hide(nil)
+            return
+        }
+
+        NSApp.unhide(nil)
+        NSApp.activate()
+        TerminalManager.revealMainWindow()
     }
 
     /// Opens every directory Finder placed on the service pasteboard as a
