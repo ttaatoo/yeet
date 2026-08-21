@@ -14,6 +14,16 @@ cask "kero" do
 
   app "Kero.app"
 
+  zap trash: [
+    "~/.config/kero",
+    "~/Library/Application Support/kero",
+    "~/Library/Caches/sh.kero",
+    "~/Library/HTTPStorages/sh.kero",
+    "~/Library/Preferences/sh.kero.plist",
+    "~/Library/Saved Application State/sh.kero.savedState",
+    "~/Library/WebKit/sh.kero",
+  ]
+
   caveats <<~EOS
     This is the ttaatoo/kero fork, ad-hoc signed (no Apple Developer ID).
     It is not the notarized app from `brew install egoist/tap/kero`.
@@ -34,14 +44,4 @@ cask "kero" do
     Packaged fork builds do not Sparkle-update from releases.kero.sh
     (that feed would replace this fork with official egoist Kero).
   EOS
-
-  zap trash: [
-    "~/.config/kero",
-    "~/Library/Application Support/kero",
-    "~/Library/Caches/sh.kero",
-    "~/Library/HTTPStorages/sh.kero",
-    "~/Library/Preferences/sh.kero.plist",
-    "~/Library/Saved Application State/sh.kero.savedState",
-    "~/Library/WebKit/sh.kero",
-  ]
 end
