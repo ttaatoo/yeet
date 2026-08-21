@@ -17,34 +17,25 @@ permissions:
 
 jobs:
   release:
-    # Prefer macos-26 so the runner's Xcode is in the 26.x line. This
-    # project uses objectVersion 110 / LastUpgradeCheck 2700 and has
-    # already failed to build locally on Xcode 26.5. GitHub-hosted
-    # images may still be too old (or lack Xcode 27). A red job here
-    # means "build on a Mac with a new-enough Xcode + Rust and attach
-    # dist/Kero.zip yourself" — not that the tag is invalid.
-    runs-on: macos-26
+    # kero.xcodeproj is objectVersion 110 / LastUpgradeCheck 2700 /
+    # CreatedOnToolsVersion 27.0. macos-26 only ships Xcode 26.0.1–26.6
+    # (default 26.6); run 32471771040 failed in ~3s with xcodebuild
+    # exit 74: "future Xcode project file format (110)". The xcode-27
+    # public-preview image (2026-07-16) defaults to Xcode 27.0 and
+    # /Applications/Xcode.app already points at 27. macos-26 does not
+    # include Xcode 27.
+    # https://github.blog/changelog/2026-07-16-xcode-27-runner-image-now-in-public-preview/
+    # https://github.com/actions/runner-images/issues/14404
+    runs-on: xcode-27
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Select newest Xcode
+      - name: Show Xcode
         run: |
           set -euo pipefail
-          # Format 110 failed on Xcode 26.5 locally; prefer 27+ when
-          # the image has a preview build, else keep the image default.
-          for candidate in \
-            /Applications/Xcode_27.app \
-            /Applications/Xcode_27.0.app \
-            /Applications/Xcode-beta.app
-          do
-            if [[ -d "$candidate" ]]; then
-              sudo xcode-select -s "$candidate"
-              break
-            fi
-          done
           echo "DEVELOPER_DIR=$(xcode-select -p)"
           xcodebuild -version
 
