@@ -145,7 +145,7 @@ final class KeroCLIService {
             return .failure(
                 id: request.id,
                 code: "unsupported_version",
-                message: "Kero supports automation protocol version 1."
+                message: "Kerox supports automation protocol version 1."
             )
         }
         guard let terminalID = UUID(uuidString: request.terminalID),

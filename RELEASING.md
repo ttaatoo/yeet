@@ -5,10 +5,12 @@
 > `egoist/homebrew-tap` bump. Ad-hoc zip: `scripts/package.sh` →
 > `dist/Kerox.zip`. Push a `v*` tag (or run the Release workflow) to attach
 > that zip to a GitHub Release. The in-repo tap is `Casks/kerox.rb` /
-> `Formula/kerox.rb`. After a real zip exists, replace `sha256 :no_check` in
-> the cask with the digest. Packaged Release builds clear `SUFeedURL` so
-> Sparkle cannot replace this fork with official egoist Kero from
-> `https://releases.kero.sh`.
+> `Formula/kerox.rb`. The cask already points at GitHub Releases
+> (`Kerox.zip`); leave `sha256 :no_check` until you have the digest of that
+> zip — do not invent one. Packaged Release builds clear `SUFeedURL` and
+> `SUPublicEDKey` so Sparkle cannot replace this fork with official egoist
+> Kero from `https://releases.kero.sh`. There is no Kerox Sparkle appcast;
+> users upgrade with `brew upgrade --cask ttaatoo/kero/kerox`.
 >
 > GitHub-hosted macOS runners may fail: this Xcode project uses format 110
 > and has already failed locally on Xcode 26.5. If CI cannot build, produce

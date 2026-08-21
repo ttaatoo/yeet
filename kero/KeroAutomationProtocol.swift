@@ -352,7 +352,7 @@ final class KeroAutomationSocketServer: @unchecked Sendable {
         }
         guard connected == 0 else {
             throw KeroAutomationWireError.message(
-                "Could not connect to Kero automation: \(String(cString: strerror(errno)))."
+                "Could not connect to Kerox automation: \(String(cString: strerror(errno)))."
             )
         }
 
@@ -392,18 +392,18 @@ final class KeroAutomationSocketServer: @unchecked Sendable {
                 continue
             } else {
                 throw KeroAutomationWireError.message(
-                    "Could not read Kero's automation response: \(String(cString: strerror(errno)))."
+                    "Could not read Kerox's automation response: \(String(cString: strerror(errno)))."
                 )
             }
         }
         guard responseData.count <= maximumMessageBytes else {
-            throw KeroAutomationWireError.message("Kero returned an oversized automation response.")
+            throw KeroAutomationWireError.message("Kerox returned an oversized automation response.")
         }
         if let newline = responseData.firstIndex(of: 0x0A) {
             responseData = responseData[..<newline]
         }
         guard !responseData.isEmpty else {
-            throw KeroAutomationWireError.message("Kero closed the automation connection without a response.")
+            throw KeroAutomationWireError.message("Kerox closed the automation connection without a response.")
         }
         return try JSONDecoder().decode(KeroAutomationResponse.self, from: responseData)
     }

@@ -70,11 +70,11 @@ struct SettingsView: View {
 
                 if settings.languageRequiresRelaunch {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("Relaunch Kero to apply the language change.")
+                        Text("Relaunch Kerox to apply the language change.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("Relaunch Kero") {
+                        Button("Relaunch Kerox") {
                             relaunch()
                         }
                     }
@@ -159,8 +159,8 @@ struct SettingsView: View {
                     // views exposed to VoiceOver.
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(Text(verbatim: """
-                    kero ❯ echo "the quick brown fox" 0O 1lI
-                    \u{E0A0} main \u{E0B0} ~/dev/kero \u{E711} \u{F024B} \u{F0A7D}
+                    kerox ❯ echo "the quick brown fox" 0O 1lI
+                    \u{E0A0} main \u{E0B0} ~/dev/kerox \u{E711} \u{F024B} \u{F0A7D}
                     bold — permission denied (os error 13)
                     """))
                     .accessibilityAddTraits(.isStaticText)
@@ -220,16 +220,18 @@ struct SettingsView: View {
                 .frame(minHeight: 44)
             }
 
-            Section("Updates") {
-                Toggle(
-                    "Automatically check for updates",
-                    isOn: $updater.automaticallyChecksForUpdates
-                )
+            if updater.hasUpdateFeed {
+                Section("Updates") {
+                    Toggle(
+                        "Automatically check for updates",
+                        isOn: $updater.automaticallyChecksForUpdates
+                    )
 
-                Button("Check for Updates…") {
-                    updater.checkForUpdates()
+                    Button("Check for Updates…") {
+                        updater.checkForUpdates()
+                    }
+                    .disabled(!updater.canCheckForUpdates)
                 }
-                .disabled(!updater.canCheckForUpdates)
             }
 
             Section {
@@ -260,7 +262,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 440)
         .alert(
-            "Couldn’t Relaunch Kero",
+            "Couldn’t Relaunch Kerox",
             isPresented: $isShowingRelaunchError
         ) {
             Button("OK", role: .cancel) {}
@@ -294,8 +296,8 @@ struct SettingsView: View {
         }
     }
 
-    /// The compact catalog of popular themes shared by both terminal backends,
-    /// split by the appearance slot they suit.
+    /// The compact catalog of popular themes, split by the appearance slot
+    /// they suit. Kerox only hosts the Alacritty surface.
     private static let darkThemeNames = Theme.commonDarkThemes.map(\.name)
     private static let lightThemeNames = Theme.commonLightThemes.map(\.name)
 }
@@ -358,8 +360,8 @@ private final class FontThickenPreviewView: NSView {
 
     /// Regular / icon / bold lines — same samples as the old SwiftUI preview.
     private let lines: [(text: String, bold: Bool)] = [
-        ("kero ❯ echo \"the quick brown fox\" 0O 1lI", false),
-        ("\u{E0A0} main \u{E0B0} ~/dev/kero \u{E711} \u{F024B} \u{F0A7D}", false),
+        ("kerox ❯ echo \"the quick brown fox\" 0O 1lI", false),
+        ("\u{E0A0} main \u{E0B0} ~/dev/kerox \u{E711} \u{F024B} \u{F0A7D}", false),
         ("bold — permission denied (os error 13)", true),
     ]
 

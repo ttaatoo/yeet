@@ -421,18 +421,18 @@
         }
       }
     },
-    "`kero` must be run inside a Kero terminal." : {
+    "`kero` must be run inside a Kerox terminal." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "`kero`はKeroのターミナル内で実行してください。"
+            "value" : "`kero`はKeroxのターミナル内で実行してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "`kero` 必须在 Kero 终端内运行。"
+            "value" : "`kero` 必须在 Kerox 终端内运行。"
           }
         }
       }
@@ -1830,18 +1830,18 @@
         }
       }
     },
-    "Could not read Kero's theme catalog: %@" : {
+    "Could not read Kerox's theme catalog: %@" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keroのテーマカタログを読み込めませんでした: %@"
+            "value" : "Keroxのテーマカタログを読み込めませんでした: %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法读取 Kero 的主题列表：%@"
+            "value" : "无法读取 Kerox 的主题列表：%@"
           }
         }
       }
@@ -1927,18 +1927,18 @@
         }
       }
     },
-    "Couldn’t Relaunch Kero" : {
+    "Couldn’t Relaunch Kerox" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keroを再起動できませんでした"
+            "value" : "Keroxを再起動できませんでした"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法重新启动 Kero"
+            "value" : "无法重新启动 Kerox"
           }
         }
       }
@@ -3488,12 +3488,12 @@
         }
       }
     },
-    "Lets agents delegate work and coordinate across Kero panes" : {
+    "Lets agents delegate work and coordinate across Kerox panes" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "让 agent 在 Kero 窗格间分派工作并协作"
+            "value" : "让 agent 在 Kerox 窗格间分派工作并协作"
           }
         }
       }
@@ -3566,18 +3566,18 @@
     "Kerox" : {
       "shouldTranslate" : false
     },
-    "Kero did not provide any %@ themes." : {
+    "Kerox did not provide any %@ themes." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keroに%@テーマは含まれていません。"
+            "value" : "Keroxに%@テーマは含まれていません。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kero 未提供任何 %@ 主题。"
+            "value" : "Kerox 未提供任何 %@ 主题。"
           }
         }
       }
@@ -5171,34 +5171,34 @@
         }
       }
     },
-    "Relaunch Kero" : {
+    "Relaunch Kerox" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keroを再起動"
+            "value" : "Keroxを再起動"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "重新启动 Kero"
+            "value" : "重新启动 Kerox"
           }
         }
       }
     },
-    "Relaunch Kero to apply the language change." : {
+    "Relaunch Kerox to apply the language change." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "言語の変更を反映するにはKeroを再起動してください。"
+            "value" : "言語の変更を反映するにはKeroxを再起動してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "重新启动 Kero 以应用语言更改。"
+            "value" : "重新启动 Kerox 以应用语言更改。"
           }
         }
       }
@@ -5803,18 +5803,18 @@
         }
       }
     },
-    "Saved %@ as Kero's %@ theme." : {
+    "Saved %@ as Kerox's %@ theme." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@をKeroの%@テーマとして保存しました。"
+            "value" : "%@をKeroxの%@テーマとして保存しました。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已将 %@ 保存为 Kero 的 %@ 主题。"
+            "value" : "已将 %@ 保存为 Kerox 的 %@ 主题。"
           }
         }
       }
@@ -6920,7 +6920,7 @@
         }
       }
     },
-    "This terminal predates Kero automation. Open a new terminal and try again." : {
+    "This terminal predates Kerox automation. Open a new terminal and try again." : {
 
     },
     "This webpage couldn’t be loaded." : {
@@ -7279,18 +7279,18 @@
         }
       }
     },
-    "Unknown Kero command “%@”. Run `kero +help`." : {
+    "Unknown Kerox command “%@”. Run `kero +help`." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "不明なKeroコマンド「%@」です。`kero +help`を実行してください。"
+            "value" : "不明なKeroxコマンド「%@」です。`kero +help`を実行してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未知的 Kero 命令“%@”。请运行 `kero +help`。"
+            "value" : "未知的 Kerox 命令“%@”。请运行 `kero +help`。"
           }
         }
       }
@@ -7471,24 +7471,24 @@
         }
       }
     },
-    "Usage:\n  kero\n  kero <command> [arguments...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\nWith no arguments, kero creates a project with a normal login shell.\nAn argv creates a project whose first terminal runs it directly.\n\n+themes browses Kero's themes in the terminal. Moving through the list\npreviews the theme across the whole app; Return saves it and Esc\nrestores the previous theme." : {
+    "Usage:\n  kero\n  kero <command> [arguments...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\nWith no arguments, kero creates a project with a normal login shell.\nAn argv creates a project whose first terminal runs it directly.\n\n+themes browses Kerox's themes in the terminal. Moving through the list\npreviews the theme across the whole app; Return saves it and Esc\nrestores the previous theme." : {
       "extractionState" : "stale",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使い方:\n  kero\n  kero <コマンド> [引数...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\n引数なしの場合、keroは通常のログインシェルでプロジェクトを作成します。\n引数を指定すると、最初のターミナルでそのコマンドを直接実行するプロジェクトを作成します。\n\n+themesではターミナル内でKeroのテーマを閲覧できます。リストを移動すると\nアプリ全体でテーマをプレビューし、Returnで保存、Escで以前のテーマに戻します。"
+            "value" : "使い方:\n  kero\n  kero <コマンド> [引数...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\n引数なしの場合、keroは通常のログインシェルでプロジェクトを作成します。\n引数を指定すると、最初のターミナルでそのコマンドを直接実行するプロジェクトを作成します。\n\n+themesではターミナル内でKeroxのテーマを閲覧できます。リストを移動すると\nアプリ全体でテーマをプレビューし、Returnで保存、Escで以前のテーマに戻します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "用法：\n  kero\n  kero <命令> [参数...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\n不带参数时，kero 会创建一个使用普通登录 Shell 的项目。\n若提供命令参数，则创建项目并在第一个终端中直接运行该命令。\n\n+themes 可在终端中浏览 Kero 主题。在列表中移动时，\n会在整个应用中预览主题；按 Return 保存，按 Esc 恢复之前的主题。"
+            "value" : "用法：\n  kero\n  kero <命令> [参数...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\n不带参数时，kero 会创建一个使用普通登录 Shell 的项目。\n若提供命令参数，则创建项目并在第一个终端中直接运行该命令。\n\n+themes 可在终端中浏览 Kerox 主题。在列表中移动时，\n会在整个应用中预览主题；按 Return 保存，按 Esc 恢复之前的主题。"
           }
         }
       }
     },
-    "Usage:\n  kero\n  kero <command> [arguments...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +pane <command> [options]\n  kero +agent <command> [options]\n  kero +help\n\nWith no arguments, kero creates a project with a normal login shell.\nAn argv creates a project whose first terminal runs it directly.\n\n+themes browses Kero's themes in the terminal. Moving through the list\npreviews the theme across the whole app; Return saves it and Esc\nrestores the previous theme.\n\n+pane provides project-scoped terminal layout, input, viewport reads,\nand output waits. +agent adds recognized-agent start, guarded prompts,\nlifecycle waits, result reads, and an installable, auto-updating\nskill for compatible coding agents. Run either command with --help for\nits complete contract." : {
+    "Usage:\n  kero\n  kero <command> [arguments...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +pane <command> [options]\n  kero +agent <command> [options]\n  kero +help\n\nWith no arguments, kero creates a project with a normal login shell.\nAn argv creates a project whose first terminal runs it directly.\n\n+themes browses Kerox's themes in the terminal. Moving through the list\npreviews the theme across the whole app; Return saves it and Esc\nrestores the previous theme.\n\n+pane provides project-scoped terminal layout, input, viewport reads,\nand output waits. +agent adds recognized-agent start, guarded prompts,\nlifecycle waits, result reads, and an installable, auto-updating\nskill for compatible coding agents. Run either command with --help for\nits complete contract." : {
 
     },
     "Use Automatic Directory" : {

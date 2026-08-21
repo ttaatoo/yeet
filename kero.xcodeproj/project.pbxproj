@@ -336,7 +336,8 @@
 				);
 				INFOPLIST_FILE = kero/Info.plist;
 				KERO_DISPLAY_NAME = "Kerox Debug";
-				KERO_SU_FEED_URL = "https://releases.kero.sh/appcast.xml";
+				KERO_SU_FEED_URL = "";
+				KERO_SU_PUBLIC_ED_KEY = "gv9GLMPjH5yMQkZMFXnoNfHOyL8/7KGzl/jzAqlzZZY=";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -346,7 +347,7 @@
 					"$(BUILT_PRODUCTS_DIR)/alacritty-bridge",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 0.1.47;
+				MARKETING_VERSION = 0.1.48;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lkero_alacritty",
@@ -385,6 +386,7 @@
 				INFOPLIST_FILE = kero/Info.plist;
 				KERO_DISPLAY_NAME = Kerox;
 				KERO_SU_FEED_URL = "";
+				KERO_SU_PUBLIC_ED_KEY = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -394,7 +396,7 @@
 					"$(BUILT_PRODUCTS_DIR)/alacritty-bridge",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 0.1.47;
+				MARKETING_VERSION = 0.1.48;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lkero_alacritty",

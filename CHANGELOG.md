@@ -1,10 +1,9 @@
 # Changelog
 
-All notable changes to kero. This file is the **source of truth for the release
-notes shown in the in-app updater**: [`scripts/release.ts`](scripts/release.ts)
-extracts the section whose heading matches the version being released
-(`MARKETING_VERSION`) and publishes it next to the update, so Sparkle shows it in
-the update prompt.
+All notable changes to Kerox. Official egoist releases used this file as the
+source of truth for Sparkle notes via [`scripts/release.ts`](scripts/release.ts).
+This fork publishes GitHub Releases (`Kerox.zip`) and has no Sparkle feed;
+the matching `## [<version>]` section is still the product changelog.
 
 Format follows [Keep a Changelog](https://keepachangelog.com). Add a new
 `## [<version>]` section at the top for each release, matching the version you
@@ -14,11 +13,14 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
-## [unreleased]
+## [0.1.48]
 
-- Ship this fork as Kerox (`Kerox.app`, bundle id `sh.kerox`, settings in `~/.config/kerox`) so it can sit beside official Kero. Install with `brew tap ttaatoo/kero https://github.com/ttaatoo/kero` then `brew install --cask ttaatoo/kero/kerox` (or `--formula --HEAD` until a GitHub Release zip exists). This is not `brew install egoist/tap/kero`.
+- Ship this fork as Kerox (`Kerox.app`, bundle id `sh.kerox`, settings in `~/.config/kerox`) so it can sit beside official Kero. Install with `brew tap ttaatoo/kero https://github.com/ttaatoo/kero` then `brew install --cask ttaatoo/kero/kerox`. Upgrade with `brew upgrade --cask ttaatoo/kero/kerox`. This is not `brew install egoist/tap/kero`.
+- Settings, alerts, and the in-app CLI talk about Kerox when they mean this app. The bundled command is still `kero`.
+- Packaged builds do not check official Kero’s Sparkle feed. Settings hides update controls when there is no feed. Use Homebrew or a new GitHub Release zip.
 - Paste into the terminal without a “potentially unsafe paste” warning. Kerox still asks before a program reads the clipboard.
 - Global hotkey to summon or hide Kerox from any app, configurable in Settings (default: ⌥Space)
+- Terminals identify as Kerox, not Ghostty. Image-aware tools can use the Kitty graphics protocol the Alacritty surface implements.
 
 ## [0.1.47]
 

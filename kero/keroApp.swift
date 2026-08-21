@@ -9,8 +9,8 @@ struct keroApp: App {
     @NSApplicationDelegateAdaptor(KeroApplicationDelegate.self)
     private var applicationDelegate
 
-    // Held here so Sparkle starts at launch and background checks run even if
-    // the menu is never opened.
+    // Held here so Sparkle can start at launch when a feed is configured.
+    // Packaged Kerox builds leave the feed empty and do not start it.
     @StateObject private var updater = Updater.shared
 
     init() {
@@ -30,7 +30,9 @@ struct keroApp: App {
         .defaultSize(width: 900, height: 600)
         .commands {
             CommandGroup(after: .appInfo) {
-                CheckForUpdatesView(updater: updater)
+                if updater.hasUpdateFeed {
+                    CheckForUpdatesView(updater: updater)
+                }
             }
             KeroCommands()
         }

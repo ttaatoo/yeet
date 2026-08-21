@@ -11,21 +11,25 @@ Builds are **ad-hoc signed** (no Apple Developer Program / Developer ID). That i
 ```bash
 brew tap ttaatoo/kero https://github.com/ttaatoo/kero
 brew install --cask ttaatoo/kero/kerox
-# until a GitHub Release zip exists:
-brew install --formula --HEAD ttaatoo/kero/kerox
+```
+
+Upgrade:
+
+```bash
+brew upgrade --cask ttaatoo/kero/kerox
 ```
 
 Do **not** use `brew install egoist/tap/kero` if you want this fork. That command installs official [egoist/kero](https://github.com/egoist/kero) (Developer ID, Sparkle from `https://releases.kero.sh`) as `Kero.app` / `sh.kero`. This fork installs `Kerox.app` / `sh.kerox` and keeps settings in `~/.config/kerox`.
 
-The cask downloads `Kerox.zip` from this repo's GitHub Releases (`v0.1.47`). Until that asset exists, use the HEAD formula. After install, the cask strips Gatekeeper quarantine so the ad-hoc app can launch.
-
-`--HEAD` compiles on your Mac. You need a **new-enough Xcode** (this project uses format `110` / LastUpgradeCheck `2700` and has already failed on Xcode 26.5) plus a [Rust toolchain](https://rustup.rs) for `Vendor/alacritty-bridge`.
+The cask downloads `Kerox.zip` from this repo's GitHub Releases (`v0.1.48`). After install, the cask strips Gatekeeper quarantine so the ad-hoc app can launch.
 
 If macOS still blocks the app: **System Settings → Privacy & Security → Open Anyway**.
 
-Packaged fork builds do not Sparkle-update from `releases.kero.sh` — that feed would overwrite this fork with official egoist Kero.
+Packaged fork builds do not Sparkle-update from `releases.kero.sh` — that feed would overwrite this fork with official egoist Kero. Use `brew upgrade --cask ttaatoo/kero/kerox` (or reinstall the cask). There is no in-app updater on packaged builds.
 
 Ad-hoc zip without Homebrew: `./scripts/package.sh` writes `dist/Kerox.app` and `dist/Kerox.zip`. Pushing a `v*` tag (or running the Release workflow) uploads that zip. GitHub-hosted macOS runners may fail if their Xcode is older than the project format; in that case build on a Mac and attach the zip to the release.
+
+Compiling from source (`brew install --formula --HEAD ttaatoo/kero/kerox`) needs a **new-enough Xcode** (this project uses format `110` / LastUpgradeCheck `2700` and has already failed on Xcode 26.5) plus a [Rust toolchain](https://rustup.rs) for `Vendor/alacritty-bridge`. The cask is the supported install path.
 
 ## Official download
 

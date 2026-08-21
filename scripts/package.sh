@@ -173,11 +173,14 @@ fi
 rm -rf "$DEST/Kerox.app"
 cp -R "$APP" "$DEST/Kerox.app"
 
-# Belt-and-suspenders: never ship the official Sparkle appcast on a
-# brew / GitHub Release build of this fork.
+# Belt-and-suspenders: never ship the official Sparkle appcast or the
+# official EdDSA key on a brew / GitHub Release build of this fork.
+# The official key + https://releases.kero.sh would let Sparkle replace
+# Kerox with notarized egoist Kero.
 PLIST="$DEST/Kerox.app/Contents/Info.plist"
 if [[ -f "$PLIST" ]]; then
   plutil -replace SUFeedURL -string "" "$PLIST"
+  plutil -replace SUPublicEDKey -string "" "$PLIST"
   plutil -replace SUEnableAutomaticChecks -bool false "$PLIST"
 fi
 

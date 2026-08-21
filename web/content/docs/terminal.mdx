@@ -10,18 +10,20 @@ search, notifications, links, history, themes, and paste safety.
 ## Your shell, unchanged
 
 Each session starts your account's login shell, so your prompt, aliases,
-functions, and dotfiles load as they do in any terminal. Kero adds capability
+functions, and dotfiles load as they do in any terminal. Kerox adds capability
 and identity variables:
 
 || Variable | Value |
 || --- | --- |
-|| `TERM_PROGRAM` | `ghostty` |
-|| `TERM_PROGRAM_VERSION` | the Ghostty capability version Kero implements |
+|| `TERM_PROGRAM` | `Kerox` |
+|| `TERM_PROGRAM_VERSION` | Kerox's marketing version |
 || `KERO_TERM` | `alacritty` |
 
-Kero advertises Ghostty through `TERM_PROGRAM` because image-aware and
-notification-aware CLIs use it as a capability hint. `KERO_TERM` identifies the
-actual terminal implementation.
+`TERM_PROGRAM` is this app. Official Kero 0.1.24 set it to `ghostty` so
+image-aware CLIs would take Ghostty's branch; Kerox has no Ghostty. The
+Alacritty surface implements the Kitty graphics protocol (queryable via APC
+`Gi`). `KERO_TERM` names the emulator. `TERM` stays `xterm-256color` and
+`COLORTERM` stays `truecolor`.
 
 <Callout type="info">
 Kero does not read an external Alacritty config. Fonts, colors, and input

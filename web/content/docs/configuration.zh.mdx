@@ -88,13 +88,7 @@ Powerline 分隔符和图标字形也能正常显示。
 
 ## 终端
 
-### `terminal.backend`
-
-`"libghostty"` · `"alacritty"`——默认 `"libghostty"`
-
-选择之后新建终端使用的模拟器；已经打开的窗格继续使用启动时的后端。两者都是原生 GPU 加速，都支持图片渲染并共用 Kero 主题；Alacritty 通常占用更少内存。
-
-环境变量与兼容约定见[终端后端](/zh/docs/terminal#终端后端)。
+环境变量与兼容约定见[终端](/zh/docs/terminal)。
 
 ### `terminal.macos-option-as-alt`
 
@@ -132,7 +126,6 @@ sidebar.font-size = 13
 toolbar.visibility = "auto"
 terminal.font-thicken = true
 terminal.macos-option-as-alt = false
-terminal.backend = "alacritty"
 terminal.restore-history = true
 editor.wrap-lines = true
 ai.enabled = true
@@ -143,7 +136,7 @@ ai.enabled = true
 ## 不在这个文件里的设置
 
 - **语言。** 设置里可选「跟随系统」、English、简体中文和日本語。它使用 macOS 的单应用语言偏好，并且要重启后生效，所以不存进 TOML。
-- **自动检查更新。** **设置 → Updates** 里的开关属于 Sparkle。见[安装](/zh/docs/installation#更新)。
+- **自动检查更新。** 打包的 Kerox 没有 Sparkle 订阅源，设置里也不再显示更新开关。请用 Homebrew 或 GitHub Release zip。
 - **窗口与布局状态。** 窗口尺寸、侧边栏宽度、当前面板、项目、标签页、窗格、浏览器 URL 和
   diff 控件偏好，都存在 Kero 的 macOS 偏好设置或会话快照里。
 - **后端自己的配置文件。** Kero 不读取 `~/.config/ghostty`，也不读取 Alacritty 配置。Kero 的设置就是两个后端共同支持的配置面。

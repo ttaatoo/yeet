@@ -366,11 +366,19 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
             let path = shellQuote(replayFileURL.path)
             commands.append("if [ -r \(path) ]; then /bin/cat \(path); /bin/rm -f \(path); fi")
         }
-        // KERO_TERM exposes the actual surface. TERM_PROGRAM remains a
-        // capability hint so tools select protocols Kero can actually render.
+        // Honest identity. Official 0.1.24 set TERM_PROGRAM=ghostty so
+        // image-aware CLIs would take Ghostty's branch; this process has no
+        // Ghostty. The surface is Alacritty with in-tree Kitty graphics
+        // (queryable via APC Gi). Tools that only key off ghostty will pick
+        // the wrong protocol; we do not keep that lie. TERM_PROGRAM is this
+        // app; KERO_TERM names the emulator. Version tracks Kerox, not a
+        // vendored Ghostty.
+        let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let programVersion = (version?.isEmpty == false) ? version! : "0.1.48"
         commands.append("export KERO_TERM=\(shellQuote("alacritty"))")
-        commands.append("export TERM_PROGRAM=\(shellQuote("ghostty"))")
-        commands.append("export TERM_PROGRAM_VERSION=\(shellQuote("1.3.2-dev"))")
+        commands.append("export TERM_PROGRAM=\(shellQuote("Kerox"))")
+        commands.append("export TERM_PROGRAM_VERSION=\(shellQuote(programVersion))")
         if let commandArguments {
             let argv = commandArguments.map(shellQuote).joined(separator: " ")
             // `env` resolves argv[0] against the caller's PATH. Every argument

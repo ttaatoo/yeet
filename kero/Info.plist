@@ -66,14 +66,17 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>A program running within Kerox would like to use your microphone.</string>
 
-	<!-- Sparkle. Official egoist builds consume https://releases.kero.sh/appcast.xml.
-	     This fork is ad-hoc signed and must not: a Sparkle update from that
-	     feed would replace the fork with notarized upstream Kero. Debug keeps
-	     the official URL (the updater is not started in DEBUG). Release and
-	     scripts/package.sh leave KERO_SU_FEED_URL empty. -->
+	<!-- Sparkle. Official egoist builds consume https://releases.kero.sh/appcast.xml
+	     and ship the matching SUPublicEDKey. This fork must not: a Sparkle
+	     update from that feed would replace Kerox with notarized upstream
+	     Kero. Debug and Release leave KERO_SU_FEED_URL empty and do not start
+	     the updater without a feed. Release / scripts/package.sh also leave
+	     KERO_SU_PUBLIC_ED_KEY empty so the official key is never shipped with
+	     a packaged build. Debug may keep the official key in the project
+	     setting; the updater still does not start. -->
 	<key>SUFeedURL</key>
 	<string>$(KERO_SU_FEED_URL)</string>
 	<key>SUPublicEDKey</key>
-	<string>gv9GLMPjH5yMQkZMFXnoNfHOyL8/7KGzl/jzAqlzZZY=</string>
+	<string>$(KERO_SU_PUBLIC_ED_KEY)</string>
 </dict>
 </plist>

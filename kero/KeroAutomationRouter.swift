@@ -241,7 +241,7 @@ enum KeroAutomationRouter {
             return failure(
                 request,
                 "read_failed",
-                "Kero could not read the terminal transcript."
+                "Kerox could not read the terminal transcript."
             )
         }
     }

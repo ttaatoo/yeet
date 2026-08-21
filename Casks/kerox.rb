@@ -1,13 +1,19 @@
 # frozen_string_literal: true
 
 cask "kerox" do
-  version "0.1.47"
+  version "0.1.48"
+  # sha256 of the GitHub Release zip is unknown until v0.1.48 is published.
   sha256 :no_check
 
   url "https://github.com/ttaatoo/kero/releases/download/v#{version}/Kerox.zip"
   name "Kerox"
   desc "Keyboard-first terminal workspace with projects, sessions, and git"
   homepage "https://github.com/ttaatoo/kero"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
 
   # MACOSX_DEPLOYMENT_TARGET on the kero target is 15.6 (Sequoia).
   depends_on macos: :sequoia
@@ -40,6 +46,10 @@ cask "kerox" do
 
       brew tap ttaatoo/kero https://github.com/ttaatoo/kero
       brew install --cask ttaatoo/kero/kerox
+
+    Upgrade with:
+
+      brew upgrade --cask ttaatoo/kero/kerox
 
     If macOS still blocks the app: System Settings → Privacy & Security
     → Open Anyway.

@@ -3,10 +3,10 @@
 class Kerox < Formula
   desc "Keyboard-first terminal workspace with projects, sessions, and git"
   homepage "https://github.com/ttaatoo/kero"
-  # Versioned tarball for a future v0.1.47 (or later) tag. Until that
-  # archive exists, install from git:
-  #   brew install --formula --HEAD ttaatoo/kero/kerox
-  url "https://github.com/ttaatoo/kero/archive/refs/tags/v0.1.47.tar.gz"
+  # Source-build fallback. The supported install is the cask
+  # (`brew install --cask ttaatoo/kero/kerox`), which downloads Kerox.zip
+  # from GitHub Releases. This formula compiles Kerox.app on the Mac.
+  url "https://github.com/ttaatoo/kero/archive/refs/tags/v0.1.48.tar.gz"
   sha256 :no_check
   license "GPL-3.0-only"
   head "https://github.com/ttaatoo/kero.git", branch: "main"

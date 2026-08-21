@@ -1,13 +1,13 @@
-# Contributing to Kero
+# Contributing to Kerox
 
 For anything larger than a fix, open an issue first —
-Kero says no to features that fit some other tool better, and it's kinder to find
+Kerox says no to features that fit some other tool better, and it's kinder to find
 that out before the work.
 
 ## Setup and build
 
 ```bash
-git clone https://github.com/egoist/kero.git
+git clone https://github.com/ttaatoo/kero.git
 ```
 
 Bun is also needed for
@@ -42,7 +42,7 @@ matters when you are building it belongs here instead.
 
 ## Localization
 
-Kero’s development language is English, with Simplified Chinese and Japanese
+Kerox’s development language is English, with Simplified Chinese and Japanese
 translations maintained in Xcode String Catalogs. See
 [LOCALIZATION.md](LOCALIZATION.md) for translating existing text, adding a
 language, testing a localization, and writing localizable Swift.

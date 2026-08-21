@@ -20,6 +20,11 @@ final class Updater: ObservableObject {
 
     private let controller: SPUStandardUpdaterController
 
+    /// Whether Info.plist names a Sparkle feed. Settings and the app menu hide
+    /// update controls when this is false so an empty feed is not presented as
+    /// a live updater.
+    let hasUpdateFeed: Bool
+
     /// Gates the menu item: Sparkle can't start a check while one is already in
     /// flight, so the command disables itself until it's ready again.
     @Published private(set) var canCheckForUpdates = false
@@ -54,17 +59,18 @@ final class Updater: ObservableObject {
         // background check and pops Sparkle's "check for updates
         // automatically?" permission prompt, which is just noise while
         // developing. Release starts it only when a feed is configured.
+        hasUpdateFeed = !Self.sparkleFeedURL.isEmpty
         #if DEBUG
         let startImmediately = false
         #else
-        let startImmediately = !Self.sparkleFeedURL.isEmpty
+        let startImmediately = hasUpdateFeed
         #endif
         controller = SPUStandardUpdaterController(
             startingUpdater: startImmediately,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
-        if Self.sparkleFeedURL.isEmpty {
+        if !hasUpdateFeed {
             controller.updater.automaticallyChecksForUpdates = false
             automaticallyChecksForUpdates = false
         } else {
@@ -88,7 +94,7 @@ final class Updater: ObservableObject {
 
     /// Runs Sparkle's user-facing update check (progress window and prompts).
     func checkForUpdates() {
-        guard !Self.sparkleFeedURL.isEmpty else { return }
+        guard hasUpdateFeed else { return }
         controller.checkForUpdates(nil)
     }
 }
@@ -101,6 +107,6 @@ struct CheckForUpdatesView: View {
         Button("Check for Updates…") {
             updater.checkForUpdates()
         }
-        .disabled(!updater.canCheckForUpdates)
+        .disabled(!updater.hasUpdateFeed || !updater.canCheckForUpdates)
     }
 }

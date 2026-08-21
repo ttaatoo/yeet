@@ -29,7 +29,7 @@ Worth knowing before you hand-edit:
 - **The parser is deliberately small.** It supports flat keys, dotted keys,
   `[table]` headers, `#` comments, and string/number/boolean values. It does not
   support arrays, inline tables, or multi-line strings.
-- **Bad values fall back safely.** An out-of-range size, unknown backend, or
+- **Bad values fall back safely.** An out-of-range size, unknown theme, or
   misspelled theme does not stop Kero from launching.
 
 ## Appearance
@@ -171,8 +171,8 @@ Every key is optional. Delete a key to return that setting to its default.
 - **Language.** Settings offers System Default, English, Simplified Chinese,
   and Japanese. The choice uses macOS's per-app language preference and needs a
   relaunch, so it lives in Kero's preferences rather than TOML.
-- **Automatic update checks.** The toggle in **Settings → Updates** belongs to
-  Sparkle. See [Installation](/docs/installation#updates).
+- **Automatic update checks.** Packaged Kerox has no Sparkle feed, so Settings
+  does not show update controls. Use Homebrew or a GitHub Release zip.
 - **Window and layout state.** Window size, sidebar widths, selected panels,
   projects, tabs, panes, browser URLs, and diff control preferences live in
   Kero's macOS preferences and session snapshot.

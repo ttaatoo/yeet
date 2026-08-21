@@ -398,7 +398,7 @@ enum KeroAutomationCommandLine {
     private static func printSkillStatus(
         _ snapshots: [KeroAutomationSkill.Snapshot]
     ) {
-        print("Kero automation skill")
+        print("Kerox automation skill")
         for snapshot in snapshots {
             print("  \(agentNames(snapshot.destination)): \(skillStateLabel(snapshot.state))")
             print("    \(abbreviatedHomePath(snapshot.url))")
@@ -410,9 +410,9 @@ enum KeroAutomationCommandLine {
         changed: Bool
     ) {
         if changed {
-            print("Installed Kero automation skill.")
+            print("Installed Kerox automation skill.")
         } else {
-            print("Kero automation skill is already installed and current.")
+            print("Kerox automation skill is already installed and current.")
         }
         for result in results {
             let action = result.previousState == .current ? "Already linked" : "Linked"
@@ -429,9 +429,9 @@ enum KeroAutomationCommandLine {
         changed: Bool
     ) {
         if changed {
-            print("Uninstalled Kero automation skill.")
+            print("Uninstalled Kerox automation skill.")
         } else {
-            print("Kero automation skill is not installed.")
+            print("Kerox automation skill is not installed.")
         }
         for result in results {
             let action = result.previousState == .missing ? "Not installed" : "Removed"
@@ -467,7 +467,7 @@ enum KeroAutomationCommandLine {
         case .missing: "Not installed"
         case .current: "Installed and current"
         case .updateAvailable: "Needs relinking"
-        case .unmanaged: "Present but not managed by Kero"
+        case .unmanaged: "Present but not managed by Kerox"
         case .modified: "Locally modified"
         }
     }
@@ -678,7 +678,7 @@ enum KeroAutomationCommandLine {
         let target = try parseAgentTarget(targetArgs, command: "+agent read")
         let agent = try connection.automationRequest(method: "agent.get", params: target.params)
         guard let paneID = agent.objectValue?["pane_id"]?.stringValue else {
-            throw CLIError.message("Kero returned an agent without a pane ID.")
+            throw CLIError.message("Kerox returned an agent without a pane ID.")
         }
         return try connection.automationRequest(method: "pane.read", params: [
             "pane_id": .string(paneID),
@@ -759,12 +759,12 @@ enum KeroAutomationCommandLine {
                     throw error
                 }
                 throw CLIError.message(
-                    "agent_not_running: The launched agent exited before Kero recognized it."
+                    "agent_not_running: The launched agent exited before Kerox recognized it."
                 )
             }
             Thread.sleep(forTimeInterval: 0.1)
         } while Date() < deadline
-        throw CLIError.message("Timed out waiting for Kero to recognize the launched agent.")
+        throw CLIError.message("Timed out waiting for Kerox to recognize the launched agent.")
     }
 
     // MARK: - Parsing
@@ -930,7 +930,7 @@ enum KeroAutomationCommandLine {
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)
         guard let output = String(data: data, encoding: .utf8) else {
-            throw CLIError.message("Could not encode Kero's automation response.")
+            throw CLIError.message("Could not encode Kerox's automation response.")
         }
         print(output)
     }
@@ -971,16 +971,16 @@ enum KeroAutomationCommandLine {
 
         Supported kinds: codex, claude, gemini, grok, opencode, cursor-agent,
         aider, amp, and pi. Agent start requires an existing available shell and
-        never creates layout; it returns after Kero recognizes the launched process.
+        never creates layout; it returns after Kerox recognizes the launched process.
         Guarded prompts accept agents in created, working, idle, or done. While
         an agent is working, its CLI decides whether input steers the active
         turn or queues it. Use +pane send only when raw input is intentional.
-        Kero never infers lifecycle from rendered terminal text. After Kero
+        Kerox never infers lifecycle from rendered terminal text. After Kerox
         submits a prompt, only a provider-native hook or plugin can advance it
         to blocked, idle, or done. A reported idle background agent appears as
         done until its pane is focused. Without an integration, inspect the
         terminal output instead of relying on a lifecycle wait. `skill install`
-        explicitly links Kero's bundled coordination skill into supported
+        explicitly links Kerox's bundled coordination skill into supported
         agents; it never changes user files unless invoked.
         """)
     }
@@ -998,12 +998,12 @@ enum KeroAutomationCommandLine {
         opencode, amp, or pi. The default is all. Codex, Gemini, Cursor,
         Grok, OpenCode, Amp, and Pi share ~/.agents/skills; Claude uses
         ~/.claude/skills. Existing local changes are never replaced or removed
-        without --force. Installation uses symlinks to Kero's app bundle, so
+        without --force. Installation uses symlinks to Kerox's app bundle, so
         app updates update the skill without reinstalling it. Reload skills or
-        restart an already-running agent after first installation or a Kero
+        restart an already-running agent after first installation or a Kerox
         update.
 
-        path and print expose Kero's read-only bundled skill without installing
+        path and print expose Kerox's read-only bundled skill without installing
         it. Management commands are human-readable by default; pass --json for
         stable machine-readable output.
         """)
@@ -1011,7 +1011,7 @@ enum KeroAutomationCommandLine {
 
     private static func printAgentContract() {
         print("""
-        Kero agent automation contract
+        Kerox agent automation contract
 
         1. A pane is layout. A terminal is raw I/O. An agent is a recognized
            terminal occupant with semantic state. These IDs are not interchangeable.
@@ -1024,16 +1024,16 @@ enum KeroAutomationCommandLine {
         5. Agent prompts require both a live recognized process and an allowed
            lifecycle state. Raw +pane send is a visibly separate escape hatch
            and can interact with any terminal program.
-        6. A recognized process Kero launched is created until its first prompt.
-           The model is never asked to report lifecycle, and Kero never guesses
+        6. A recognized process Kerox launched is created until its first prompt.
+           The model is never asked to report lifecycle, and Kerox never guesses
            from rendered terminal text. Provider-native lifecycle events are the
            only source of blocked and completed transitions. Without one, inspect
            the terminal output directly. Reported unseen idle is presented as done.
         7. The optional kero-automation Agent Skill teaches this workflow to
            compatible agents. Enable AI in Settings or install it explicitly
            with `kero +agent skill install`. The AI setting also manages only
-           the provider integrations Kero can use as lifecycle authorities.
-           Both the skill and those integrations link to Kero's app bundle so
+           the provider integrations Kerox can use as lifecycle authorities.
+           Both the skill and those integrations link to Kerox's app bundle so
            app updates do not leave stale copies installed.
         """)
     }
