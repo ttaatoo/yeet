@@ -30,17 +30,17 @@ three.
 ## Provenance
 
 Copied verbatim from `STTextView-Plugin-Neon` 0.8.1 (commit `5a30db4`),
-`Sources/TreeSitterTSX/` — the same revision kero pins in
-`kero.xcodeproj/project.pbxproj`, so the grammar matches the queries and the
-tree-sitter runtime the rest of the highlighting stack uses (grammar ABI
-`LANGUAGE_VERSION 13`). `Package.swift` mirrors that package's target
-declaration (`cSettings: [.headerSearchPath("src")]`) and adds the library
-product that upstream is missing.
+`Sources/TreeSitterTSX/` — the same revision the local plugin package
+wraps in `Vendor/STTextView-Plugin-Neon/upstream`, so the grammar matches
+the queries and the tree-sitter runtime the rest of the highlighting stack
+uses (grammar ABI `LANGUAGE_VERSION 13`). `Package.swift` mirrors that
+package's target declaration (`cSettings: [.headerSearchPath("src")]`) and
+adds the library product that upstream is missing.
 
-To update, re-copy `include/` and `src/` from the plugin checkout at the
-revision kero pins:
+To update, re-copy `include/` and `src/` from the plugin submodule after
+bumping it (see `Vendor/STTextView-Plugin-Neon/KERO.md`):
 
 ```sh
-cp -R "$CHECKOUTS/STTextView-Plugin-Neon/Sources/TreeSitterTSX/"{include,src} \
+cp -R Vendor/STTextView-Plugin-Neon/upstream/Sources/TreeSitterTSX/{include,src} \
   Vendor/TreeSitterTSX/Sources/TreeSitterTSX/
 ```

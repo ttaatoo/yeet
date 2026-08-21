@@ -10,7 +10,8 @@ that out before the work.
 git clone --recurse-submodules https://github.com/egoist/kero.git
 ```
 
-Already cloned? `git submodule update --init --recursive`. Bun is also needed for
+Already cloned? `git submodule update --init --recursive` (needed for
+`Vendor/STTextView-Plugin-Neon/upstream`). Bun is also needed for
 `web/` and `scripts/`. This fork is [ttaatoo/kero](https://github.com/ttaatoo/kero);
 an ad-hoc `Kero.app` + `Kero.zip` is `scripts/package.sh` (used by the in-repo
 Homebrew tap and the `v*` release workflow).

@@ -74,14 +74,6 @@
       }
     },
     {
-      "identity" : "sttextview-plugin-neon",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/krzyzanowskim/STTextView-Plugin-Neon",
-      "state" : {
-        "revision" : "5a30db4ce7908a5414e7b499e2379bdc49991cd1"
-      }
-    },
-    {
       "identity" : "swifttreesitter",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ChimeHQ/SwiftTreeSitter",

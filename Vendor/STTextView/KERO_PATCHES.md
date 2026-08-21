@@ -56,7 +56,7 @@ override open func addRenderingAttribute(_ attribute: NSAttributedString.Key, va
 
 **Root cause.** `NSTextLayoutManager.addRenderingAttribute(_:value:for:)` is the Swift name for `-[NSTextLayoutManager addTemporaryAttribute:value:forTextRange:]`. On macOS 15/26, calling it with a zero-length range walks into `-[_NSTextRunStorage enumerateObjectsFromLocation:options:usingBlock:]`, which builds an `NSArray` from a nil element and raises `NSInvalidArgumentException` (`attempt to insert nil object from objects[0]`).
 
-**Symptom.** The [STTextView-Plugin-Neon](https://github.com/krzyzanowskim/STTextView-Plugin-Neon) syntax highlighter sets a `.foregroundColor` rendering attribute per tree-sitter token. Several grammars emit **zero-length** highlight tokens — markdown's `punctuation.special` for block continuations and thematic breaks is the reliable repro — so opening the first markdown file crashes the app. `STTextViewSystemInterface.applyStyle(to:)` in the plugin doesn't guard the range, and it's a remote package we can't patch, so the guard goes here on STTextView's own layout-manager subclass (`textView.textLayoutManager` is always an `STTextLayoutManager`, so the override intercepts the plugin's call).
+**Symptom.** The syntax highlighter (kero's `SyntaxHighlightPlugin`, adapted from [STTextView-Plugin-Neon](https://github.com/krzyzanowskim/STTextView-Plugin-Neon)) sets a `.foregroundColor` rendering attribute per tree-sitter token. Several grammars emit **zero-length** highlight tokens — markdown's `punctuation.special` for block continuations and thematic breaks is the reliable repro — so opening the first markdown file crashes the app. `applyStyle(to:)` doesn't guard the range, so the guard goes here on STTextView's own layout-manager subclass (`textView.textLayoutManager` is always an `STTextLayoutManager`, so the override intercepts the call).
 
 **Why the fix is safe.** An empty range has nothing to render, so skipping the call is a no-op — it only suppresses the crash. Worth upstreaming.
 
@@ -89,3 +89,8 @@ Don't re-add these to the package — they live on the app side, in [`kero/Sourc
 ## Exit path
 
 These three fixes are the only things keeping this vendored. Upstream them, and once all ship in a release, delete `Vendor/STTextView`, remove the `XCLocalSwiftPackageReference` from `kero.xcodeproj`, and add STTextView back as a normal remote package dependency pinned to that release. (The empty-range guard could alternatively move upstream into the Neon plugin's `applyStyle`; either home retires the patch.)
+
+Until that happens, Plugin-Neon cannot stay a remote package: its
+`https://github.com/krzyzanowskim/STTextView` dependency is the same SwiftPM
+identity as this directory and Xcode 27 crashes on the duplicate. See
+[`Vendor/STTextView-Plugin-Neon/KERO.md`](../STTextView-Plugin-Neon/KERO.md).

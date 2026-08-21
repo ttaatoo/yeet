@@ -144,7 +144,7 @@
 				AA30000000000000000000A0 /* XCLocalSwiftPackageReference "Vendor/TreeSitterTSX" */,
 				AA10000000000000000000D0 /* XCRemoteSwiftPackageReference "PierreDiffsSwift" */,
 				AA10000000000000000000E0 /* XCRemoteSwiftPackageReference "Sparkle" */,
-				AA20000000000000000000A0 /* XCRemoteSwiftPackageReference "STTextView-Plugin-Neon" */,
+				AA20000000000000000000A0 /* XCLocalSwiftPackageReference "Vendor/STTextView-Plugin-Neon" */,
 				AA60000000000000000000A0 /* XCRemoteSwiftPackageReference "FuzzyMatch" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -439,6 +439,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Vendor/STTextView;
 		};
+		AA20000000000000000000A0 /* XCLocalSwiftPackageReference "Vendor/STTextView-Plugin-Neon" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "Vendor/STTextView-Plugin-Neon";
+		};
 		AA30000000000000000000A0 /* XCLocalSwiftPackageReference "Vendor/TreeSitterTSX" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Vendor/TreeSitterTSX;
@@ -460,14 +464,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 2.6.0;
-			};
-		};
-		AA20000000000000000000A0 /* XCRemoteSwiftPackageReference "STTextView-Plugin-Neon" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/krzyzanowskim/STTextView-Plugin-Neon";
-			requirement = {
-				kind = revision;
-				revision = 5a30db4ce7908a5414e7b499e2379bdc49991cd1;
 			};
 		};
 		AA60000000000000000000A0 /* XCRemoteSwiftPackageReference "FuzzyMatch" */ = {
@@ -497,7 +493,7 @@
 		};
 		AA20000000000000000000A1 /* STTextView-Plugin-Neon */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AA20000000000000000000A0 /* XCRemoteSwiftPackageReference "STTextView-Plugin-Neon" */;
+			package = AA20000000000000000000A0 /* XCLocalSwiftPackageReference "Vendor/STTextView-Plugin-Neon" */;
 			productName = "STTextView-Plugin-Neon";
 		};
 		AA30000000000000000000A1 /* TreeSitterTSX */ = {
