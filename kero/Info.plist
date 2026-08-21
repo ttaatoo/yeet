@@ -5,9 +5,10 @@
 	<!-- This Info.plist is authored by hand (GENERATE_INFOPLIST_FILE = NO) so we
 	     own the Bundle* keys instead of letting the generator derive them.
 	     PRODUCT_NAME remains lowercase so Xcode and the CLI agree on the
-	     executable name. KERO_DISPLAY_NAME supplies Kero for Release and Kero
-	     Debug for Debug. The release bundle id stays sh.kero — it's the app's
-	     identity for Sparkle and code signing, so it must not change. Dynamic
+	     executable name. KERO_DISPLAY_NAME supplies Kerox for Release and
+	     Kerox Debug for Debug. The release bundle id is sh.kerox (Debug
+	     sh.kerox.dev) so this fork can sit beside official Kero (sh.kero)
+	     without sharing Launch Services identity or UserDefaults. Dynamic
 	     values use build-setting substitution to stay in sync. -->
 
 	<key>CFBundleDevelopmentRegion</key>
@@ -63,7 +64,7 @@
 	<!-- Programs running inside the terminal (e.g. Claude Code voice dictation)
 	     request mic access attributed to Kero as the responsible process. -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>A program running within Kero would like to use your microphone.</string>
+	<string>A program running within Kerox would like to use your microphone.</string>
 
 	<!-- Sparkle. Official egoist builds consume https://releases.kero.sh/appcast.xml.
 	     This fork is ad-hoc signed and must not: a Sparkle update from that

@@ -575,25 +575,12 @@ extension TerminalSession: TerminalBackendEvents {
 
         let alert = NSAlert()
         alert.alertStyle = .warning
-        switch request.kind {
-        case .unsafePaste:
-            alert.messageText = String(localized: "Warning: Potentially Unsafe Paste")
-            alert.informativeText =
-                String(localized: "Pasting this text to the terminal may be dangerous because it looks like one or more commands may execute.")
-        case .programRead:
-            alert.messageText = String(localized: "Authorize Clipboard Access")
-            alert.informativeText =
-                String(localized: "A program is attempting to read from the clipboard. The current clipboard contents are shown below.")
-        }
+        alert.messageText = String(localized: "Authorize Clipboard Access")
+        alert.informativeText =
+            String(localized: "A program is attempting to read from the clipboard. The current clipboard contents are shown below.")
         alert.accessoryView = Self.clipboardPreview(request.contents)
-        alert.addButton(withTitle: request.kind == .unsafePaste
-            ? String(localized: "Paste")
-            : String(localized: "Allow"))
-        let cancel = alert.addButton(
-            withTitle: request.kind == .unsafePaste
-                ? String(localized: "Cancel")
-                : String(localized: "Deny")
-        )
+        alert.addButton(withTitle: String(localized: "Allow"))
+        let cancel = alert.addButton(withTitle: String(localized: "Deny"))
         cancel.keyEquivalent = "\u{1b}"
 
         Task { @MainActor in

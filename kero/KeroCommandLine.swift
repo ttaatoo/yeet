@@ -2,7 +2,7 @@ import Darwin
 import Darwin.ncurses
 import Foundation
 
-private let notificationName = Notification.Name("sh.kero.cli")
+private let notificationName = Notification.Name("sh.kerox.cli")
 
 private struct CLITheme: Codable {
     let name: String

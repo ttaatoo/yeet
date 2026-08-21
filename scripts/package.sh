@@ -102,7 +102,7 @@ cloned_packages_populated() {
   return 1
 }
 
-echo "Packaging kero ${VERSION} (Release, ad-hoc, ${HOST_ARCH})…"
+echo "Packaging kerox ${VERSION} (Release, ad-hoc, ${HOST_ARCH})…"
 echo "Resolving Swift packages into ${CLONED_PACKAGES}…"
 
 # Isolate from set -e: resolve may SIGABRT (exit 134) after a successful
@@ -164,30 +164,30 @@ xcodebuild \
   KERO_SU_FEED_URL="" \
   build
 
-APP="$(find "$DERIVED/Build/Products/Release" -maxdepth 1 -name "Kero.app" -type d | head -n 1)"
+APP="$(find "$DERIVED/Build/Products/Release" -maxdepth 1 -name "Kerox.app" -type d | head -n 1)"
 if [[ -z "$APP" ]]; then
-  echo "error: Kero.app was not produced (Release WRAPPER_NAME is \$(KERO_DISPLAY_NAME).app)" >&2
+  echo "error: Kerox.app was not produced (Release WRAPPER_NAME is \$(KERO_DISPLAY_NAME).app)" >&2
   exit 1
 fi
 
-rm -rf "$DEST/Kero.app"
-cp -R "$APP" "$DEST/Kero.app"
+rm -rf "$DEST/Kerox.app"
+cp -R "$APP" "$DEST/Kerox.app"
 
 # Belt-and-suspenders: never ship the official Sparkle appcast on a
 # brew / GitHub Release build of this fork.
-PLIST="$DEST/Kero.app/Contents/Info.plist"
+PLIST="$DEST/Kerox.app/Contents/Info.plist"
 if [[ -f "$PLIST" ]]; then
   plutil -replace SUFeedURL -string "" "$PLIST"
   plutil -replace SUEnableAutomaticChecks -bool false "$PLIST"
 fi
 
-codesign --force --deep --sign - "$DEST/Kero.app"
-ditto -c -k --keepParent "$DEST/Kero.app" "$DEST/Kero.zip"
+codesign --force --deep --sign - "$DEST/Kerox.app"
+ditto -c -k --keepParent "$DEST/Kerox.app" "$DEST/Kerox.zip"
 
-echo "Built kero ${VERSION}:"
-echo "  $DEST/Kero.app"
-echo "  $DEST/Kero.zip"
+echo "Built kerox ${VERSION}:"
+echo "  $DEST/Kerox.app"
+echo "  $DEST/Kerox.zip"
 echo
 echo "First run on another Mac:"
-echo "  xattr -dr com.apple.quarantine \"$DEST/Kero.app\""
+echo "  xattr -dr com.apple.quarantine \"$DEST/Kerox.app\""
 echo "  Then open the app (System Settings → Privacy & Security → Open Anyway if Gatekeeper blocks it)."

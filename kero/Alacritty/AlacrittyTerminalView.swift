@@ -923,7 +923,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             requestID = UInt64(littleEndian: requestID)
             let contents = Self.pasteboardString(from: .general) ?? ""
             events?.terminalDidRequestClipboardConfirmation(
-                TerminalClipboardRequest(kind: .programRead, contents: contents) {
+                TerminalClipboardRequest(contents: contents) {
                     [weak self] approved in
                     self?.resolveClipboard(
                         requestID: requestID,
@@ -1721,18 +1721,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             }
             return
         }
-        let submitRisk = text.contains("\n") || text.contains("\r")
-        guard submitRisk else {
-            write(AlacrittyKeyMap.paste(text, mode: terminalMode))
-            return
-        }
-        events?.terminalDidRequestClipboardConfirmation(
-            TerminalClipboardRequest(kind: .unsafePaste, contents: text) {
-                [weak self] approved in
-                guard approved, let self else { return }
-                self.write(AlacrittyKeyMap.paste(text, mode: self.terminalMode))
-            }
-        )
+        write(AlacrittyKeyMap.paste(text, mode: terminalMode))
     }
 
     override func selectAll(_ sender: Any?) {

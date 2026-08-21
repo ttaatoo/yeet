@@ -17,7 +17,7 @@ import Foundation
 final class KeroCLIService {
     static let shared = KeroCLIService()
 
-    private static let notificationName = Notification.Name("sh.kero.cli")
+    private static let notificationName = Notification.Name("sh.kerox.cli")
 
     private struct CatalogTheme: Codable {
         let name: String

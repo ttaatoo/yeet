@@ -29,9 +29,10 @@ final class Updater: ObservableObject {
     /// it and writes changes straight back through.
     @Published var automaticallyChecksForUpdates: Bool {
         didSet {
-            // Same bundle id as official Kero (`sh.kero`) can inherit a
-            // persisted "check automatically" from an earlier egoist install.
-            // Never honor that when this build has no feed of its own.
+            // Packaged fork builds leave the feed empty so Sparkle cannot
+            // replace Kerox with official egoist Kero from releases.kero.sh.
+            // Never honor a persisted "check automatically" when there is
+            // no feed of our own.
             if Self.sparkleFeedURL.isEmpty {
                 controller.updater.automaticallyChecksForUpdates = false
                 if automaticallyChecksForUpdates {

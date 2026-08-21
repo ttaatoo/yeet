@@ -3531,7 +3531,7 @@
         }
       }
     },
-    "kero" : {
+    "Kerox" : {
       "shouldTranslate" : false
     },
     "Kero did not provide any %@ themes." : {
@@ -4652,22 +4652,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "粘贴"
-          }
-        }
-      }
-    },
-    "Pasting this text to the terminal may be dangerous because it looks like one or more commands may execute." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このテキストには実行されそうなコマンドが含まれているため、ターミナルへの貼り付けは危険な場合があります。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将此文本粘贴到终端可能有风险，因为其中似乎包含会被执行的命令。"
           }
         }
       }
@@ -5800,18 +5784,18 @@
         }
       }
     },
-    "Select one or more folders to open in Kero." : {
+    "Select one or more folders to open in Kerox." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keroで開くフォルダを1つ以上選択してください。"
+            "value" : "Keroxで開くフォルダを1つ以上選択してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择一个或多个要在 Kero 中打开的文件夹。"
+            "value" : "选择一个或多个要在 Kerox 中打开的文件夹。"
           }
         }
       }
@@ -7467,22 +7451,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用所选内容查找"
-          }
-        }
-      }
-    },
-    "Warning: Potentially Unsafe Paste" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "警告: 貼り付けが安全でない可能性があります"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "警告：粘贴内容可能不安全"
           }
         }
       }

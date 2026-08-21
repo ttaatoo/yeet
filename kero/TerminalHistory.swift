@@ -421,14 +421,14 @@ enum TerminalHistorySerializer {
 /// Each save rewrites the whole file from the live set of sessions, so keys
 /// belonging to sessions that no longer exist are pruned automatically.
 enum TerminalHistoryStore {
-    /// Debug builds keep their state under `kero-dev`, matching `AppSettings`
-    /// and the separate `sh.kero.dev` bundle id, so a dev build never clobbers
-    /// an installed production build's history.
+    /// Debug builds keep their state under `kerox-dev`, matching `AppSettings`
+    /// and the separate `sh.kerox.dev` bundle id, so a dev build never clobbers
+    /// an installed production build's history — or official Kero's.
     private static let fileURL: URL = {
         #if DEBUG
-        let directory = "kero-dev"
+        let directory = "kerox-dev"
         #else
-        let directory = "kero"
+        let directory = "kerox"
         #endif
         let base = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask

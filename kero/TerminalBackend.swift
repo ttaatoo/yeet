@@ -216,29 +216,19 @@ struct TerminalScrollPosition: Equatable, Sendable {
     }
 }
 
-/// A backend asking Kero to confirm clipboard access before it proceeds.
-/// Exactly one of ``approve()`` and ``deny()`` must be called.
+/// A backend asking Kero to confirm a program's clipboard read (OSC 52)
+/// before it proceeds. Exactly one of ``approve()`` and ``deny()`` must
+/// be called. Never resolve without asking: any program whose output
+/// reaches the terminal, including a remote SSH host, would otherwise be
+/// able to exfiltrate the macOS clipboard through the PTY.
 @MainActor
 final class TerminalClipboardRequest {
-    enum Kind: Sendable {
-        /// Paste protection flagged the pending paste as unsafe.
-        case unsafePaste
-        /// A terminal program asked to read the clipboard (OSC 52). Never
-        /// resolve this one without asking: any program whose output reaches
-        /// the terminal, including a remote SSH host, would otherwise be able
-        /// to exfiltrate the macOS clipboard through the PTY.
-        case programRead
-    }
-
-    let kind: Kind
-    /// The text under decision: what would be pasted for ``Kind/unsafePaste``,
-    /// or what the program would receive for ``Kind/programRead``.
+    /// The text the program would receive.
     let contents: String
 
     private let resolve: @MainActor (Bool) -> Void
 
-    init(kind: Kind, contents: String, resolve: @escaping @MainActor (Bool) -> Void) {
-        self.kind = kind
+    init(contents: String, resolve: @escaping @MainActor (Bool) -> Void) {
         self.contents = contents
         self.resolve = resolve
     }

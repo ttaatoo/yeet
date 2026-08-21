@@ -16,7 +16,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unreleased]
 
-- Install this fork with Homebrew by tapping this repo, then `brew install --cask --no-quarantine ttaatoo/kero/kero` (or `--formula --HEAD` until a GitHub Release zip exists). This is not `brew install egoist/tap/kero`.
+- Ship this fork as Kerox (`Kerox.app`, bundle id `sh.kerox`, settings in `~/.config/kerox`) so it can sit beside official Kero. Install with `brew tap ttaatoo/kero https://github.com/ttaatoo/kero` then `brew install --cask ttaatoo/kero/kerox` (or `--formula --HEAD` until a GitHub Release zip exists). This is not `brew install egoist/tap/kero`.
+- Paste into the terminal without a “potentially unsafe paste” warning. Kerox still asks before a program reads the clipboard.
 
 ## [0.1.47]
 

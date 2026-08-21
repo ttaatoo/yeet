@@ -12,7 +12,7 @@ git clone https://github.com/egoist/kero.git
 
 Bun is also needed for
 `web/` and `scripts/`. This fork is [ttaatoo/kero](https://github.com/ttaatoo/kero);
-an ad-hoc `Kero.app` + `Kero.zip` is `scripts/package.sh` (used by the in-repo
+an ad-hoc `Kerox.app` + `Kerox.zip` is `scripts/package.sh` (used by the in-repo
 Homebrew tap and the `v*` release workflow).
 
 A Rust toolchain ([rustup](https://rustup.rs)) is required: the Alacritty
@@ -28,10 +28,11 @@ xcodebuild -project kero.xcodeproj -scheme kero -configuration Debug -destinatio
 
 Add `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer` if you only have Xcode beta.
 
-A Debug build is `sh.kero.dev` and keeps its own state, so it can run beside an
-installed Kero without clobbering it: settings go to
-`~/.config/kero-dev/config.toml`, and the session snapshot, sidebar widths, and
-Sparkle preferences live under the separate bundle id.
+A Debug build is `sh.kerox.dev` and keeps its own state, so it can run beside an
+installed Kerox without clobbering it: settings go to
+`~/.config/kerox-dev/config.toml`, and the session snapshot, sidebar widths, and
+Sparkle preferences live under the separate bundle id. Release is `sh.kerox`
+and `~/.config/kerox`, so it also sits beside official Kero (`sh.kero`).
 
 ## Website and docs
 

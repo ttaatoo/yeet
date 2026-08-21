@@ -8,7 +8,7 @@
         "en": {
           "stringUnit": {
             "state": "new",
-            "value": "Kero"
+            "value": "Kerox"
           }
         }
       }
@@ -20,30 +20,30 @@
         "en": {
           "stringUnit": {
             "state": "new",
-            "value": "Kero"
+            "value": "Kerox"
           }
         }
       }
     },
     "NSMicrophoneUsageDescription": {
-      "comment": "Privacy prompt shown when a program running in a Kero terminal requests microphone access.",
+      "comment": "Privacy prompt shown when a program running in a Kerox terminal requests microphone access.",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "A program running within Kero would like to use your microphone."
+            "value": "A program running within Kerox would like to use your microphone."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kero内で実行中のプログラムがマイクを使用しようとしています。"
+            "value": "Kerox内で実行中のプログラムがマイクを使用しようとしています。"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在 Kero 中运行的程序请求使用你的麦克风。"
+            "value": "在 Kerox 中运行的程序请求使用你的麦克风。"
           }
         }
       }

@@ -140,9 +140,9 @@ final class KeroAutomationSocketServer: @unchecked Sendable {
 
     let path: String
     private let listener: Int32
-    private let queue = DispatchQueue(label: "sh.kero.automation.socket")
+    private let queue = DispatchQueue(label: "sh.kerox.automation.socket")
     private let workers = DispatchQueue(
-        label: "sh.kero.automation.clients",
+        label: "sh.kerox.automation.clients",
         qos: .userInitiated,
         attributes: .concurrent
     )
