@@ -31,16 +31,17 @@ three.
 
 Copied verbatim from `STTextView-Plugin-Neon` 0.8.1 (commit `5a30db4`),
 `Sources/TreeSitterTSX/` — the same revision the local plugin package
-wraps in `Vendor/STTextView-Plugin-Neon/upstream`, so the grammar matches
+vendors into `Vendor/STTextView-Plugin-Neon/Sources/`, so the grammar matches
 the queries and the tree-sitter runtime the rest of the highlighting stack
 uses (grammar ABI `LANGUAGE_VERSION 13`). `Package.swift` mirrors that
 package's target declaration (`cSettings: [.headerSearchPath("src")]`) and
 adds the library product that upstream is missing.
 
-To update, re-copy `include/` and `src/` from the plugin submodule after
-bumping it (see `Vendor/STTextView-Plugin-Neon/KERO.md`):
+To update, re-copy `include/` and `src/` from that same upstream commit
+after bumping the plugin sources (see `Vendor/STTextView-Plugin-Neon/KERO.md`):
 
 ```sh
-cp -R Vendor/STTextView-Plugin-Neon/upstream/Sources/TreeSitterTSX/{include,src} \
-  Vendor/TreeSitterTSX/Sources/TreeSitterTSX/
+# from a checkout of krzyzanowskim/STTextView-Plugin-Neon @ the new commit
+cp -R Sources/TreeSitterTSX/{include,src} \
+  /path/to/kero/Vendor/TreeSitterTSX/Sources/TreeSitterTSX/
 ```

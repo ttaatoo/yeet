@@ -1,18 +1,23 @@
 // swift-tools-version: 5.10
 //
 // Local wrapper around STTextView-Plugin-Neon 0.8.1 (commit 5a30db4).
-// Sources live in the `upstream` git submodule. See KERO.md.
+// Sources are copied into Sources/ — there is no nested Package.swift.
+// See KERO.md.
 //
 // kero change vs upstream Package.swift:
 // - Drop the remote STTextView dependency. kero already vendors a patched
 //   STTextView at Vendor/STTextView; a second copy from
 //   github.com/krzyzanowskim/STTextView shares the SwiftPM identity
 //   `sttextview` and Xcode 27 crashes while resolving the graph.
+// - Do not vendor upstream's own Package.swift. Xcode 27 indexes every
+//   Package.swift under the project and then abort-traps in
+//   IDESwiftPackageCore (12 file refs vs 11 pins) when a nested
+//   manifest is present. A full-repo submodule of Plugin-Neon is the
+//   extra manifest that killed Release #3 after the identity fix.
 // - Exclude the stock NeonPlugin / Coordinator / SystemInterface sources
 //   (they are the only files that import STTextView). kero ships its own
 //   highlighter in SyntaxHighlightPlugin.swift and only needs Theme plus
 //   TreeSitterResource from this package.
-// - Point every target at upstream/Sources/<name>.
 
 import PackageDescription
 
@@ -35,7 +40,7 @@ let package = Package(
                 .target(name: "STPluginNeonAppKit", condition: .when(platforms: [.macOS])),
                 .target(name: "STPluginNeonUIKit", condition: .when(platforms: [.iOS, .macCatalyst]))
             ],
-            path: "upstream/Sources/STPluginNeon"
+            path: "Sources/STPluginNeon"
         ),
         .target(
             name: "STPluginNeonAppKit",
@@ -43,7 +48,7 @@ let package = Package(
                 .product(name: "Neon", package: "Neon"),
                 .target(name: "TreeSitterResource")
             ],
-            path: "upstream/Sources/STPluginNeonAppKit",
+            path: "Sources/STPluginNeonAppKit",
             exclude: [
                 "Coordinator.swift",
                 "NeonPlugin.swift",
@@ -57,7 +62,7 @@ let package = Package(
                 .product(name: "Neon", package: "Neon"),
                 .target(name: "TreeSitterResource")
             ],
-            path: "upstream/Sources/STPluginNeonUIKit",
+            path: "Sources/STPluginNeonUIKit",
             exclude: [
                 "Coordinator.swift",
                 "NeonPlugin.swift",
@@ -110,47 +115,47 @@ let package = Package(
                 .target(name: "TreeSitterYAML"),
                 .target(name: "TreeSitterYAMLQueries")
             ],
-            path: "upstream/Sources/TreeSitterResource"
+            path: "Sources/TreeSitterResource"
         ),
-        .target(name: "TreeSitterBash", path: "upstream/Sources/TreeSitterBash", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterBashQueries", path: "upstream/Sources/TreeSitterBashQueries", resources: [.copy("highlights.scm")]),
-        .target(name: "TreeSitterC", path: "upstream/Sources/TreeSitterC", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterCQueries", path: "upstream/Sources/TreeSitterCQueries", resources: [.copy("highlights.scm")]),
-        .target(name: "TreeSitterCSharp", path: "upstream/Sources/TreeSitterCSharp", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterCSharpQueries", path: "upstream/Sources/TreeSitterCSharpQueries", resources: [.copy("highlights.scm"), .copy("tags.scm")]),
-        .target(name: "TreeSitterCPP", path: "upstream/Sources/TreeSitterCPP", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterCPPQueries", path: "upstream/Sources/TreeSitterCPPQueries", resources: [.copy("highlights.scm")]),
-        .target(name: "TreeSitterCSS", path: "upstream/Sources/TreeSitterCSS", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterCSSQueries", path: "upstream/Sources/TreeSitterCSSQueries", resources: [.copy("highlights.scm")]),
-        .target(name: "TreeSitterGo", path: "upstream/Sources/TreeSitterGo", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterGoQueries", path: "upstream/Sources/TreeSitterGoQueries", resources: [.copy("highlights.scm"), .copy("tags.scm")]),
-        .target(name: "TreeSitterHTML", path: "upstream/Sources/TreeSitterHTML", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterHTMLQueries", path: "upstream/Sources/TreeSitterHTMLQueries", resources: [.copy("highlights.scm"), .copy("injections.scm")]),
-        .target(name: "TreeSitterJava", path: "upstream/Sources/TreeSitterJava", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterJavaQueries", path: "upstream/Sources/TreeSitterJavaQueries", resources: [.copy("highlights.scm"), .copy("tags.scm")]),
-        .target(name: "TreeSitterJavaScript", path: "upstream/Sources/TreeSitterJavaScript", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterJavaScriptQueries", path: "upstream/Sources/TreeSitterJavaScriptQueries", resources: [.copy("highlights-jsx.scm"), .copy("highlights-params.scm"), .copy("highlights.scm"), .copy("injections.scm"), .copy("locals.scm"), .copy("tags.scm")]),
-        .target(name: "TreeSitterJSON", path: "upstream/Sources/TreeSitterJSON", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterJSONQueries", path: "upstream/Sources/TreeSitterJSONQueries", resources: [.copy("highlights.scm")]),
-        .target(name: "TreeSitterMarkdown", path: "upstream/Sources/TreeSitterMarkdown", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterMarkdownQueries", path: "upstream/Sources/TreeSitterMarkdownQueries", resources: [.copy("highlights.scm"), .copy("injections.scm")]),
-        .target(name: "TreeSitterPHP", path: "upstream/Sources/TreeSitterPHP", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterPHPQueries", path: "upstream/Sources/TreeSitterPHPQueries", resources: [.copy("highlights.scm"), .copy("injections.scm"), .copy("tags.scm")]),
-        .target(name: "TreeSitterPython", path: "upstream/Sources/TreeSitterPython", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterPythonQueries", path: "upstream/Sources/TreeSitterPythonQueries", resources: [.copy("highlights.scm"), .copy("tags.scm")]),
-        .target(name: "TreeSitterRuby", path: "upstream/Sources/TreeSitterRuby", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterRubyQueries", path: "upstream/Sources/TreeSitterRubyQueries", resources: [.copy("highlights.scm"), .copy("locals.scm"), .copy("tags.scm")]),
-        .target(name: "TreeSitterRust", path: "upstream/Sources/TreeSitterRust", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterRustQueries", path: "upstream/Sources/TreeSitterRustQueries", resources: [.copy("highlights.scm"), .copy("injections.scm")]),
-        .target(name: "TreeSitterSQL", path: "upstream/Sources/TreeSitterSQL", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterSQLQueries", path: "upstream/Sources/TreeSitterSQLQueries", resources: [.copy("highlights.scm")]),
-        .target(name: "TreeSitterSwift", path: "upstream/Sources/TreeSitterSwift", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterSwiftQueries", path: "upstream/Sources/TreeSitterSwiftQueries", resources: [.copy("highlights.scm"), .copy("locals.scm")]),
-        .target(name: "TreeSitterTOML", path: "upstream/Sources/TreeSitterTOML", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterTOMLQueries", path: "upstream/Sources/TreeSitterTOMLQueries", resources: [.copy("highlights.scm")]),
-        .target(name: "TreeSitterTypeScript", path: "upstream/Sources/TreeSitterTypeScript", cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterTypeScriptQueries", path: "upstream/Sources/TreeSitterTypeScriptQueries", resources: [.copy("highlights.scm"), .copy("locals.scm"), .copy("tags.scm")]),
-        .target(name: "TreeSitterYAML", path: "upstream/Sources/TreeSitterYAML", exclude: ["src/schema.generated.cc"], cSettings: [.headerSearchPath("src")]),
-        .target(name: "TreeSitterYAMLQueries", path: "upstream/Sources/TreeSitterYAMLQueries", resources: [.copy("highlights.scm")]),
+        .target(name: "TreeSitterBash", path: "Sources/TreeSitterBash", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterBashQueries", path: "Sources/TreeSitterBashQueries", resources: [.copy("highlights.scm")]),
+        .target(name: "TreeSitterC", path: "Sources/TreeSitterC", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterCQueries", path: "Sources/TreeSitterCQueries", resources: [.copy("highlights.scm")]),
+        .target(name: "TreeSitterCSharp", path: "Sources/TreeSitterCSharp", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterCSharpQueries", path: "Sources/TreeSitterCSharpQueries", resources: [.copy("highlights.scm"), .copy("tags.scm")]),
+        .target(name: "TreeSitterCPP", path: "Sources/TreeSitterCPP", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterCPPQueries", path: "Sources/TreeSitterCPPQueries", resources: [.copy("highlights.scm")]),
+        .target(name: "TreeSitterCSS", path: "Sources/TreeSitterCSS", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterCSSQueries", path: "Sources/TreeSitterCSSQueries", resources: [.copy("highlights.scm")]),
+        .target(name: "TreeSitterGo", path: "Sources/TreeSitterGo", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterGoQueries", path: "Sources/TreeSitterGoQueries", resources: [.copy("highlights.scm"), .copy("tags.scm")]),
+        .target(name: "TreeSitterHTML", path: "Sources/TreeSitterHTML", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterHTMLQueries", path: "Sources/TreeSitterHTMLQueries", resources: [.copy("highlights.scm"), .copy("injections.scm")]),
+        .target(name: "TreeSitterJava", path: "Sources/TreeSitterJava", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterJavaQueries", path: "Sources/TreeSitterJavaQueries", resources: [.copy("highlights.scm"), .copy("tags.scm")]),
+        .target(name: "TreeSitterJavaScript", path: "Sources/TreeSitterJavaScript", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterJavaScriptQueries", path: "Sources/TreeSitterJavaScriptQueries", resources: [.copy("highlights-jsx.scm"), .copy("highlights-params.scm"), .copy("highlights.scm"), .copy("injections.scm"), .copy("locals.scm"), .copy("tags.scm")]),
+        .target(name: "TreeSitterJSON", path: "Sources/TreeSitterJSON", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterJSONQueries", path: "Sources/TreeSitterJSONQueries", resources: [.copy("highlights.scm")]),
+        .target(name: "TreeSitterMarkdown", path: "Sources/TreeSitterMarkdown", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterMarkdownQueries", path: "Sources/TreeSitterMarkdownQueries", resources: [.copy("highlights.scm"), .copy("injections.scm")]),
+        .target(name: "TreeSitterPHP", path: "Sources/TreeSitterPHP", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterPHPQueries", path: "Sources/TreeSitterPHPQueries", resources: [.copy("highlights.scm"), .copy("injections.scm"), .copy("tags.scm")]),
+        .target(name: "TreeSitterPython", path: "Sources/TreeSitterPython", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterPythonQueries", path: "Sources/TreeSitterPythonQueries", resources: [.copy("highlights.scm"), .copy("tags.scm")]),
+        .target(name: "TreeSitterRuby", path: "Sources/TreeSitterRuby", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterRubyQueries", path: "Sources/TreeSitterRubyQueries", resources: [.copy("highlights.scm"), .copy("locals.scm"), .copy("tags.scm")]),
+        .target(name: "TreeSitterRust", path: "Sources/TreeSitterRust", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterRustQueries", path: "Sources/TreeSitterRustQueries", resources: [.copy("highlights.scm"), .copy("injections.scm")]),
+        .target(name: "TreeSitterSQL", path: "Sources/TreeSitterSQL", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterSQLQueries", path: "Sources/TreeSitterSQLQueries", resources: [.copy("highlights.scm")]),
+        .target(name: "TreeSitterSwift", path: "Sources/TreeSitterSwift", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterSwiftQueries", path: "Sources/TreeSitterSwiftQueries", resources: [.copy("highlights.scm"), .copy("locals.scm")]),
+        .target(name: "TreeSitterTOML", path: "Sources/TreeSitterTOML", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterTOMLQueries", path: "Sources/TreeSitterTOMLQueries", resources: [.copy("highlights.scm")]),
+        .target(name: "TreeSitterTypeScript", path: "Sources/TreeSitterTypeScript", cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterTypeScriptQueries", path: "Sources/TreeSitterTypeScriptQueries", resources: [.copy("highlights.scm"), .copy("locals.scm"), .copy("tags.scm")]),
+        .target(name: "TreeSitterYAML", path: "Sources/TreeSitterYAML", exclude: ["src/schema.generated.cc"], cSettings: [.headerSearchPath("src")]),
+        .target(name: "TreeSitterYAMLQueries", path: "Sources/TreeSitterYAMLQueries", resources: [.copy("highlights.scm")]),
     ]
 )

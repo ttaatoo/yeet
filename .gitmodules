@@ -1,3 +1,0 @@
-[submodule "Vendor/STTextView-Plugin-Neon/upstream"]
-	path = Vendor/STTextView-Plugin-Neon/upstream
-	url = https://github.com/krzyzanowskim/STTextView-Plugin-Neon.git

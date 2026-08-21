@@ -55,6 +55,21 @@ if [[ -d "$ROOT/.git" ]]; then
   git -C "$ROOT" submodule update --init --recursive
 fi
 
+# Xcode 27 IDESwiftPackageCore abort-traps when it indexes more
+# Package.swift manifests than Package.resolved pins (12 vs 11 on
+# Release #3). Only these three Vendor manifests are intentional.
+# Fail before xcodebuild if a nested one (e.g. a full Plugin-Neon
+# checkout) is present.
+extra_manifests="$(find "$ROOT/Vendor" -name Package.swift \
+  ! -path "$ROOT/Vendor/STTextView/Package.swift" \
+  ! -path "$ROOT/Vendor/STTextView-Plugin-Neon/Package.swift" \
+  ! -path "$ROOT/Vendor/TreeSitterTSX/Package.swift")"
+if [[ -n "$extra_manifests" ]]; then
+  echo "error: extra Package.swift would crash Xcode 27 Resolve Package Graph:" >&2
+  echo "$extra_manifests" >&2
+  exit 1
+fi
+
 mkdir -p "$DEST"
 
 # Native slice only: a universal Release build also needs
