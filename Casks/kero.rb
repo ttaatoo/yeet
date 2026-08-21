@@ -10,7 +10,7 @@ cask "kero" do
   homepage "https://github.com/ttaatoo/kero"
 
   # MACOSX_DEPLOYMENT_TARGET on the kero target is 15.6 (Sequoia).
-  depends_on macos: ">= :sequoia"
+  depends_on macos: :sequoia
 
   app "Kero.app"
 
