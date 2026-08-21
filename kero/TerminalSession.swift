@@ -370,9 +370,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         // capability hint so tools select protocols Kero can actually render.
         commands.append("export KERO_TERM=\(shellQuote("alacritty"))")
         commands.append("export TERM_PROGRAM=\(shellQuote("ghostty"))")
-        commands.append("export TERM_PROGRAM_VERSION=\(shellQuote("1.3.2-dev"))") else {
-            commands.append("unset TERM_PROGRAM_VERSION")
-        }
+        commands.append("export TERM_PROGRAM_VERSION=\(shellQuote("1.3.2-dev"))")
         if let commandArguments {
             let argv = commandArguments.map(shellQuote).joined(separator: " ")
             // `env` resolves argv[0] against the caller's PATH. Every argument
