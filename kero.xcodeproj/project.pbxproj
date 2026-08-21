@@ -336,6 +336,7 @@
 				);
 				INFOPLIST_FILE = kero/Info.plist;
 				KERO_DISPLAY_NAME = "Kero Debug";
+				KERO_SU_FEED_URL = "https://releases.kero.sh/appcast.xml";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -383,6 +384,7 @@
 				);
 				INFOPLIST_FILE = kero/Info.plist;
 				KERO_DISPLAY_NAME = Kero;
+				KERO_SU_FEED_URL = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to publish (for example v0.1.47). Created if missing."
+        required: true
+        default: "v0.1.47"
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Prefer macos-26 so the runner's Xcode is in the 26.x line. This
+    # project uses objectVersion 110 / LastUpgradeCheck 2700 and has
+    # already failed to build locally on Xcode 26.5. GitHub-hosted
+    # images may still be too old (or lack Xcode 27). A red job here
+    # means "build on a Mac with a new-enough Xcode + Rust and attach
+    # dist/Kero.zip yourself" — not that the tag is invalid.
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Select newest Xcode
+        run: |
+          set -euo pipefail
+          # Format 110 failed on Xcode 26.5 locally; prefer 27+ when
+          # the image has a preview build, else keep the image default.
+          for candidate in \
+            /Applications/Xcode_27.app \
+            /Applications/Xcode_27.0.app \
+            /Applications/Xcode-beta.app
+          do
+            if [[ -d "$candidate" ]]; then
+              sudo xcode-select -s "$candidate"
+              break
+            fi
+          done
+          echo "DEVELOPER_DIR=$(xcode-select -p)"
+          xcodebuild -version
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build ad-hoc signed app
+        run: bash scripts/package.sh
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            TAG="$INPUT_TAG"
+          elif [[ "$REF_TYPE" == "tag" ]]; then
+            TAG="$REF_NAME"
+          else
+            echo "No tag to publish" >&2
+            exit 1
+          fi
+          if [[ ! "$TAG" =~ ^v ]]; then
+            echo "Refusing to publish a non-v* tag: $TAG" >&2
+            exit 1
+          fi
+          if [[ ! -f dist/Kero.zip ]]; then
+            echo "dist/Kero.zip was not produced" >&2
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes --target "$TARGET_SHA"
+          fi
+          gh release upload "$TAG" "dist/Kero.zip#Kero.zip" --clobber

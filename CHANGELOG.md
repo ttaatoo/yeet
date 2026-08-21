@@ -16,6 +16,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unreleased]
 
+- Install this fork with Homebrew by tapping this repo, then `brew install --cask --no-quarantine ttaatoo/kero/kero` (or `--formula --HEAD` until a GitHub Release zip exists). This is not `brew install egoist/tap/kero`.
+
 ## [0.1.47]
 
 - Let dictation and other accessibility tools enter text in terminal panes
