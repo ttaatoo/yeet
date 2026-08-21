@@ -42,6 +42,14 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # Xcode 27.0 beta 4 (27A5228h) fetches remotes then abort-traps in
+      # IDESwiftPackageCore (12 vs 11 file refs) after package graph
+      # finish — Release #4:
+      # https://github.com/ttaatoo/kero/actions/runs/32492042501
+      # scripts/package.sh resolves into a stable SourcePackages dir
+      # first (non-zero resolve is OK if clones exist), then builds with
+      # -disableAutomaticPackageResolution. Nested Package.swift is
+      # already gone; this is the remaining IDE bug after fetch.
       - name: Build ad-hoc signed app
         run: bash scripts/package.sh
 

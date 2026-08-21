@@ -76,7 +76,76 @@ mkdir -p "$DEST"
 # `rustup target add x86_64-apple-darwin` (see CONTRIBUTING.md).
 HOST_ARCH="$(uname -m)"
 
+# Share one SourcePackages tree between resolve and build. Xcode 27.0
+# beta 4 (27A5228h) on GitHub's xcode-27 runner fetches remotes, then
+# abort-traps in IDESwiftPackageCore while registering dependency file
+# refs (NSMutableArray 12 vs 11) — Release #4, after the nested
+# Plugin-Neon Package.swift was already gone:
+# https://github.com/ttaatoo/kero/actions/runs/32492042501
+# Hypothesis: checkouts are already on disk after that abort, so a
+# second xcodebuild can compile with automatic resolution disabled.
+CLONED_PACKAGES="${DERIVED}/SourcePackages"
+mkdir -p "$DERIVED" "$CLONED_PACKAGES"
+
+# True when resolve left usable clones (checkouts and/or repositories).
+cloned_packages_populated() {
+  local root="$1"
+  local path f
+  for path in "$root/checkouts" "$root/repositories"; do
+    [[ -d "$path" ]] || continue
+    for f in "$path"/*; do
+      if [[ -e "$f" ]]; then
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
 echo "Packaging kero ${VERSION} (Release, ad-hoc, ${HOST_ARCH})…"
+echo "Resolving Swift packages into ${CLONED_PACKAGES}…"
+
+# Isolate from set -e: resolve may SIGABRT (exit 134) after a successful
+# fetch. This step is mandatory — skipping it on a clean machine would
+# build with no packages.
+set +e
+xcodebuild \
+  -project "$PROJECT" \
+  -scheme kero \
+  -derivedDataPath "$DERIVED" \
+  -clonedSourcePackagesDirPath "$CLONED_PACKAGES" \
+  -resolvePackageDependencies
+resolve_status=$?
+set -euo pipefail
+
+if [[ "$resolve_status" -eq 0 ]]; then
+  echo "Package resolve finished (exit 0)."
+else
+  echo "warning: xcodebuild -resolvePackageDependencies exited ${resolve_status}." >&2
+  echo "Xcode 27 may abort in IDESwiftPackageCore after fetch; continuing if clones are on disk." >&2
+fi
+
+echo "Cloned package entries:"
+if [[ -d "$CLONED_PACKAGES/checkouts" ]]; then
+  echo "  checkouts:"
+  ls -1 "$CLONED_PACKAGES/checkouts" | sed 's/^/    /' || true
+fi
+if [[ -d "$CLONED_PACKAGES/repositories" ]]; then
+  echo "  repositories:"
+  ls -1 "$CLONED_PACKAGES/repositories" | sed 's/^/    /' || true
+fi
+
+if ! cloned_packages_populated "$CLONED_PACKAGES"; then
+  echo "error: ${CLONED_PACKAGES} has no checkouts/ or repositories/ after resolve (exit ${resolve_status})." >&2
+  echo "The checkouts-survive-abort hypothesis does not hold for this run; cannot build with empty packages." >&2
+  if [[ -d "$CLONED_PACKAGES" ]]; then
+    echo "Contents of ${CLONED_PACKAGES}:" >&2
+    find "$CLONED_PACKAGES" -maxdepth 2 >&2 || true
+  fi
+  exit 1
+fi
+
+echo "Building with automatic package resolution disabled…"
 
 xcodebuild \
   -project "$PROJECT" \
@@ -84,6 +153,10 @@ xcodebuild \
   -configuration Release \
   -destination "platform=macOS,arch=${HOST_ARCH}" \
   -derivedDataPath "$DERIVED" \
+  -clonedSourcePackagesDirPath "$CLONED_PACKAGES" \
+  -disableAutomaticPackageResolution \
+  -skipPackageUpdates \
+  -onlyUsePackageVersionsFromResolvedFile \
   ONLY_ACTIVE_ARCH=YES \
   CODE_SIGN_IDENTITY="-" \
   CODE_SIGNING_ALLOWED=YES \
