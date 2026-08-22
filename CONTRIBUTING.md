@@ -16,8 +16,7 @@ git remote add upstream https://github.com/egoist/kero.git
 - `upstream` — [egoist/kero](https://github.com/egoist/kero)
 
 Bun is also needed for
-`web/` and `scripts/`. This independent repository is [ttaatoo/yeet](https://github.com/ttaatoo/yeet);
-it is based on Kero and is not a GitHub Fork. An ad-hoc `Yeet.app` + `Yeet.zip`
+`web/` and `scripts/`. Yeet is based on [Kero](https://github.com/egoist/kero). An ad-hoc `Yeet.app` + `Yeet.zip`
 is `scripts/package.sh` (used by the in-repo Homebrew tap and the `v*` release
 workflow).
 
