@@ -14,13 +14,13 @@ description: 关于费用、隐私，以及 Kero 和你的 shell 是什么关系
 <Accordion title="它会替换我的 shell 吗？">
 
 不会。Kero 运行的就是你已经在用的 shell——它启动 `$SHELL -l`，不碰你的提示符、别名、函数和
-dotfiles。终端窗格可以选择 Ghostty 或 Alacritty 作为后端。
+dotfiles。终端窗格使用 Alacritty 作为后端。
 
 </Accordion>
 
 <Accordion title="它会收集数据吗？">
 
-没有遥测，也没有分析统计。Kero 自己发起的唯一网络请求，是向 `releases.kero.sh` 检查更新，而这个可以在 **设置 → Updates** 里关掉。
+没有遥测，也没有分析统计。打包的 Kerox 没有 Sparkle 订阅源，也不会自己检查更新。请用 Homebrew 或 GitHub Release zip。
 
 你在[浏览器窗格](/zh/docs/browser)里打开的网页，以及自己运行的 agent CLI，会像在 Kero 外面一样发起你要求的网络请求。
 
@@ -62,7 +62,7 @@ dotfiles。终端窗格可以选择 Ghostty 或 Alacritty 作为后端。
 
 <Accordion title="在哪里报告 bug？">
 
-在 [GitHub](https://github.com/egoist/kero/issues) 上开一个 issue。写清 macOS 版本，以及出问题时你在做什么，通常就够排查了。
+这个 fork 没有启用 Issues。请在 [ttaatoo/kero](https://github.com/ttaatoo/kero) 上提交 pull request。写清 macOS 版本，以及出问题时你在做什么，通常就够排查了。
 
 </Accordion>
 

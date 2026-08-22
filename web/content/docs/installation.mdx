@@ -1,49 +1,46 @@
 ---
 title: Installation
-description: Download Kero, install it with Homebrew, keep it updated, and remove it cleanly.
+description: Download Kerox, install it with Homebrew, keep it updated, and remove it cleanly.
 ---
 
-Every build is signed and notarized by Apple, so it opens without a Gatekeeper
-warning. [kero.sh](https://kero.sh) shows the minimum macOS version the current
-release needs, next to the download.
+This repository ships **Kerox**, the ttaatoo/kero fork of [egoist/kero](https://github.com/egoist/kero). Builds are **ad-hoc signed** (no Apple Developer Program / Developer ID). That is not the notarized app from [kero.sh](https://kero.sh). The current release needs macOS 15.6 (Sequoia) or later.
+
+Do **not** run `brew install egoist/tap/kero` if you want this fork. That command installs official Kero (`Kero.app` / `sh.kero`). This fork installs `Kerox.app` / `sh.kerox` and keeps settings in `~/.config/kerox`.
 
 ## Download
 
-Grab the `.dmg` from [kero.sh](https://kero.sh), open it, and drag **Kero** into
-your Applications folder.
+Grab `Kerox.zip` from [GitHub Releases](https://github.com/ttaatoo/kero/releases) (or the Download button on the site), unzip it, and drag **Kerox** into your Applications folder.
+
+The first launch may be blocked by Gatekeeper. Use **System Settings → Privacy & Security → Open Anyway**.
 
 ## Homebrew
 
-```bash
-brew install egoist/tap/kero
-```
-
-The cask lives in `egoist/homebrew-tap`, which is why the tap is named in full.
-Upgrade the same way you upgrade anything else:
+The cask lives in this repo, so the tap URL has to be named:
 
 ```bash
-brew upgrade --cask kero
+brew tap ttaatoo/kero https://github.com/ttaatoo/kero
+brew install --cask ttaatoo/kero/kerox
 ```
+
+Upgrade:
+
+```bash
+git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox
+```
+
+The cask downloads `Kerox.zip` from GitHub Releases and strips Gatekeeper quarantine so the ad-hoc app can launch.
+
+Compiling from source (`brew install --formula --HEAD ttaatoo/kero/kerox`) needs a new-enough Xcode plus a [Rust toolchain](https://rustup.rs) for `Vendor/alacritty-bridge`. The cask is the supported install path.
 
 ## Updates
 
-Kero updates itself with [Sparkle](https://sparkle-project.org). It checks in the
-background, downloads the new version quietly, and installs it the next time you
-quit — you'll see the release notes before anything is applied.
+Packaged Kerox has no [Sparkle](https://sparkle-project.org) feed. An official Kero feed would replace this fork with `Kero.app`. There is no in-app updater on packaged builds, and Settings hides update controls when there is no feed.
 
-To change this, open **Settings → Updates** (<kbd>Cmd</kbd>+<kbd>,</kbd>):
-
-- **Automatically check for updates** — turn background checks off entirely.
-- **Check for Updates…** — ask right now.
-
-<Callout title="Installed with Homebrew?">
-Both update paths work. If you'd rather let Homebrew own the version, turn off
-automatic checks and run `brew upgrade --cask kero` on your own schedule.
-</Callout>
+Use Homebrew (`git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox`) or a new GitHub Release zip.
 
 ## Open a folder from Finder
 
-Kero registers a macOS service called **New Kero Project Here**. Select one or
+Kerox registers a macOS service called **New Kerox Project Here**. Select one or
 more folders in Finder, right-click, and pick it from the **Services** submenu —
 each folder opens as a project with its terminal already started there.
 
@@ -54,18 +51,24 @@ service after the app has been launched once.
 ## Uninstalling
 
 If **Settings → Automation → AI** is enabled, turn it off before deleting the
-app so Kero can remove the agent support it installed.
+app so Kerox can remove the agent support it installed.
 
-Delete `Kero.app` from Applications, then remove its settings if you want a
+If you installed with Homebrew:
+
+```bash
+brew uninstall --cask ttaatoo/kero/kerox
+```
+
+Otherwise delete `Kerox.app` from Applications. Then remove its settings if you want a
 clean slate:
 
 ```bash
-rm -rf ~/.config/kero
+rm -rf ~/.config/kerox
 ```
 
 Window layout, sidebar widths, and the session snapshot live in macOS's own
 preference store:
 
 ```bash
-defaults delete sh.kero
+defaults delete sh.kerox
 ```

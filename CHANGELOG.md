@@ -15,6 +15,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Website and install docs describe Kerox: `brew tap ttaatoo/kero` then the `kerox` cask, `Kerox.zip` from GitHub Releases, no Sparkle, Alacritty only. The Homebrew cask and formula pin sha256 of the v0.1.50 zip and source tarball. Upgrade docs pull the in-repo tap first; the FAQ no longer links a disabled Issues page.
+
 ## [0.1.50]
 
 - Dark chrome uses a solid Codex Dark panel so swapped sidebars match.

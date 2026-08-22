@@ -1,7 +1,7 @@
-# Kero — website
+# Kerox — website
 
-Landing page and documentation for **Kero**, the native terminal workspace for
-macOS.
+Landing page and documentation for **Kerox**, the ttaatoo/kero fork of Kero,
+shipped as a native terminal workspace for macOS.
 
 ## Stack
 
@@ -64,7 +64,7 @@ Docs pages are written for people using the app; see
 [CONTRIBUTING.md](../CONTRIBUTING.md). Every docs URL is prerendered —
 [`vite.config.ts`](vite.config.ts) derives the list from the filenames, so a new
 page needs no config change. The landing pages are rendered per request instead,
-since they read the current version from the appcast.
+since they read the current version from GitHub Releases.
 
 ## Notes
 
@@ -73,9 +73,10 @@ since they read the current version from the appcast.
   same variables through `fumadocs-ui/css/shadcn.css`, so the docs inherit it.
 - Add more components with `bunx shadcn@latest add <name>` — the project is
   already configured for Base UI (`components.json` → `"style": "base-nova"`).
-- Landing pages read the newest release from the Sparkle appcast through
+- Landing pages read the newest GitHub Release through
   [`src/lib/release.ts`](src/lib/release.ts). Keep its fallback release current
-  so downloads still work if the appcast is temporarily unavailable.
+  so downloads still work if GitHub is temporarily unavailable. Do not point
+  this file at `releases.kero.sh` — that feed is official Kero.
 - The hero product shot is [`public/kero-screenshot.png`](public/kero-screenshot.png)
   (a real app screenshot with transparent padding + shadow) — swap the file to
   update it.

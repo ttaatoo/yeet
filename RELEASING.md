@@ -10,7 +10,7 @@
 > zip — do not invent one. Packaged Release builds clear `SUFeedURL` and
 > `SUPublicEDKey` so Sparkle cannot replace this fork with official egoist
 > Kero from `https://releases.kero.sh`. There is no Kerox Sparkle appcast;
-> users upgrade with `brew upgrade --cask ttaatoo/kero/kerox`.
+> users upgrade with `git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox`.
 >
 > GitHub-hosted macOS runners may fail: this Xcode project uses format 110
 > and has already failed locally on Xcode 26.5. If CI cannot build, produce

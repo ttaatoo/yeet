@@ -1,63 +1,63 @@
-export type Release = { version: string; minSystem: string; dmg: string }
+export type Release = { version: string; minSystem: string; zip: string }
 
-const RELEASES_ORIGIN = 'https://releases.kero.sh'
-const APPCAST_URL = `${RELEASES_ORIGIN}/appcast.xml`
+const REPO = 'ttaatoo/kero'
+const GITHUB_API_LATEST = `https://api.github.com/repos/${REPO}/releases/latest`
+const ZIP_ASSET = 'Kerox.zip'
+/** Matches MACOSX_DEPLOYMENT_TARGET on the kero target in kero.xcodeproj. */
+const MIN_SYSTEM = '15.6'
 
-export const GITHUB_URL = 'https://github.com/egoist/kero'
+export const GITHUB_URL = `https://github.com/${REPO}`
 export const X_URL = 'https://x.com/localhost_4173'
 
-// Cask lives in egoist/homebrew-tap, so the tap has to be named explicitly.
-// `--cask` is optional — brew falls back to casks, and the tap has no `kero` formula.
-export const BREW_COMMAND = 'brew install egoist/tap/kero'
+// The tap is this repo (`Casks/kerox.rb`), not `ttaatoo/homebrew-kero`, so the
+// tap URL has to be named. `--cask` is required: the same tap also has a formula.
+export const BREW_COMMAND =
+  'brew tap ttaatoo/kero https://github.com/ttaatoo/kero && brew install --cask ttaatoo/kero/kerox'
 
-// Shown only if the appcast can't be reached; kept current so downloads still work.
+// Shown only if GitHub Releases can't be reached; kept current so downloads still work.
 const FALLBACK: Release = {
-  version: '0.1.45',
-  minSystem: '15.6',
-  dmg: `${RELEASES_ORIGIN}/kero-0.1.45.dmg`,
+  version: '0.1.50',
+  minSystem: MIN_SYSTEM,
+  zip: `${GITHUB_URL}/releases/download/v0.1.50/${ZIP_ASSET}`,
+}
+
+type GitHubRelease = {
+  tag_name?: string
+  assets?: { name?: string; browser_download_url?: string }[]
 }
 
 /**
- * Pick the newest release out of the Sparkle appcast — the item with the highest
- * build number (`sparkle:version`). The site links the notarized `.dmg`, which
- * sits beside the `.zip` update enclosure at `kero-<version>.dmg`.
+ * Read the newest GitHub Release that ships Kerox.zip. Packaged Kerox has no
+ * Sparkle feed; the site must not read releases.kero.sh (that is official Kero).
  */
-function parseLatestRelease(xml: string): Release | null {
-  let best: { build: number; version: string; minSystem: string } | null = null
-  for (const [, item] of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
-    const version = item
-      .match(/<sparkle:shortVersionString>([^<]+)<\/sparkle:shortVersionString>/)?.[1]
-      ?.trim()
-    if (!version) continue
-    const build = Number(
-      item.match(/<sparkle:version>([^<]+)<\/sparkle:version>/)?.[1]?.trim() ?? '0',
-    )
-    const minSystem = item
-      .match(/<sparkle:minimumSystemVersion>([^<]+)<\/sparkle:minimumSystemVersion>/)?.[1]
-      ?.trim()
-    if (!best || build > best.build) {
-      best = { build, version, minSystem: minSystem || FALLBACK.minSystem }
-    }
-  }
-  if (!best) return null
-  return {
-    version: best.version,
-    minSystem: best.minSystem,
-    dmg: `${RELEASES_ORIGIN}/kero-${best.version}.dmg`,
-  }
+export function parseGitHubRelease(data: GitHubRelease): Release | null {
+  const tag = data.tag_name?.trim() ?? ''
+  const version = tag.startsWith('v') ? tag.slice(1) : tag
+  if (!version) return null
+  const zip = data.assets
+    ?.find((asset) => asset.name === ZIP_ASSET)
+    ?.browser_download_url?.trim()
+  if (!zip) return null
+  return { version, minSystem: MIN_SYSTEM, zip }
 }
 
 export async function fetchLatestRelease(): Promise<Release> {
   try {
-    const res = await fetch(APPCAST_URL, {
+    const res = await fetch(GITHUB_API_LATEST, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'kerox-web',
+      },
       signal: AbortSignal.timeout(2500),
-      // The site runs as a Cloudflare Worker; cache the appcast at the edge so we
+      // The site runs as a Cloudflare Worker; cache the payload at the edge so we
       // don't refetch on every render (matches its own 5-min max-age). `cf` isn't
       // part of the DOM RequestInit type, hence the cast.
       cf: { cacheTtl: 300, cacheEverything: true },
     } as RequestInit & { cf: { cacheTtl: number; cacheEverything: boolean } })
     if (!res.ok) return FALLBACK
-    return parseLatestRelease(await res.text()) ?? FALLBACK
+    const parsed: unknown = await res.json()
+    if (parsed === null || typeof parsed !== 'object') return FALLBACK
+    return parseGitHubRelease(parsed) ?? FALLBACK
   } catch {
     return FALLBACK
   }

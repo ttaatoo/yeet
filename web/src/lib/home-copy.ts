@@ -41,9 +41,9 @@ export type HomeCopy = {
 
 const en: HomeCopy = {
   languageName: 'English',
-  title: 'Kero — A native terminal workspace for macOS',
+  title: 'Kerox — A native terminal workspace for macOS',
   description:
-    'Kero is a fast, keyboard-first terminal workspace for macOS. Projects, sessions, browser panes, git diffs, and coding agents — all in one native window.',
+    'Kerox is a fast, keyboard-first terminal workspace for macOS. Projects, sessions, browser panes, git diffs, and coding agents — all in one native window.',
   taglineBefore: 'Your terminal, with the ',
   taglineHighlight: 'whole project',
   taglineAfter: ' around it.',
@@ -56,7 +56,7 @@ const en: HomeCopy = {
   copied: 'Copied',
   copyAria: (command) => `Copy "${command}" to the clipboard`,
   pillFree: 'free & open-source',
-  screenshotAlt: "kero showing a project's terminal session with the git panel open",
+  screenshotAlt: "Kerox showing a project's terminal session with the git panel open",
   screenshotCaption: 'Projects, tabs, the info panel open beside it',
   featuresHeading: 'Features',
   shortcutsHeading: 'Shortcuts',
@@ -135,14 +135,14 @@ const en: HomeCopy = {
             'zsh, fish, or bash exactly as you configured it — prompt, aliases, dotfiles and all',
         },
         {
-          name: 'Two native backends',
+          name: 'GPU terminal',
           detail:
-            'choose Ghostty or Alacritty for new panes; both are GPU-accelerated and support images',
+            'Alacritty backend, GPU-accelerated, with the Kitty graphics protocol for image-aware tools',
         },
         {
           name: 'Agent-aware',
           detail:
-            'let coding agents delegate work and coordinate across Kero panes while you follow status, notifications, and approvals',
+            'let coding agents delegate work and coordinate across Kerox panes while you follow status, notifications, and approvals',
         },
         {
           name: 'Desktop notifications',
@@ -160,9 +160,9 @@ const en: HomeCopy = {
             'ships with JetBrains Mono and Nerd Font symbols; swap in any monospace family and size',
         },
         {
-          name: 'Quiet updates',
+          name: 'Homebrew updates',
           detail:
-            'new builds check in with Sparkle and install in the background, on their own',
+            'packaged builds have no Sparkle feed; upgrade with git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox or a new GitHub Release zip',
         },
       ],
     },
@@ -190,16 +190,16 @@ const en: HomeCopy = {
   ],
   faq: [
     {
-      q: 'Is kero free?',
+      q: 'Is Kerox free?',
       a: 'Yes. Free to download, no subscription, no account.',
     },
     {
       q: 'Does it replace my shell?',
-      a: 'No. kero hosts the shell you already run and leaves your prompt, aliases, and dotfiles untouched. Terminal panes can use Ghostty or Alacritty.',
+      a: 'No. Kerox hosts the shell you already run and leaves your prompt, aliases, and dotfiles untouched. Terminal panes use Alacritty.',
     },
     {
       q: 'Does it collect any data?',
-      a: 'No telemetry, no analytics. Its only automatic network request is the update check; browser pages and agent CLIs make only the requests you ask them to.',
+      a: 'No telemetry, no analytics. Packaged builds do not check for updates on their own; browser pages and agent CLIs make only the requests you ask them to.',
     },
     {
       q: 'What happens to my sessions when I quit?',
@@ -217,9 +217,9 @@ const en: HomeCopy = {
 
 const zh: HomeCopy = {
   languageName: '中文',
-  title: 'Kero — 原生 macOS 终端工作区',
+  title: 'Kerox — 原生 macOS 终端工作区',
   description:
-    'Kero 是面向 macOS 的原生终端工作区：快速、键盘优先。项目、会话、浏览器窗格、git diff 和编码 agent，都在同一个窗口里。',
+    'Kerox 是面向 macOS 的原生终端工作区：快速、键盘优先。项目、会话、浏览器窗格、git diff 和编码 agent，都在同一个窗口里。',
   taglineBefore: '你的终端，',
   taglineHighlight: '整个项目',
   taglineAfter: '都在身边。',
@@ -232,7 +232,7 @@ const zh: HomeCopy = {
   copied: '已复制',
   copyAria: (command) => `将「${command}」复制到剪贴板`,
   pillFree: '免费开源',
-  screenshotAlt: 'kero 窗口：项目的终端会话，旁边开着 git 面板',
+  screenshotAlt: 'Kerox 窗口：项目的终端会话，旁边开着 git 面板',
   screenshotCaption: '项目、标签页，旁边开着信息面板',
   featuresHeading: '功能',
   shortcutsHeading: '快捷键',
@@ -305,12 +305,12 @@ const zh: HomeCopy = {
             'zsh、fish 还是 bash，你怎么配的就怎么用——提示符、别名、dotfiles 一个不少',
         },
         {
-          name: '两个原生后端',
-          detail: '新窗格可选 Ghostty 或 Alacritty；两者都有 GPU 加速并支持图片',
+          name: 'GPU 终端',
+          detail: 'Alacritty 后端，GPU 加速，并实现 Kitty 图形协议，方便处理图片的工具使用',
         },
         {
           name: '与 AI Agent 协作',
-          detail: '让编码 agent 在 Kero 窗格间分派和协调工作，你通过状态、通知和批准掌握进度',
+          detail: '让编码 agent 在 Kerox 窗格间分派和协调工作，你通过状态、通知和批准掌握进度',
         },
         {
           name: '桌面通知',
@@ -327,8 +327,9 @@ const zh: HomeCopy = {
           detail: '内置 JetBrains Mono 和 Nerd Font 符号；也可以换成任何等宽字体和字号',
         },
         {
-          name: '静默更新',
-          detail: '通过 Sparkle 在后台检查并安装新版本，不用你操心',
+          name: '用 Homebrew 更新',
+          detail:
+            '打包构建没有 Sparkle 订阅源；用 git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox 或新的 GitHub Release zip 升级',
         },
       ],
     },
@@ -356,16 +357,16 @@ const zh: HomeCopy = {
   ],
   faq: [
     {
-      q: 'kero 免费吗？',
+      q: 'Kerox 免费吗？',
       a: '是的。免费下载，无需订阅，也不需要账号。',
     },
     {
       q: '它会替换我的 shell 吗？',
-      a: '不会。kero 运行的就是你本来在用的 shell，提示符、别名和 dotfiles 都不受影响。终端窗格可以使用 Ghostty 或 Alacritty。',
+      a: '不会。Kerox 运行的就是你本来在用的 shell，提示符、别名和 dotfiles 都不受影响。终端窗格使用 Alacritty。',
     },
     {
       q: '它会收集数据吗？',
-      a: '没有遥测，也没有分析统计。唯一自动发起的是更新检查；浏览器页面和 agent CLI 只会发送你要求的请求。',
+      a: '没有遥测，也没有分析统计。打包构建不会自己检查更新；浏览器页面和 agent CLI 只会发送你要求的请求。',
     },
     {
       q: '退出之后我的会话会怎样？',

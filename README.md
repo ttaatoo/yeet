@@ -16,7 +16,7 @@ brew install --cask ttaatoo/kero/kerox
 Upgrade:
 
 ```bash
-brew upgrade --cask ttaatoo/kero/kerox
+git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox
 ```
 
 Do **not** use `brew install egoist/tap/kero` if you want this fork. That command installs official [egoist/kero](https://github.com/egoist/kero) (Developer ID, Sparkle from `https://releases.kero.sh`) as `Kero.app` / `sh.kero`. This fork installs `Kerox.app` / `sh.kerox` and keeps settings in `~/.config/kerox`.
@@ -25,7 +25,7 @@ The cask downloads `Kerox.zip` from this repo's GitHub Releases (`v0.1.50`). Aft
 
 If macOS still blocks the app: **System Settings → Privacy & Security → Open Anyway**.
 
-Packaged fork builds do not Sparkle-update from `releases.kero.sh` — that feed would overwrite this fork with official egoist Kero. Use `brew upgrade --cask ttaatoo/kero/kerox` (or reinstall the cask). There is no in-app updater on packaged builds.
+Packaged fork builds do not Sparkle-update from `releases.kero.sh` — that feed would overwrite this fork with official egoist Kero. Use `git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox` (or reinstall the cask). There is no in-app updater on packaged builds.
 
 Ad-hoc zip without Homebrew: `./scripts/package.sh` writes `dist/Kerox.app` and `dist/Kerox.zip`. Pushing a `v*` tag (or running the Release workflow) uploads that zip. GitHub-hosted macOS runners may fail if their Xcode is older than the project format; in that case build on a Mac and attach the zip to the release.
 

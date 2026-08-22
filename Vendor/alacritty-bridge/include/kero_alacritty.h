@@ -203,7 +203,6 @@ void kero_alacritty_selection_start(KeroTerminal *handle, int32_t line, size_t c
                                     uint32_t kind, bool right_half);
 void kero_alacritty_selection_update(KeroTerminal *handle, int32_t line, size_t column,
                                      bool right_half);
-void kero_alacritty_selection_clear(KeroTerminal *handle);
 void kero_alacritty_select_all(KeroTerminal *handle);
 bool kero_alacritty_has_selection(KeroTerminal *handle);
 
@@ -232,9 +231,6 @@ size_t kero_alacritty_find(KeroTerminal *handle, const char *needle);
 intptr_t kero_alacritty_find_step(KeroTerminal *handle, bool forward);
 
 void kero_alacritty_find_end(KeroTerminal *handle);
-
-/// Whether the primary screen has rows above the viewport.
-bool kero_alacritty_has_scrollback(KeroTerminal *handle);
 
 void kero_alacritty_clear(KeroTerminal *handle);
 

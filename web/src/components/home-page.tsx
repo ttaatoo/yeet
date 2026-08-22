@@ -36,7 +36,7 @@ export function HomePage({ lang, release }: { lang: string; release: Release }) 
     >
       <section className="flex flex-col gap-3.5">
         <div className="flex flex-wrap items-center gap-2.5">
-          <a href={release.dmg} download className={BUTTON}>
+          <a href={release.zip} download className={BUTTON}>
             <span className="i-mingcute-apple-fill size-4 shrink-0" />
             {copy.download}
           </a>

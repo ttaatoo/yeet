@@ -1450,16 +1450,6 @@ pub unsafe extern "C" fn kero_alacritty_selection_update(
     }
 }
 
-/// # Safety
-/// `handle` must be live.
-#[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_selection_clear(handle: *mut KeroTerminal) {
-    if handle.is_null() {
-        return;
-    }
-    (*handle).term.lock().selection = None;
-}
-
 /// Selects every row, scrollback included.
 ///
 /// # Safety
@@ -1988,20 +1978,6 @@ pub unsafe extern "C" fn kero_alacritty_url_at(
     }
     std::ptr::copy_nonoverlapping(bytes.as_ptr(), buffer, bytes.len());
     bytes.len()
-}
-
-/// Whether the primary screen has rows above the viewport — Kero uses this to
-/// tell a scrolled shell from a full-screen TUI.
-///
-/// # Safety
-/// `handle` must be live.
-#[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_has_scrollback(handle: *mut KeroTerminal) -> bool {
-    if handle.is_null() {
-        return false;
-    }
-    let term = (*handle).term.lock();
-    !term.mode().contains(TermMode::ALT_SCREEN) && term.grid().history_size() > 0
 }
 
 /// Clears the screen and the scrollback.

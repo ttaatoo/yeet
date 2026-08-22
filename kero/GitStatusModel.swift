@@ -436,12 +436,6 @@ final class GitStatusModel: nonisolated ObservableObject {
         }
     }
 
-    /// Discards every worktree change. Tracked files are restored and
-    /// untracked files are moved to the Trash. The UI confirms first.
-    func discardAllChanges() {
-        discardChanges(changedEntries)
-    }
-
     /// Discards only the confirmed snapshot. This prevents new files written
     /// by an agent while the dialog is open from joining a bulk destructive action.
     func discardChanges(_ entries: [Entry]) {
@@ -529,12 +523,6 @@ final class GitStatusModel: nonisolated ObservableObject {
                 ? String(localized: "Stage all and commit")
                 : String(localized: "Commit staged changes"))
         perform(label: label, commands: commands, completion: completion)
-    }
-
-    /// Compatibility for older call sites. The behavior remains explicit in
-    /// the new panel, which uses the overload above.
-    func commit(message: String) {
-        commit(message: message, includeAll: stagedEntries.isEmpty)
     }
 
     func fetch() {

@@ -3,7 +3,7 @@ import changelogSource from '../../../CHANGELOG.md?raw'
 import { SiteLayout } from '@/components/site-layout'
 
 const CONTRIBUTORS_URL =
-  'https://api.github.com/repos/egoist/kero/contributors?per_page=1&anon=1'
+  'https://api.github.com/repos/ttaatoo/kero/contributors?per_page=1&anon=1'
 const FALLBACK_CONTRIBUTOR_COUNT = 2
 
 async function getContributorCount() {
@@ -47,10 +47,10 @@ export const Route = createFileRoute('/changelog')({
   loader: getContributorCount,
   head: () => ({
     meta: [
-      { title: 'Changelog — Kero' },
+      { title: 'Changelog — Kerox' },
       {
         name: 'description',
-        content: 'The latest improvements, fixes, and new features in Kero.',
+        content: 'The latest improvements, fixes, and new features in Kerox.',
       },
     ],
   }),
@@ -65,8 +65,8 @@ type Release = {
 const RELEASE_LIMIT = 15
 
 /**
- * CHANGELOG.md also powers Sparkle's in-app release notes. Reading that file at
- * build time keeps the website honest without introducing a second release log.
+ * CHANGELOG.md is the product changelog. Reading that file at build time keeps
+ * the website honest without introducing a second release log.
  */
 function parseReleases(markdown: string): Release[] {
   const headings = Array.from(markdown.matchAll(/^## \[([^\]]+)\]\s*$/gm))
@@ -124,7 +124,7 @@ function Changelog() {
       </section>
 
       <section
-        aria-label={`The last ${RELEASES.length} Kero releases`}
+        aria-label={`The last ${RELEASES.length} Kerox releases`}
         className="relative ml-2 pl-7 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-[linear-gradient(to_bottom,var(--border)_0%,var(--border)_92%,transparent_100%)] sm:ml-3 sm:pl-10"
       >
         {RELEASES.map((release, index) => {

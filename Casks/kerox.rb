@@ -2,8 +2,8 @@
 
 cask "kerox" do
   version "0.1.50"
-  # sha256 of the GitHub Release zip is unknown until v0.1.50 is published.
-  sha256 :no_check
+  # sha256 of Kerox.zip for this version. Recompute after each GitHub Release upload.
+  sha256 "289a21654685d21f55b04a7b99634e479f2be4a2fe2616da2d7d4e40201b84ce"
 
   url "https://github.com/ttaatoo/kero/releases/download/v#{version}/Kerox.zip"
   name "Kerox"
@@ -49,7 +49,7 @@ cask "kerox" do
 
     Upgrade with:
 
-      brew upgrade --cask ttaatoo/kero/kerox
+      git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox
 
     If macOS still blocks the app: System Settings → Privacy & Security
     → Open Anyway.

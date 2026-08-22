@@ -14,11 +14,11 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Kero — A native terminal workspace for macOS" },
+      { title: "Kerox — A native terminal workspace for macOS" },
       {
         name: "description",
         content:
-          "Kero is a fast, keyboard-first terminal workspace for macOS. Projects, sessions, a command palette, and inline git diffs — all in one native window.",
+          "Kerox is a fast, keyboard-first terminal workspace for macOS. Projects, sessions, a command palette, and inline git diffs — all in one native window.",
       },
       { name: "theme-color", content: "#0d1117" },
     ],
