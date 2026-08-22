@@ -15,6 +15,7 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Large files in the editor, including markdown with code fences, open and scroll without dropped frames.
 - Rebrand this repository as Yeet (`Yeet.app`, bundle id `sh.yeet`, settings in `~/.config/yeet`). Leftover `~/.config/kerox` (then older `~/.config/kero`) is copied into `~/.config/yeet` when Yeet has no config yet. The same leftover-then-copy applies to Application Support history. This is not Kerox.app / `sh.kerox` and not a GitHub Fork of egoist/kero.
 - Drop the project-sidebar Send Feedback button (it opened official Kero Issues).
 - Website and install docs describe Yeet: `brew tap ttaatoo/yeet https://github.com/ttaatoo/yeet` then `brew install --cask ttaatoo/yeet/yeet`, `Yeet.zip` from GitHub Releases, no Sparkle, Alacritty only. Upgrade docs pull the in-repo tap first; the FAQ no longer links a disabled Issues page.

@@ -20,13 +20,6 @@ extension STTextView: NSTextViewportLayoutControllerDelegate {
     }
 
     public func viewportBounds(for textViewportLayoutController: NSTextViewportLayoutController) -> CGRect {
-        let gutterWidth = gutterView?.frame.width ?? 0
-
-        // preparedContentRect is in STTextView (documentView) coords — shift to contentView coords
-        var prepared = preparedContentRect
-        prepared.origin.x += gutterWidth
-        prepared.size.width -= gutterWidth
-
         // visibleRect is already in contentView coords (contentView.origin.x = gutterWidth)
         var visible = contentView.visibleRect
 
@@ -40,14 +33,14 @@ extension STTextView: NSTextViewportLayoutControllerDelegate {
             visible.origin.y = 0
         }
 
-        // Y-only union, width from contentView bounds
-        if prepared.intersects(visible) {
-            let minY = max(0, min(prepared.minY, visible.minY))
-            let maxY = max(prepared.maxY, visible.maxY)
-            return CGRect(x: 0, y: minY, width: contentView.bounds.width, height: maxY - minY)
-        } else {
-            return visible
-        }
+        // kero patch: do not union the full preparedContentRect. That made
+        // layoutViewport grow with the prepare band (3× viewport → 50–90 ms).
+        // Overdraw a fraction of the visible height so a small clip move stays
+        // filled without laying out the whole prepared region.
+        let pad = visible.height * 0.35
+        let minY = max(0, visible.minY - pad)
+        let maxY = visible.maxY + pad * 2
+        return CGRect(x: 0, y: minY, width: contentView.bounds.width, height: maxY - minY)
     }
 
     public func textViewportLayoutController(_ textViewportLayoutController: NSTextViewportLayoutController, configureRenderingSurfaceFor textLayoutFragment: NSTextLayoutFragment) {
@@ -93,17 +86,26 @@ extension STTextView: NSTextViewportLayoutControllerDelegate {
         }
         lastUsedFragmentViews.removeAll()
 
-        if let viewportRange = textViewportLayoutController.viewportRange {
-            textLayoutManager.ensureLayout(for: viewportRange)
-        }
+        // kero patch: layoutViewport already laid out the viewport. Calling
+        // ensureLayout here walked it again on every scroll frame.
 
         updateContentSizeIfNeeded()
 
-        // When scrolled to the end of the document, relocate viewport to ensure proper layout
-        if let scrollView, let documentView = scrollView.documentView, scrollView.contentView.bounds.maxY >= documentView.bounds.maxY,
-           let viewportRange = textViewportLayoutController.viewportRange,
-           let textRange = NSTextRange(location: viewportRange.endLocation, end: textLayoutManager.documentRange.endLocation), !textRange.isEmpty {
-            relocateViewport(to: textLayoutManager.documentRange.endLocation)
+        // When scrolled to the end of the document, relocate viewport to ensure proper layout.
+        // kero patch: the document frame is only as tall as laid-out usage
+        // bounds. Clip maxY hitting that frame is not "at the last line" —
+        // it used to relocateViewport on every scroll frame while lazily
+        // growing the document.
+        if let viewportRange = textViewportLayoutController.viewportRange,
+           let textRange = NSTextRange(location: viewportRange.endLocation, end: textLayoutManager.documentRange.endLocation),
+           !textRange.isEmpty {
+            let remaining = textContentManager.offset(
+                from: viewportRange.endLocation,
+                to: textLayoutManager.documentRange.endLocation
+            )
+            if remaining < 256 {
+                relocateViewport(to: textLayoutManager.documentRange.endLocation)
+            }
         }
 
         updateSelectedRangeHighlight()

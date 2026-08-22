@@ -131,7 +131,24 @@ final class SyntaxHighlightCoordinator {
     /// Embedded languages whose highlights query is being compiled off the main
     /// thread right now, so the token provider kicks off each compile only once.
     private var pendingInjectionCompiles: Set<SyntaxLanguage> = []
+    /// Highlight tokens for an embedded region, reused across Neon 1024-char
+    /// requests until the document is edited. Fence parse is expensive.
+    private var injectionTokenCache: [InjectionCacheKey: [Neon.Token]] = [:]
     private var prevViewportRange: NSTextRange?
+
+    private struct InjectionCacheKey: Hashable {
+        let language: SyntaxLanguage
+        let location: Int
+        let length: Int
+    }
+
+    private struct InjectionParseJob: @unchecked Sendable {
+        let key: InjectionCacheKey
+        let parser: OpaquePointer
+        let query: SwiftTreeSitter.Query
+        let fragment: String
+        let offset: Int
+    }
 
     init(
         textView: STTextView,
@@ -174,15 +191,14 @@ final class SyntaxHighlightCoordinator {
             guard let textView, !Self.ignoredCaptures.contains(neonToken.name) else {
                 return nil
             }
-            var attributes: [NSAttributedString.Key: Any] = [:]
-            attributes[.font] = textView.font
-            if let color = Self.themeColor(for: neonToken.name, theme: theme) {
-                attributes[.foregroundColor] = color
+            // Color only. Writing `.font` into text storage (even the same font)
+            // runs an editing transaction and invalidates TextKit 2 layout for
+            // every token — that is the open/scroll hitch. The theme ships no
+            // per-token fonts, so the editor font already on the storage stays.
+            guard let color = Self.themeColor(for: neonToken.name, theme: theme) else {
+                return nil
             }
-            if let font = theme.font(forToken: TokenName(neonToken.name)) {
-                attributes[.font] = font
-            }
-            return attributes.isEmpty ? nil : attributes
+            return [.foregroundColor: color]
         }
 
         // Start with no token provider (a no-op); it's installed below once the
@@ -208,7 +224,7 @@ final class SyntaxHighlightCoordinator {
     /// concealment, and the explicit "no highlight" marker. Grammars attach
     /// these alongside real captures (e.g. Swift's `@comment @spell`), so they
     /// must be dropped rather than resolved to a color.
-    private static let ignoredCaptures: Set<String> = ["spell", "nospell", "conceal", "none"]
+    nonisolated private static let ignoredCaptures: Set<String> = ["spell", "nospell", "conceal", "none"]
 
     /// The theme color for a tree-sitter capture name, trying the most specific
     /// name first and shortening on each dot (`variable.parameter` → `variable`),
@@ -333,17 +349,43 @@ final class SyntaxHighlightCoordinator {
                 case .failure(let error):
                     completion(.failure(error))
                 case .success(let baseRanges):
-                    var tokens = baseRanges.map { Neon.Token(name: $0.name, range: $0.range) }
-                    // Same tree, so this resolves against the state the base
-                    // tokens came from; an embedded region's own tokens are
-                    // appended so they layer over the base `@none`.
+                    let baseTokens = baseRanges.map { Neon.Token(name: $0.name, range: $0.range) }
                     self.tsClient.executeInjectionsQuery(injectionsQuery, in: range, textProvider: textProvider) { injectionResult in
-                        if case .success(let injections) = injectionResult {
-                            for injection in injections {
-                                tokens.append(contentsOf: self.injectedTokens(for: injection, textProvider: textProvider))
+                        let injections: [SwiftTreeSitter.NamedRange]
+                        if case .success(let value) = injectionResult {
+                            injections = value
+                        } else {
+                            injections = []
+                        }
+                        let (cached, jobs) = self.injectionWork(for: injections, textProvider: textProvider)
+                        let known = baseTokens + cached
+                        guard !jobs.isEmpty else {
+                            completion(.success(TokenApplication(tokens: Self.clip(known, to: range), range: range)))
+                            return
+                        }
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            var parsed: [(InjectionCacheKey, [Neon.Token])] = []
+                            parsed.reserveCapacity(jobs.count)
+                            var extra: [Neon.Token] = []
+                            for job in jobs {
+                                let tokens = Self.tokensForFragment(job)
+                                parsed.append((job.key, tokens))
+                                extra.append(contentsOf: tokens)
+                            }
+                            DispatchQueue.main.async { [weak self] in
+                                guard let self else {
+                                    completion(.success(.noChange))
+                                    return
+                                }
+                                for (key, tokens) in parsed {
+                                    self.injectionTokenCache[key] = tokens
+                                }
+                                completion(.success(TokenApplication(
+                                    tokens: Self.clip(known + extra, to: range),
+                                    range: range
+                                )))
                             }
                         }
-                        completion(.success(TokenApplication(tokens: tokens)))
                     }
                 }
             }
@@ -351,46 +393,74 @@ final class SyntaxHighlightCoordinator {
         highlighter?.invalidate()
     }
 
-    /// Highlight one embedded region: parse its text with the embedded
-    /// language's grammar, run that language's highlights query, and shift each
-    /// token by the region's start so the ranges land in document coordinates.
-    /// Returns nothing (leaving the region plain) when the language isn't
-    /// bundled or its query hasn't finished compiling yet.
-    private func injectedTokens(
-        for injection: SwiftTreeSitter.NamedRange,
+    /// Collect cached tokens and background parse jobs for one Neon request.
+    /// Names with no bundled grammar (`markdown_inline`, `text`, …) are skipped.
+    private func injectionWork(
+        for injections: [SwiftTreeSitter.NamedRange],
         textProvider: SwiftTreeSitter.Predicate.TextProvider
-    ) -> [Neon.Token] {
-        let injectionRange = injection.range
-        guard injectionRange.length > 0,
-              let language = SyntaxHighlighting.language(forInjectionName: injection.name),
-              let query = injectedHighlightsQuery(for: language),
-              let fragment = textProvider(injectionRange, Point.zero..<Point.zero),
-              !fragment.isEmpty
-        else {
-            return []
+    ) -> (cached: [Neon.Token], jobs: [InjectionParseJob]) {
+        var cached: [Neon.Token] = []
+        var jobs: [InjectionParseJob] = []
+        for injection in injections {
+            let injectionRange = injection.range
+            guard injectionRange.length > 0,
+                  let language = SyntaxHighlighting.language(forInjectionName: injection.name)
+            else { continue }
+            let key = InjectionCacheKey(
+                language: language,
+                location: injectionRange.location,
+                length: injectionRange.length
+            )
+            if let tokens = injectionTokenCache[key] {
+                cached.append(contentsOf: tokens)
+                continue
+            }
+            guard let query = injectedHighlightsQuery(for: language),
+                  let fragment = textProvider(injectionRange, Point.zero..<Point.zero),
+                  !fragment.isEmpty
+            else { continue }
+            jobs.append(InjectionParseJob(
+                key: key,
+                parser: language.parser,
+                query: query,
+                fragment: fragment,
+                offset: injectionRange.location
+            ))
         }
+        return (cached, jobs)
+    }
 
+    /// Parse one embedded region off the main thread. Ranges are fragment-relative
+    /// and shifted into document coordinates.
+    nonisolated private static func tokensForFragment(_ job: InjectionParseJob) -> [Neon.Token] {
         let parser = Parser()
         do {
-            try parser.setLanguage(language.parser)
+            try parser.setLanguage(job.parser)
         } catch {
             return []
         }
-        guard let tree = parser.parse(fragment), let root = tree.rootNode else {
+        guard let tree = parser.parse(job.fragment), let root = tree.rootNode else {
             return []
         }
-
-        // Fragment-relative NSRanges, so resolve predicates against the fragment
-        // text and offset the resulting ranges back into the document.
-        let context = SwiftTreeSitter.Predicate.Context(string: fragment)
-        let offset = injectionRange.location
+        let context = SwiftTreeSitter.Predicate.Context(string: job.fragment)
         var tokens: [Neon.Token] = []
-        for named in query.execute(node: root, in: tree).resolve(with: context).highlights() {
-            guard named.range.length > 0, !Self.ignoredCaptures.contains(named.name) else { continue }
-            let range = NSRange(location: named.range.location + offset, length: named.range.length)
+        for named in job.query.execute(node: root, in: tree).resolve(with: context).highlights() {
+            guard named.range.length > 0, !ignoredCaptures.contains(named.name) else { continue }
+            let range = NSRange(location: named.range.location + job.offset, length: named.range.length)
             tokens.append(Neon.Token(name: named.name, range: range))
         }
         return tokens
+    }
+
+    /// Keep applied tokens inside the Neon request so a large fence does not
+    /// expand `receivedSet` and restyle the whole block on the main thread.
+    nonisolated private static func clip(_ tokens: [Neon.Token], to range: NSRange) -> [Neon.Token] {
+        tokens.compactMap { token in
+            let overlap = NSIntersectionRange(token.range, range)
+            guard overlap.length > 0 else { return nil }
+            if overlap == token.range { return token }
+            return Neon.Token(name: token.name, range: overlap)
+        }
     }
 
     /// The compiled highlights query for an embedded language, reusing (and
@@ -415,8 +485,9 @@ final class SyntaxHighlightCoordinator {
                 if let query {
                     HighlightQueryCache.store(query, for: language)
                 }
-                // Repaint: the token provider can now emit this region's tokens.
-                self.highlighter?.invalidate()
+                // Repaint only newly visible invalid text. `.all` re-parses
+                // every fence on the next highlight pass.
+                self.highlighter?.visibleContentDidChange()
             }
         }
         return nil
@@ -434,6 +505,7 @@ final class SyntaxHighlightCoordinator {
     }
 
     func didChangeContent(_ textContentManager: NSTextContentManager, in range: NSRange, delta: Int, limit: Int) {
+        injectionTokenCache.removeAll(keepingCapacity: true)
         guard let string = textContentManager.attributedString(in: nil)?.string else { return }
         tsClient.didChangeContent(
             in: range,
@@ -468,7 +540,6 @@ private final class SyntaxHighlightTextInterface: TextSystemInterface {
               let textRange = NSTextRange(range, in: textView.textContentManager)
         else { return }
         textView.textLayoutManager.removeRenderingAttribute(.foregroundColor, for: textRange)
-        textView.addAttributes([.font: textView.font], range: range)
     }
 
     func applyStyle(to token: Neon.Token) {
@@ -478,18 +549,12 @@ private final class SyntaxHighlightTextInterface: TextSystemInterface {
         guard let textView,
               token.range.length > 0,
               let attributes = attributeProvider(token),
+              let color = attributes[.foregroundColor],
               let textRange = NSTextRange(token.range, in: textView.textContentManager)
         else {
             return
         }
-
-        for attribute in attributes {
-            if attribute.key == .foregroundColor {
-                textView.textLayoutManager.addRenderingAttribute(.foregroundColor, value: attribute.value, for: textRange)
-            } else {
-                textView.addAttributes([attribute.key: attribute.value], range: token.range)
-            }
-        }
+        textView.textLayoutManager.addRenderingAttribute(.foregroundColor, value: color, for: textRange)
     }
 
     var length: Int {
