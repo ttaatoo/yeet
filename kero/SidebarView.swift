@@ -16,7 +16,6 @@ struct SidebarView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var themeChanges = Theme.changes
     @Environment(\.openSettings) private var openSettings
-    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("leftSidebarWidth") private var width: Double = 220
     @State private var draggedProjectID: UUID?
     @State private var projectFrames: [UUID: CGRect] = [:]
@@ -50,6 +49,12 @@ struct SidebarView: View {
             }
             .padding(isLeading ? .trailing : .leading, 8)
             .frame(height: 38)
+            .background(Color(nsColor: Theme.chromeHeader))
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color(nsColor: Theme.chromeDivider))
+                    .frame(height: 1)
+            }
 
             ScrollView {
                 VStack(spacing: 3) {
@@ -104,33 +109,20 @@ struct SidebarView: View {
             .frame(height: bottomBarHeight)
             .overlay(alignment: .top) {
                 Rectangle()
-                    .fill(Color(nsColor: Theme.divider))
+                    .fill(Color(nsColor: Theme.chromeDivider))
                     .frame(height: 1)
             }
         }
         .frame(width: width)
-        .background {
-            // Kero's built-in Default themes keep the native translucent
-            // sidebar material; every other theme — including the GitHub
-            // originals they're based on — paints its flat sidebar shade so
-            // the strip follows the palette.
-            if Theme.isDefault(dark: colorScheme == .dark) {
-                VisualEffectView(material: .sidebar)
-            } else {
-                Color(nsColor: Theme.sidebar)
-            }
-        }
-        // Hairline between sidebar and content: themes fill both with the
-        // same background, so the boundary needs its own line. The built-in
-        // Defaults keep their material fill, whose contrast already draws
-        // the edge.
+        // Opaque Codex Dark (or the light theme's solid fill). Vibrancy
+        // made this column look like a different app from the inspector
+        // after Swap sidebars.
+        .background(Color(nsColor: Theme.sidebar))
         .overlay(alignment: innerAlignment) {
-            if !Theme.isDefault(dark: colorScheme == .dark) {
-                Rectangle()
-                    .fill(Color(nsColor: Theme.divider))
-                    .frame(width: 1)
-                    .allowsHitTesting(false)
-            }
+            Rectangle()
+                .fill(Color(nsColor: Theme.chromeDivider))
+                .frame(width: 1)
+                .allowsHitTesting(false)
         }
         .overlay(alignment: innerAlignment) {
             SidebarResizeHandle(
@@ -285,7 +277,11 @@ private struct SidebarProjectRow: View {
         .opacity(isDragging ? 0.65 : 1)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected ? Color.primary.opacity(0.09) : (isHovering ? Color.primary.opacity(0.04) : .clear))
+                .fill(
+                    isSelected
+                        ? Color(nsColor: Theme.chromeSelected)
+                        : (isHovering ? Color(nsColor: Theme.chromeHover) : .clear)
+                )
         )
         .onHover { isHovering = $0 }
         .contextMenu {
@@ -344,7 +340,11 @@ private struct SidebarProjectRow: View {
         HStack(spacing: 8) {
             Image(systemName: "folder")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(isSelected ? Color(nsColor: Theme.accent) : .secondary)
+                .foregroundStyle(
+                    isSelected
+                        ? Color(nsColor: Theme.chromeAccent)
+                        : Color(nsColor: Theme.chromeMutedText)
+                )
                 .frame(width: max(14, fontSize), alignment: .center)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -363,7 +363,11 @@ private struct SidebarProjectRow: View {
                 } else {
                     Text(project.name)
                         .font(.system(size: projectTitleFontSize))
-                        .foregroundStyle(isSelected ? .primary : .secondary)
+                        .foregroundStyle(
+                            isSelected
+                                ? Color(nsColor: Theme.chromePrimaryText)
+                                : Color(nsColor: Theme.chromeMutedText)
+                        )
                         .lineLimit(1)
                 }
                 subtitle
@@ -393,7 +397,7 @@ private struct SidebarProjectRow: View {
                 } else if index < 9, !isRenaming {
                     Text(verbatim: "⌘\(index + 1)")
                         .font(.system(size: supportingFontSize))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Color(nsColor: Theme.chromeMutedText))
                 }
             }
             .frame(width: 24, height: 16, alignment: .trailing)
@@ -421,7 +425,7 @@ private struct SidebarProjectRow: View {
         if project.sessions.count > 1 {
             Text("\(project.sessions.count) sessions")
                 .font(.system(size: supportingFontSize))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color(nsColor: Theme.chromeMutedText))
                 .lineLimit(1)
         } else if let session = project.selectedSession {
             SessionDirectoryLabel(session: session, fontSize: supportingFontSize)
@@ -453,7 +457,7 @@ private struct SessionDirectoryLabel: View {
         if let dir = session.directoryLabel {
             Text(dir)
                 .font(.system(size: fontSize))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color(nsColor: Theme.chromeMutedText))
                 .lineLimit(1)
         }
     }

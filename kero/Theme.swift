@@ -41,9 +41,11 @@ final class ThemeChanges: nonisolated ObservableObject {}
 
 /// App colors, sourced from the ghostty themes the user selected in Settings
 /// (one per appearance; GitHub Dark/Light Default out of the box). Terminal
-/// sessions consume the definitions directly via `terminal(dark:)`; the
-/// `NSColor` properties derive window chrome from the same palette and adapt
-/// to the system appearance.
+/// sessions consume the definitions directly via `terminal(dark:)`. The
+/// editor, diffs, and pane surfaces follow that palette. Dark sidebar chrome
+/// is a hard-coded Codex Dark panel so the project list and Files/Git
+/// inspector match after a sidebar swap; light sidebar chrome keeps the
+/// selected light theme's solid fill.
 enum Theme {
     nonisolated static let defaultDarkThemeName = "Default Dark"
     nonisolated static let defaultLightThemeName = "Default Light"
@@ -51,9 +53,9 @@ enum Theme {
     @MainActor static let changes = ThemeChanges()
 
     /// Kero's built-in themes: the GitHub Default palettes under kero's own
-    /// names. Selecting one keeps the project sidebar's native translucent
-    /// material (see `SidebarView`); picking the catalog originals — or any
-    /// other theme — paints the flat theme shade instead.
+    /// names. Dark sidebar chrome is always the solid Codex Dark panel
+    /// (see `sidebar`); it no longer follows the selected terminal theme
+    /// or the old translucent sidebar material.
     nonisolated static let defaultDarkDefinition = keroDefault(
         named: defaultDarkThemeName, from: "GitHub Dark Default", dark: true
     )
@@ -196,12 +198,6 @@ enum Theme {
         selection.withLock { dark ? $0.dark : $0.light }
     }
 
-    /// Whether the selected theme for one appearance is a kero built-in
-    /// Default theme, which keeps the sidebar's translucent material.
-    nonisolated static func isDefault(dark: Bool) -> Bool {
-        terminal(dark: dark).isKeroDefault
-    }
-
     /// A copy of a catalog theme under a kero-owned name.
     private nonisolated static func keroDefault(
         named name: String, from catalogName: String, dark: Bool
@@ -221,14 +217,69 @@ enum Theme {
     }
 
     static var background: NSColor { dynamic { $0.backgroundNSColor } }
-    static var sidebar: NSColor { dynamic { $0.sidebarNSColor } }
+    /// Project list and Files/Git inspector fill. Dark is Codex Dark so the
+    /// two columns match after Swap sidebars; light stays the selected
+    /// theme's solid sidebar shade.
+    static var sidebar: NSColor { appearanceDynamic { chromePanel(dark: $0) } }
     static var accent: NSColor { dynamic { $0.accentNSColor } }
 
-    /// Hairline separators, derived from the theme's own palette so they
-    /// stay visible even when a slot holds a theme that fights the
-    /// appearance (say, a light background forced into the dark slot). The
-    /// built-in Defaults keep the translucent label hairline the app shipped
-    /// with — it reads correctly over their material sidebar.
+    /// Title-bar-ish strip at the top of a chrome column. Dark uses the
+    /// Codex header; light stays the same fill as the rest of the panel.
+    static var chromeHeader: NSColor {
+        appearanceDynamic { isDark in
+            isDark ? hexColor(CodexDarkChrome.header) : chromePanel(dark: false)
+        }
+    }
+
+    /// Hairline between chrome columns and the pane stack. Dark is the
+    /// Codex divider; light keeps the existing theme hairline.
+    static var chromeDivider: NSColor {
+        appearanceDynamic { isDark in
+            if isDark { return hexColor(CodexDarkChrome.divider) }
+            return lightChromeDivider
+        }
+    }
+
+    static var chromeHover: NSColor {
+        appearanceDynamic { isDark in
+            isDark
+                ? hexColor(CodexDarkChrome.hover)
+                : NSColor.labelColor.withAlphaComponent(0.04)
+        }
+    }
+
+    static var chromeSelected: NSColor {
+        appearanceDynamic { isDark in
+            isDark
+                ? hexColor(CodexDarkChrome.selected)
+                : NSColor.labelColor.withAlphaComponent(0.09)
+        }
+    }
+
+    static var chromePrimaryText: NSColor {
+        appearanceDynamic { isDark in
+            isDark ? hexColor(CodexDarkChrome.primaryText) : NSColor.labelColor
+        }
+    }
+
+    static var chromeMutedText: NSColor {
+        appearanceDynamic { isDark in
+            isDark
+                ? hexColor(CodexDarkChrome.mutedText)
+                : NSColor.secondaryLabelColor
+        }
+    }
+
+    /// Amber on dark chrome, where the project row already tints the
+    /// selected folder. Light keeps the selected terminal theme's accent.
+    static var chromeAccent: NSColor {
+        appearanceDynamic { isDark in
+            isDark ? hexColor(CodexDarkChrome.accent) : terminal(dark: false).accentNSColor
+        }
+    }
+
+    /// Hairline separators outside the chrome columns (session tab bar,
+    /// browser, diffs). Those surfaces still follow the terminal theme.
     static var divider: NSColor {
         dynamic { theme in
             theme.isKeroDefault
@@ -241,7 +292,20 @@ enum Theme {
     /// draw light and dark side by side, so they can't use the dynamic
     /// `sidebar` — it would resolve both halves to the ambient appearance.
     static func sidebarFill(dark: Bool) -> NSColor {
-        terminal(dark: dark).sidebarNSColor
+        chromePanel(dark: dark)
+    }
+
+    /// Solid Codex Dark in dark appearance; the selected light theme's
+    /// sidebar shade otherwise. Shared by `sidebar` and `sidebarFill`.
+    private nonisolated static func chromePanel(dark: Bool) -> NSColor {
+        dark ? hexColor(CodexDarkChrome.panel) : terminal(dark: false).sidebarNSColor
+    }
+
+    private nonisolated static var lightChromeDivider: NSColor {
+        let theme = terminal(dark: false)
+        return theme.isKeroDefault
+            ? NSColor.labelColor.withAlphaComponent(0.06)
+            : theme.surfaceNSColor(elevation: 0.08)
     }
 
     /// A fresh dynamic color per access: cached instances keep resolving the
@@ -256,6 +320,30 @@ enum Theme {
         }
     }
 
+    /// Dynamic color that keys only on appearance. Dark chrome is Codex Dark
+    /// regardless of the selected terminal theme.
+    private nonisolated static func appearanceDynamic(
+        _ resolve: @escaping @Sendable (Bool) -> NSColor
+    ) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return resolve(isDark)
+        }
+    }
+
+    private nonisolated static func hexColor(_ hex: String) -> NSColor {
+        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        guard digits.count == 6, let value = Int(digits, radix: 16) else {
+            return .magenta
+        }
+        return NSColor(
+            srgbRed: CGFloat((value >> 16) & 0xff) / 255.0,
+            green: CGFloat((value >> 8) & 0xff) / 255.0,
+            blue: CGFloat(value & 0xff) / 255.0,
+            alpha: 1
+        )
+    }
+
     /// Last-resort definition should a default name ever leave the catalog.
     private nonisolated static func fallback(named name: String, dark: Bool) -> TerminalThemeDefinition {
         TerminalThemeCatalog.theme(named: name) ?? TerminalThemeDefinition(
@@ -267,12 +355,25 @@ enum Theme {
     }
 }
 
+/// Hard-coded Codex Dark chrome. Not a Settings theme; the terminal,
+/// session tabs, and Alacritty palette do not use these values.
+private enum CodexDarkChrome {
+    static let panel = "1E1E1E"
+    static let header = "141414"
+    static let primaryText = "EFEFEF"
+    static let mutedText = "888888"
+    static let divider = "3D3D3D"
+    static let hover = "2E2E2E"
+    static let selected = "333333"
+    static let accent = "F59E0C"
+}
+
 /// UI-facing colors for a terminal theme definition. The definition stores
 /// terminal colors as hex strings; window chrome derives its palette here.
 /// Nonisolated so the dynamic color providers can resolve on any thread.
 nonisolated extension TerminalThemeDefinition {
-    /// Whether this is one of kero's built-in Default themes, which keep the
-    /// pre-theme chrome (material sidebar, label-based hairlines).
+    /// Whether this is one of kero's built-in Default themes, which keep
+    /// label-based hairlines on non-chrome surfaces (session tab bar, diffs).
     var isKeroDefault: Bool {
         name == Theme.defaultDarkThemeName || name == Theme.defaultLightThemeName
     }
@@ -291,13 +392,11 @@ nonisolated extension TerminalThemeDefinition {
         (palette[4] ?? cursorColor).map(Self.nsColor) ?? foregroundNSColor
     }
 
-    /// Sidebar fill: kero's built-in Default themes keep the GitHub
-    /// canvas-inset shades the app shipped with; every other theme uses its
-    /// own background so the sidebars blend with the rest of the window —
-    /// a derived darker shade reads as broken for themes whose background
-    /// isn't already near-black.
+    /// Light sidebar fill when that appearance is active. Dark chrome no
+    /// longer reads this — `Theme.sidebar` uses Codex Dark instead. Built-in
+    /// Default Light keeps the GitHub canvas-inset shade; other light
+    /// themes use their own background.
     var sidebarNSColor: NSColor {
-        if name == Theme.defaultDarkThemeName { return Self.nsColor("010409") }
         if name == Theme.defaultLightThemeName { return Self.nsColor("f6f8fa") }
         return backgroundNSColor
     }

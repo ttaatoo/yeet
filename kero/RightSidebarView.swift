@@ -58,10 +58,18 @@ struct RightSidebarView: View {
                 }
 
                 VStack(spacing: 0) {
-                    if isLeading {
-                        leadingChromeHeader
+                    VStack(spacing: 0) {
+                        if isLeading {
+                            leadingChromeHeader
+                        }
+                        tabBar
                     }
-                    tabBar
+                    .background(Color(nsColor: Theme.chromeHeader))
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(Color(nsColor: Theme.chromeDivider))
+                            .frame(height: 1)
+                    }
                     switch manager.panelTab {
                     case .files:
                         FileTreePanel(
@@ -189,7 +197,7 @@ struct RightSidebarView: View {
 
     private var panelDivider: some View {
         Rectangle()
-            .fill(Color(nsColor: Theme.divider))
+            .fill(Color(nsColor: Theme.chromeDivider))
             .frame(width: 1)
     }
 
@@ -248,12 +256,16 @@ struct RightSidebarView: View {
                 Text(title)
                     .sidebarFont(size: 11, weight: .regular)
             }
-            .foregroundStyle(isActive ? .primary : .secondary)
+            .foregroundStyle(
+                isActive
+                    ? Color(nsColor: Theme.chromePrimaryText)
+                    : Color(nsColor: Theme.chromeMutedText)
+            )
             .frame(maxWidth: .infinity)
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive ? Color.primary.opacity(0.12) : .clear)
+                    .fill(isActive ? Color(nsColor: Theme.chromeSelected) : .clear)
             )
             .contentShape(RoundedRectangle(cornerRadius: 6))
         }
@@ -368,7 +380,7 @@ private struct FileTreePanel: View {
                         .padding(.vertical, 2)
                         .background(
                             RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.primary.opacity(0.09))
+                                .fill(Color(nsColor: Theme.chromeSelected))
                         )
                         .accessibilityLabel(rootBadge.description)
                 }
@@ -436,13 +448,17 @@ private struct FileTreeRow: View {
             // backing file to act on.
             draftRow
                 .background(
-                    RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.05))
+                    RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: Theme.chromeHover))
                 )
         } else {
             content
                 .background(
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(isCurrent ? Color.primary.opacity(0.09) : (isHovering ? Color.primary.opacity(0.05) : .clear))
+                        .fill(
+                            isCurrent
+                                ? Color(nsColor: Theme.chromeSelected)
+                                : (isHovering ? Color(nsColor: Theme.chromeHover) : .clear)
+                        )
                 )
                 .onHover { isHovering = $0 }
                 .contextMenu { rowMenu }
@@ -621,7 +637,7 @@ private struct FileTreeRow: View {
             .padding(.vertical, 1)
             .background(
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Color(nsColor: Theme.background))
+                    .fill(Color(nsColor: Theme.chromeHover))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 3)
@@ -1227,7 +1243,7 @@ private struct GitPanel: View {
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.primary.opacity(0.05))
+                        .fill(Color(nsColor: Theme.chromeHover))
                 )
                 .onKeyPress(keys: [.return]) { press in
                     guard press.modifiers.contains(.command) else { return .ignored }
@@ -1298,7 +1314,7 @@ private struct GitPanel: View {
                 .frame(width: 24, height: 24)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.primary.opacity(0.06))
+                        .fill(Color(nsColor: Theme.chromeHover))
                 )
                 .contentShape(RoundedRectangle(cornerRadius: 6))
         }
@@ -1447,7 +1463,7 @@ private struct GitPanel: View {
             .frame(height: 26)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.primary.opacity(0.045))
+                    .fill(Color(nsColor: Theme.chromeHover))
             )
             .padding(.horizontal, 10)
             .padding(.bottom, 4)
@@ -1844,7 +1860,7 @@ private struct GitPanel: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
-            .background(Capsule().fill(Color.primary.opacity(0.07)))
+            .background(Capsule().fill(Color(nsColor: Theme.chromeHover)))
             .accessibilityLabel(label)
     }
 
@@ -2003,7 +2019,7 @@ private struct GitSectionHeader: View {
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
-                    .background(Capsule().fill(Color.primary.opacity(0.07)))
+                    .background(Capsule().fill(Color(nsColor: Theme.chromeHover)))
             }
         }
         // Fixed height so the taller hover buttons don't grow the header.
@@ -2101,7 +2117,7 @@ private struct GitEntryRow: View {
         .contentShape(RoundedRectangle(cornerRadius: 4))
         .background(
             RoundedRectangle(cornerRadius: 4)
-                .fill(isHovering || isFocused ? Color.primary.opacity(0.05) : .clear)
+                .fill(isHovering || isFocused ? Color(nsColor: Theme.chromeHover) : .clear)
         )
         .onHover { isHovering = $0 }
         .contextMenu { menu }
@@ -2410,7 +2426,7 @@ private struct InfoPanel: View {
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.primary.opacity(0.05))
+                    .fill(Color(nsColor: Theme.chromeHover))
             )
             .contentShape(RoundedRectangle(cornerRadius: 6))
         }
@@ -2522,7 +2538,7 @@ private struct InfoProcessRow: View {
         .contentShape(RoundedRectangle(cornerRadius: 4))
         .background(
             RoundedRectangle(cornerRadius: 4)
-                .fill(isHovering ? Color.primary.opacity(0.05) : .clear)
+                .fill(isHovering ? Color(nsColor: Theme.chromeHover) : .clear)
         )
         .onHover { isHovering = $0 }
         .contextMenu {
@@ -2585,7 +2601,7 @@ private struct InfoPortRow: View {
         .help("Open \(urlString)")
         .background(
             RoundedRectangle(cornerRadius: 4)
-                .fill(isHovering ? Color.primary.opacity(0.05) : .clear)
+                .fill(isHovering ? Color(nsColor: Theme.chromeHover) : .clear)
         )
         .onHover { isHovering = $0 }
         .contextMenu {

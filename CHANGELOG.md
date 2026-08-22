@@ -15,6 +15,7 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Dark chrome uses a solid Codex Dark panel so swapped sidebars match.
 - Choose a font family and size for file names in the Files inspector, independently of the project sidebar and the Git/Info panels.
 
 ## [0.1.49]
