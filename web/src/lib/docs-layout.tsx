@@ -23,7 +23,7 @@ export function docsLayoutOptions(lang: string): BaseLayoutProps {
       title: (
         <span className="inline-flex items-center gap-2">
           <img
-            src="/kero-icon.png"
+            src="/yeet-icon.png"
             alt=""
             width={100}
             height={100}

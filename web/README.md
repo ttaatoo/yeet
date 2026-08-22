@@ -77,6 +77,8 @@ since they read the current version from GitHub Releases.
   [`src/lib/release.ts`](src/lib/release.ts). Keep its fallback release current
   so downloads still work if GitHub is temporarily unavailable. Do not point
   this file at `releases.kero.sh` — that feed is official Kero.
-- The hero product shot is [`public/kero-screenshot.png`](public/kero-screenshot.png)
-  (a real app screenshot with transparent padding + shadow) — swap the file to
-  update it.
+- The product mark is [`public/yeet-icon.png`](public/yeet-icon.png) (coral
+  mascot on a pre-rounded dark squircle). Favicon and apple-touch use a
+  256×256 resize of that mark. The hero product shot is
+  [`public/kero-screenshot.png`](public/kero-screenshot.png) (a real app
+  screenshot with transparent padding + shadow) — swap the file to update it.

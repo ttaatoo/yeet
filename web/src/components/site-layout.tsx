@@ -18,7 +18,7 @@ export function SiteLayout({
         <h1 className="text-2xl font-bold tracking-[0.02em]">
           <HomeLink lang={lang} className="flex items-center gap-2.5">
             <img
-              src="/kero-icon.png"
+              src="/yeet-icon.png"
               alt=""
               width={100}
               height={100}

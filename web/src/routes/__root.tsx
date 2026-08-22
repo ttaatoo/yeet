@@ -21,6 +21,7 @@ export const Route = createRootRoute({
           "Yeet is a fast, keyboard-first terminal workspace for macOS. Projects, sessions, a command palette, and inline git diffs — all in one native window.",
       },
       { name: "theme-color", content: "#0d1117" },
+      { property: "og:image", content: "/yeet-icon.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
