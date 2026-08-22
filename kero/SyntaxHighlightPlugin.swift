@@ -134,6 +134,9 @@ final class SyntaxHighlightCoordinator {
     /// Highlight tokens for an embedded region, reused across Neon 1024-char
     /// requests until the document is edited. Fence parse is expensive.
     private var injectionTokenCache: [InjectionCacheKey: [Neon.Token]] = [:]
+    /// Bumped in `didChangeContent` so a background fence parse cannot store
+    /// tokens after the cache was cleared for a newer document.
+    private var injectionCacheGeneration: UInt64 = 0
     private var prevViewportRange: NSTextRange?
 
     private struct InjectionCacheKey: Hashable {
@@ -363,6 +366,7 @@ final class SyntaxHighlightCoordinator {
                             completion(.success(TokenApplication(tokens: Self.clip(known, to: range), range: range)))
                             return
                         }
+                        let generation = self.injectionCacheGeneration
                         DispatchQueue.global(qos: .userInitiated).async {
                             var parsed: [(InjectionCacheKey, [Neon.Token])] = []
                             parsed.reserveCapacity(jobs.count)
@@ -374,6 +378,10 @@ final class SyntaxHighlightCoordinator {
                             }
                             DispatchQueue.main.async { [weak self] in
                                 guard let self else {
+                                    completion(.success(.noChange))
+                                    return
+                                }
+                                guard self.injectionCacheGeneration == generation else {
                                     completion(.success(.noChange))
                                     return
                                 }
@@ -505,6 +513,7 @@ final class SyntaxHighlightCoordinator {
     }
 
     func didChangeContent(_ textContentManager: NSTextContentManager, in range: NSRange, delta: Int, limit: Int) {
+        injectionCacheGeneration &+= 1
         injectionTokenCache.removeAll(keepingCapacity: true)
         guard let string = textContentManager.attributedString(in: nil)?.string else { return }
         tsClient.didChangeContent(

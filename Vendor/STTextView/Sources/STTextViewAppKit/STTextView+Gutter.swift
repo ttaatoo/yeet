@@ -220,18 +220,24 @@ extension STTextView {
                         && textLayoutManager.textSelectionsRanges(.withoutInsertionPoints).isEmpty
                         && !textLayoutManager.insertionPointSelections.isEmpty
 
+                    var effectiveLineTextAttributes = lineTextAttributes
+                    if gutterView.highlightSelectedLine, isLineSelected, !selectedLineTextAttributes.isEmpty {
+                        effectiveLineTextAttributes.merge(selectedLineTextAttributes, uniquingKeysWith: { (_, new) in new })
+                    }
+                    if let paragraphStyle = textLineFragment.attributedString.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle {
+                        effectiveLineTextAttributes[.paragraphStyle] = paragraphStyle
+                    }
+
                     let numberCell: STGutterLineNumberCell
                     if let reused = existingCells[lineNumber] {
                         numberCell = reused
                         reused.frame = cellFrameAligned
+                        reused.applyAppearance(
+                            firstBaseline: locationForFirstCharacter.y + baselineYOffset,
+                            attributes: effectiveLineTextAttributes
+                        )
+                        reused.insets = gutterView.insets
                     } else {
-                        var effectiveLineTextAttributes = lineTextAttributes
-                        if gutterView.highlightSelectedLine, isLineSelected, !selectedLineTextAttributes.isEmpty {
-                            effectiveLineTextAttributes.merge(selectedLineTextAttributes, uniquingKeysWith: { (_, new) in new })
-                        }
-                        if let paragraphStyle = textLineFragment.attributedString.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle {
-                            effectiveLineTextAttributes[.paragraphStyle] = paragraphStyle
-                        }
                         numberCell = STGutterLineNumberCell(
                             firstBaseline: locationForFirstCharacter.y + baselineYOffset,
                             attributes: effectiveLineTextAttributes,

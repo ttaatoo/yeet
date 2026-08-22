@@ -170,7 +170,7 @@
 					"@executable_path",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				PRODUCT_BUNDLE_IDENTIFIER = sh.kerox.file-render-bench;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.yeet.file-render-bench;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -193,7 +193,7 @@
 					"@executable_path",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				PRODUCT_BUNDLE_IDENTIFIER = sh.kerox.file-render-bench;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.yeet.file-render-bench;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

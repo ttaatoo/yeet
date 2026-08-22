@@ -47,7 +47,7 @@ Both `sizeToFit()` and `updateContentSizeIfNeeded()` ask TextKit for the layout 
 
 **`Sources/STTextViewAppKit/STTextView+Gutter.swift`** and **`Sources/STTextViewAppKit/STTextView.swift`** — scrolling a file rebuilt every visible line-number cell and walked every text element from the document head to the viewport, every viewport layout.
 
-Reuse cells keyed by line number (move the frame, drop cells that left the viewport). Count paragraphs before the viewport from the last measurement plus the gap, and clear that anchor in `replaceCharacters`.
+Reuse cells keyed by line number (move the frame, refresh firstBaseline / font / selected-line text, drop cells that left the viewport). Count paragraphs before the viewport from the last measurement plus the gap, and clear that anchor in `replaceCharacters`.
 
 **Symptom.** File-editor scroll sat around 35 FPS on a 120 Hz display. Opening a 1200-line markdown file and dragging the clip view spent most of each frame in gutter layout.
 
@@ -160,10 +160,10 @@ Don't trust `CHANGELOG.md` in this directory — upstream's own changelog stops 
 git clone https://github.com/krzyzanowskim/STTextView.git /tmp/sttv && cd /tmp/sttv
 git checkout 2.3.11 -- Sources
 diff -ru Sources /path/to/kero/Vendor/STTextView/Sources
-# expect: only the four documented source files and hunks differ
+# expect: only the five documented source files and hunks differ
 ```
 
-The patched files are `STTextView.swift`, `STTextView+Gutter.swift`, `STTextView+NSTextViewportLayoutControllerDelegate.swift`, and `STTextLayoutManager.swift`.
+The patched files are `STTextView.swift`, `STTextView+Gutter.swift`, `STTextView+NSTextViewportLayoutControllerDelegate.swift`, `STGutterLineNumberCell.swift`, and `STTextLayoutManager.swift`.
 
 ## Re-vendoring / bumping the version
 
