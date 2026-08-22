@@ -61,6 +61,14 @@ struct SettingsView: View {
                     .labelsHidden()
                 }
 
+                DescribedSettingsRow(
+                    "Swap sidebars",
+                    description: "Puts the Files, Git, and Info inspector on the left and the project list on the right. Shortcuts still apply to those panels"
+                ) {
+                    Toggle("Swap sidebars", isOn: $settings.swapSidebars)
+                        .labelsHidden()
+                }
+
                 GlobalHotKeySettingsRow(
                     keyCombo: settings.globalHotkey,
                     registrationFailed: settings.globalHotkeyRegistrationFailed,
@@ -252,6 +260,7 @@ struct SettingsView: View {
                         && settings.themeDark == Theme.defaultDarkThemeName
                         && settings.themeLight == Theme.defaultLightThemeName
                         && settings.toolbarVisibility == AppSettings.defaultToolbarVisibility
+                        && !settings.swapSidebars
                         && !settings.wrapLines
                         && !settings.restoreTerminalHistory
                         && !settings.aiEnabled

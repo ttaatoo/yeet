@@ -121,6 +121,7 @@ struct CommandPaletteView: View {
     }
 
     @ObservedObject var manager: TerminalManager
+    @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var themeChanges = Theme.changes
     @Environment(\.openSettings) private var openSettings
 
@@ -242,10 +243,20 @@ struct CommandPaletteView: View {
             PaletteCommand(id: "save-file", title: "Save File", systemImage: "square.and.arrow.down", shortcut: "⌘S") {
                 manager.saveSelectedFile()
             },
-            PaletteCommand(id: "toggle-left-sidebar", title: "Toggle Left Sidebar", systemImage: "sidebar.left", shortcut: "⌘B") {
+            PaletteCommand(
+                id: "toggle-left-sidebar",
+                title: "Toggle Project Sidebar",
+                systemImage: settings.swapSidebars ? "sidebar.right" : "sidebar.left",
+                shortcut: "⌘B"
+            ) {
                 manager.toggleLeftSidebar()
             },
-            PaletteCommand(id: "toggle-sidebar", title: "Toggle Right Sidebar", systemImage: "sidebar.right", shortcut: "⇧⌘B") {
+            PaletteCommand(
+                id: "toggle-sidebar",
+                title: "Toggle Inspector",
+                systemImage: settings.swapSidebars ? "sidebar.left" : "sidebar.right",
+                shortcut: "⇧⌘B"
+            ) {
                 manager.toggleSidebar()
             },
             PaletteCommand(id: "toggle-files", title: "Toggle Files Panel", systemImage: "doc.text", shortcut: "⇧⌘E") {

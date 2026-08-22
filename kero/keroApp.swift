@@ -179,13 +179,13 @@ private struct KeroCommands: Commands {
 
             Divider()
 
-            Button("Toggle Left Sidebar") {
+            Button("Toggle Project Sidebar") {
                 manager?.toggleLeftSidebar()
             }
             .keyboardShortcut("b", modifiers: .command)
             .disabled(manager == nil)
 
-            Button("Toggle Right Sidebar") {
+            Button("Toggle Inspector") {
                 manager?.toggleSidebar()
             }
             .keyboardShortcut("b", modifiers: [.command, .shift])

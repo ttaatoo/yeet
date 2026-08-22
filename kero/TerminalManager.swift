@@ -9,8 +9,8 @@ import Foundation
 import SwiftUI
 import WebKit
 
-/// Panels available in the right sidebar. Raw values are stable names
-/// persisted in `SessionSnapshot`.
+/// Panels available in the Files/Git/Info inspector. Raw values are
+/// stable names persisted in `SessionSnapshot`.
 enum RightPanel: String, Codable {
     case files
     case git
@@ -49,8 +49,9 @@ final class TerminalManager: nonisolated ObservableObject {
     }
     @Published var isPanelVisible = false
     @Published var panelTab: RightPanel = .files
-    /// Visibility of the left project sidebar (⌘B). `isPanelVisible` above is
-    /// the separate right panel.
+    /// Visibility of the project sidebar (⌘B). `isPanelVisible` is the
+    /// Files/Git/Info inspector (⇧⌘B). Both stay bound to those panels if
+    /// Settings swaps their physical edges.
     @Published var isLeftSidebarVisible = true
     /// Debug FPS badge in the sidebar header. Deliberately not persisted:
     /// every launch starts with it hidden.
@@ -393,7 +394,7 @@ final class TerminalManager: nonisolated ObservableObject {
         }
         retainedDiffProjectIDs.remove(project.id)
         // Nothing left to inspect once the last project is gone, so collapse
-        // the right sidebar — its panels all track the selected session.
+        // the inspector — its panels all track the selected session.
         if projects.isEmpty {
             isPanelVisible = false
         }

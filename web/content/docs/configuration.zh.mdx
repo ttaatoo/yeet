@@ -49,6 +49,13 @@ Kero 大多数持久化设置都在一个文件里：
 
 它具体展示什么，见 [Git 工具栏](/zh/docs/git#git-工具栏)。
 
+### `layout.swap-sidebars`
+
+布尔值——默认 `false`
+
+打开后，“文件 / Git / 信息”检查器在左，项目列表在右。<kbd>Cmd</kbd>+<kbd>B</kbd>
+仍然切换项目边栏，<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> 仍然切换检查器；每个面板保留自己的宽度。红绿灯按钮仍在窗口左上角。
+
 ## 文字
 
 ### `font-family`
@@ -124,6 +131,7 @@ font-family = "IBM Plex Mono"
 font-size = 14
 sidebar.font-size = 13
 toolbar.visibility = "auto"
+layout.swap-sidebars = true
 terminal.font-thicken = true
 terminal.macos-option-as-alt = false
 terminal.restore-history = true

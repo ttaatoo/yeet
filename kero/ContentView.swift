@@ -173,11 +173,10 @@ struct ContentView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            if manager.isLeftSidebarVisible {
-                SidebarView(
-                    manager: manager,
-                    bottomBarHeight: bottomToolbarHeight
-                )
+            if settings.swapSidebars {
+                inspectorSidebar
+            } else {
+                projectSidebar
             }
 
             VStack(spacing: 0) {
@@ -251,11 +250,13 @@ struct ContentView: View {
             }
             .background(Color(nsColor: Theme.background))
 
-            // Dropping the hidden sidebar also drops its expanded file tree
+            // Dropping the hidden inspector also drops its expanded file tree
             // and process snapshot. Git stays window-owned because the toolbar
             // remains visible while this panel is closed.
-            if manager.isPanelVisible {
-                RightSidebarView(manager: manager, git: git)
+            if settings.swapSidebars {
+                projectSidebar
+            } else {
+                inspectorSidebar
             }
         }
         .ignoresSafeArea()
@@ -298,6 +299,28 @@ struct ContentView: View {
         .onChange(of: manager.selectedProject?.customDirectory) { syncGit() }
         .onChange(of: colorScheme) {
             manager.refreshAppearance()
+        }
+    }
+
+    @ViewBuilder
+    private var projectSidebar: some View {
+        if manager.isLeftSidebarVisible {
+            SidebarView(
+                manager: manager,
+                bottomBarHeight: bottomToolbarHeight,
+                placement: settings.swapSidebars ? .trailing : .leading
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var inspectorSidebar: some View {
+        if manager.isPanelVisible {
+            RightSidebarView(
+                manager: manager,
+                git: git,
+                placement: settings.swapSidebars ? .leading : .trailing
+            )
         }
     }
 
@@ -943,48 +966,81 @@ private struct MainHeaderView: View {
     @ObservedObject var manager: TerminalManager
     @ObservedObject var tabSplitDrag: TabSplitDragCoordinator
     @ObservedObject private var themeChanges = Theme.changes
+    @ObservedObject private var settings = AppSettings.shared
 
     /// Keep an always-available grab target beside the trailing controls,
     /// even when the session strip is full.
     private let minimumWindowDragWidth: CGFloat = 100
 
-    /// With the left sidebar hidden the header slides under the window's
-    /// traffic-light buttons, so inset its content to clear them.
-    private var leadingInset: CGFloat {
-        manager.isLeftSidebarVisible ? 8 : 78
+    /// Traffic lights stay on the window's top-leading edge. Inset this
+    /// header only when no leading panel is hosting that chrome.
+    private var isLeadingPanelVisible: Bool {
+        settings.swapSidebars ? manager.isPanelVisible : manager.isLeftSidebarVisible
     }
 
-    /// A hidden sidebar moves its toggle into this header. Reserve the
-    /// button and its following HStack spacing before sizing the tab strip.
-    private var hiddenLeftSidebarControlWidth: CGFloat {
-        manager.isLeftSidebarVisible ? 0 : 32
+    private var leadingInset: CGFloat {
+        isLeadingPanelVisible ? 8 : 78
+    }
+
+    /// Hidden-panel toggles sit on the edge where that panel lives, so they
+    /// stay truthful after a sidebar swap.
+    private var showsLeadingPanelToggle: Bool {
+        if settings.swapSidebars {
+            return !manager.isPanelVisible && manager.selectedProject != nil
+        }
+        return !manager.isLeftSidebarVisible
+    }
+
+    private var showsTrailingProjectToggle: Bool {
+        settings.swapSidebars && !manager.isLeftSidebarVisible
+    }
+
+    private var showsTrailingInspectorToggle: Bool {
+        !settings.swapSidebars && manager.selectedProject != nil
+    }
+
+    /// A hidden leading-edge panel moves its toggle into this header.
+    /// Reserve the button and its following HStack spacing before sizing
+    /// the tab strip.
+    private var hiddenLeadingControlWidth: CGFloat {
+        showsLeadingPanelToggle ? 32 : 0
     }
 
     var body: some View {
         GeometryReader { geo in
             HStack(spacing: 8) {
-                if !manager.isLeftSidebarVisible {
-                    ChromeIconButton(
-                        systemImage: "sidebar.left",
-                        tooltip: "Toggle Left Sidebar (⌘B)",
-                        tooltipAlignment: .leading
-                    ) {
-                        manager.toggleLeftSidebar()
+                if showsLeadingPanelToggle {
+                    if settings.swapSidebars {
+                        ChromeIconButton(
+                            systemImage: "sidebar.left",
+                            tooltip: "Toggle Inspector (⇧⌘B)",
+                            tooltipAlignment: .leading
+                        ) {
+                            manager.toggleSidebar()
+                        }
+                    } else {
+                        ChromeIconButton(
+                            systemImage: "sidebar.left",
+                            tooltip: "Toggle Project Sidebar (⌘B)",
+                            tooltipAlignment: .leading
+                        ) {
+                            manager.toggleLeftSidebar()
+                        }
                     }
                 }
                 if let project = manager.selectedProject {
                     // Everything in the header that isn't the scrollable tab
-                    // strip: leading inset, an optional left-sidebar control,
-                    // trailing padding (8), HStack spacings (16), right-sidebar
-                    // toggle (24), "+" and spacing (26), the minimum drag
-                    // target (100), and the exit-zoom button (24 + 8 spacing)
-                    // while shown.
+                    // strip: leading inset, an optional leading-panel control,
+                    // trailing padding (8), HStack spacings (16), trailing
+                    // panel toggle (24), "+" and spacing (26), the minimum
+                    // drag target (100), and the exit-zoom button
+                    // (24 + 8 spacing) while shown.
                     SessionTabsView(
                         project: project,
                         tabSplitDrag: tabSplitDrag,
                         maxStripWidth: max(
                             0,
-                            geo.size.width - leadingInset - hiddenLeftSidebarControlWidth
+                            geo.size.width - leadingInset - hiddenLeadingControlWidth
                                 - 74 - minimumWindowDragWidth
                                 - (manager.isPaneZoomed ? 32 : 0)
                         )
@@ -1009,12 +1065,20 @@ private struct MainHeaderView: View {
                     .buttonStyle(.plain)
                     .tooltip("Exit Pane Zoom (⇧⌘↩)", edge: .below, alignment: .trailing)
                 }
-                // No project means the sidebar has nothing to show, so drop
-                // its toggle too — matching the panel collapsing itself.
-                if manager.selectedProject != nil {
+                if showsTrailingProjectToggle {
                     ChromeIconButton(
                         systemImage: "sidebar.right",
-                        tooltip: "Toggle Right Sidebar (⇧⌘B)"
+                        tooltip: "Toggle Project Sidebar (⌘B)"
+                    ) {
+                        manager.toggleLeftSidebar()
+                    }
+                }
+                // No project means the inspector has nothing to show, so drop
+                // its toggle too — matching the panel collapsing itself.
+                if showsTrailingInspectorToggle {
+                    ChromeIconButton(
+                        systemImage: "sidebar.right",
+                        tooltip: "Toggle Inspector (⇧⌘B)"
                     ) {
                         manager.toggleSidebar()
                     }

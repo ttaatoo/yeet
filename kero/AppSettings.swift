@@ -177,6 +177,13 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
+    /// Off keeps the default layout (project list leading, inspector trailing).
+    /// On swaps those panels. Shortcuts and widths stay bound to the panel,
+    /// not the physical edge. Persisted as `layout.swap-sidebars`.
+    @Published var swapSidebars: Bool {
+        didSet { save() }
+    }
+
     /// Render terminal glyphs with slightly heavier strokes, like classic
     /// macOS font smoothing. Each backend maps this to its own rasterizer.
     /// Persisted as `terminal.font-thicken`; off by default so Kero's text
@@ -262,6 +269,7 @@ final class AppSettings: nonisolated ObservableObject {
         toolbarVisibility = ToolbarVisibility(
             rawValue: toml["toolbar.visibility"]?.string ?? ""
         ) ?? Self.defaultToolbarVisibility
+        swapSidebars = toml["layout.swap-sidebars"]?.bool ?? false
         fontThicken = toml["terminal.font-thicken"]?.bool
             ?? toml["font-thicken"]?.bool
             ?? false
@@ -320,6 +328,7 @@ final class AppSettings: nonisolated ObservableObject {
         themeDark = Theme.defaultDarkThemeName
         themeLight = Theme.defaultLightThemeName
         toolbarVisibility = Self.defaultToolbarVisibility
+        swapSidebars = false
         cursorShape = .block
         cursorBlinking = true
         macosOptionAsAlt = false
@@ -394,6 +403,9 @@ final class AppSettings: nonisolated ObservableObject {
         }
         if toolbarVisibility != Self.defaultToolbarVisibility {
             lines.append("toolbar.visibility = \(TOML.quote(toolbarVisibility.rawValue))")
+        }
+        if swapSidebars {
+            lines.append("layout.swap-sidebars = true")
         }
         if fontThicken {
             lines.append("terminal.font-thicken = true")

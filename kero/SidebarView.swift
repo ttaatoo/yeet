@@ -7,10 +7,12 @@ import AppKit
 import SwiftUI
 
 /// Vertical tab strip listing projects, otty-style. Each row is a project;
-/// its sessions show as horizontal tabs in the main header.
+/// its sessions show as horizontal tabs in the main header. `placement`
+/// is the physical edge; ⌘B and the width key stay bound to this panel.
 struct SidebarView: View {
     @ObservedObject var manager: TerminalManager
     let bottomBarHeight: CGFloat
+    var placement: HorizontalEdge = .leading
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var themeChanges = Theme.changes
     @Environment(\.openSettings) private var openSettings
@@ -19,25 +21,34 @@ struct SidebarView: View {
     @State private var draggedProjectID: UUID?
     @State private var projectFrames: [UUID: CGRect] = [:]
 
+    private var isLeading: Bool { placement == .leading }
+
+    private var innerAlignment: Alignment { isLeading ? .trailing : .leading }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header-height strip housing the traffic-light buttons and the
-            // control for collapsing this sidebar.
+            // Header-height strip. On the leading edge this also hosts the
+            // traffic-light drag area; on the trailing edge it stays a
+            // collapse control and window-drag strip only.
             HStack(spacing: 0) {
+                if !isLeading {
+                    projectSidebarToggle
+                    if manager.isFPSCounterVisible {
+                        FPSBadge()
+                            .padding(.leading, 8)
+                    }
+                }
                 WindowDragArea()
                     .frame(maxWidth: .infinity)
-                if manager.isFPSCounterVisible {
-                    FPSBadge()
-                        .padding(.trailing, 8)
-                }
-                ChromeIconButton(
-                    systemImage: "sidebar.left",
-                    tooltip: "Toggle Left Sidebar (⌘B)"
-                ) {
-                    manager.toggleLeftSidebar()
+                if isLeading {
+                    if manager.isFPSCounterVisible {
+                        FPSBadge()
+                            .padding(.trailing, 8)
+                    }
+                    projectSidebarToggle
                 }
             }
-            .padding(.trailing, 8)
+            .padding(isLeading ? .trailing : .leading, 8)
             .frame(height: 38)
 
             ScrollView {
@@ -113,7 +124,7 @@ struct SidebarView: View {
         // same background, so the boundary needs its own line. The built-in
         // Defaults keep their material fill, whose contrast already draws
         // the edge.
-        .overlay(alignment: .trailing) {
+        .overlay(alignment: innerAlignment) {
             if !Theme.isDefault(dark: colorScheme == .dark) {
                 Rectangle()
                     .fill(Color(nsColor: Theme.divider))
@@ -121,15 +132,25 @@ struct SidebarView: View {
                     .allowsHitTesting(false)
             }
         }
-        .overlay(alignment: .trailing) {
+        .overlay(alignment: innerAlignment) {
             SidebarResizeHandle(
-                edge: .trailing,
+                edge: isLeading ? .trailing : .leading,
                 width: $width,
                 range: 160...400,
                 defaultWidth: 220
             )
         }
         .onPreferenceChange(ProjectFramePreferenceKey.self) { projectFrames = $0 }
+    }
+
+    private var projectSidebarToggle: some View {
+        ChromeIconButton(
+            systemImage: isLeading ? "sidebar.left" : "sidebar.right",
+            tooltip: "Toggle Project Sidebar (⌘B)",
+            tooltipAlignment: isLeading ? .trailing : .leading
+        ) {
+            manager.toggleLeftSidebar()
+        }
     }
 
     private func updateProjectDrag(source: UUID, location: CGPoint) {

@@ -66,6 +66,16 @@ Controls the compact toolbar below the active tab:
 
 See [The Git toolbar](/docs/git#the-git-toolbar) for what it shows.
 
+### `layout.swap-sidebars`
+
+boolean — default `false`
+
+When true, the Files, Git, and Info inspector sits on the left and the project
+list on the right. <kbd>Cmd</kbd>+<kbd>B</kbd> still toggles the project
+sidebar and <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> still toggles the
+inspector; each panel keeps its own width. Traffic lights stay at the window's
+top-leading corner.
+
 ## Text
 
 ### `font-family`
@@ -157,6 +167,7 @@ font-family = "IBM Plex Mono"
 font-size = 14
 sidebar.font-size = 13
 toolbar.visibility = "auto"
+layout.swap-sidebars = true
 terminal.font-thicken = true
 terminal.macos-option-as-alt = false
 terminal.restore-history = true

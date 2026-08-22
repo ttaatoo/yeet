@@ -13,6 +13,10 @@ Write release notes for the final product users receive, not the development
 history. When a feature is still unreleased, fold its fixes and refinements into
 the original feature bullet instead of adding separate entries for them.
 
+## [Unreleased]
+
+- Swap the project sidebar and the Files/Git/Info inspector from Settings, so the inspector can sit on the left and the project list on the right. ⌘B and ⇧⌘B still toggle those panels.
+
 ## [0.1.48]
 
 - Ship this fork as Kerox (`Kerox.app`, bundle id `sh.kerox`, settings in `~/.config/kerox`) so it can sit beside official Kero. Install with `brew tap ttaatoo/kero https://github.com/ttaatoo/kero` then `brew install --cask ttaatoo/kero/kerox`. Upgrade with `brew upgrade --cask ttaatoo/kero/kerox`. This is not `brew install egoist/tap/kero`.

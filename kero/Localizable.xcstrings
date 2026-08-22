@@ -5074,6 +5074,22 @@
         }
       }
     },
+    "Puts the Files, Git, and Info inspector on the left and the project list on the right. Shortcuts still apply to those panels" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイル / Git / 情報インスペクタを左、プロジェクト一覧を右に配置します。ショートカットはこれまでどおり各パネルに対応します"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将“文件 / Git / 信息”检查器放在左侧，项目列表放在右侧。快捷键仍然作用于这两个面板"
+          }
+        }
+      }
+    },
     "Rebase in progress" : {
       "localizations" : {
         "ja" : {
@@ -6565,6 +6581,22 @@
         }
       }
     },
+    "Swap sidebars" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サイドバーを入れ替える"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "交换侧边栏"
+          }
+        }
+      }
+    },
     "Sync changes" : {
       "localizations" : {
         "ja" : {
@@ -6971,6 +7003,38 @@
         }
       }
     },
+    "Toggle Inspector" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インスペクタの表示を切り替え"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示/隐藏检查器"
+          }
+        }
+      }
+    },
+    "Toggle Inspector (⇧⌘B)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インスペクタの表示を切り替え（⇧⌘B）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示/隐藏检查器（⇧⌘B）"
+          }
+        }
+      }
+    },
     "Toggle Info Panel" : {
       "localizations" : {
         "ja" : {
@@ -7031,6 +7095,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "切换窗格最大化"
+          }
+        }
+      }
+    },
+    "Toggle Project Sidebar" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プロジェクトサイドバーの表示を切り替え"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示/隐藏项目边栏"
+          }
+        }
+      }
+    },
+    "Toggle Project Sidebar (⌘B)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プロジェクトサイドバーの表示を切り替え（⌘B）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示/隐藏项目边栏（⌘B）"
           }
         }
       }

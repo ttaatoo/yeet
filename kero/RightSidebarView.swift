@@ -6,11 +6,13 @@
 import AppKit
 import SwiftUI
 
-/// Right sidebar: hidden by default, toggled from the terminal's corner
-/// button or ⇧⌘B. Files/Git switch via tabs along its top, otty-style.
+/// Files / Git / Info inspector: hidden by default, toggled from the
+/// header or ⇧⌘B. `placement` is the physical edge; the width key stays
+/// with this panel. Files/Git/Info switch via tabs along its top.
 struct RightSidebarView: View {
     @ObservedObject var manager: TerminalManager
     @ObservedObject var git: GitStatusModel
+    var placement: HorizontalEdge = .trailing
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var themeChanges = Theme.changes
     @StateObject private var fileTree = FileTreeModel()
@@ -46,14 +48,19 @@ struct RightSidebarView: View {
         return nil
     }
 
+    private var isLeading: Bool { placement == .leading }
+
     var body: some View {
         HStack(spacing: 0) {
             if manager.isPanelVisible {
-                Rectangle()
-                    .fill(Color(nsColor: Theme.divider))
-                    .frame(width: 1)
+                if !isLeading {
+                    panelDivider
+                }
 
                 VStack(spacing: 0) {
+                    if isLeading {
+                        leadingChromeHeader
+                    }
                     tabBar
                     switch manager.panelTab {
                     case .files:
@@ -100,12 +107,16 @@ struct RightSidebarView: View {
                 }
                 .frame(width: width)
                 .background(Color(nsColor: Theme.sidebar))
+
+                if isLeading {
+                    panelDivider
+                }
             }
         }
-        .overlay(alignment: .leading) {
+        .overlay(alignment: isLeading ? .trailing : .leading) {
             if manager.isPanelVisible {
                 SidebarResizeHandle(
-                    edge: .leading,
+                    edge: isLeading ? .trailing : .leading,
                     width: $width,
                     range: 180...500,
                     defaultWidth: 240
@@ -159,6 +170,30 @@ struct RightSidebarView: View {
         .environment(\.font, .system(size: CGFloat(settings.sidebarFontSize)))
     }
 
+    private var panelDivider: some View {
+        Rectangle()
+            .fill(Color(nsColor: Theme.divider))
+            .frame(width: 1)
+    }
+
+    /// Hosts the traffic-light drag area when this inspector sits on the
+    /// window's leading edge. The collapse control lives here so the main
+    /// header does not claim a right-hand "inspector" toggle after a swap.
+    private var leadingChromeHeader: some View {
+        HStack(spacing: 0) {
+            WindowDragArea()
+                .frame(maxWidth: .infinity)
+            ChromeIconButton(
+                systemImage: "sidebar.left",
+                tooltip: "Toggle Inspector (⇧⌘B)"
+            ) {
+                manager.toggleSidebar()
+            }
+        }
+        .padding(.trailing, 8)
+        .frame(height: 38)
+    }
+
     private var tabBar: some View {
         HStack(spacing: 4) {
             tabButton(
@@ -181,7 +216,7 @@ struct RightSidebarView: View {
             )
         }
         .padding(.horizontal, 8)
-        .padding(.top, 12)
+        .padding(.top, isLeading ? 4 : 12)
         .padding(.bottom, 4)
     }
 

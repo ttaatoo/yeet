@@ -9,8 +9,8 @@ import SwiftUI
 /// Invisible drag strip overlaid on a sidebar's inner edge. Dragging
 /// resizes within `range`; double-click snaps back to `defaultWidth`.
 struct SidebarResizeHandle: View {
-    /// Edge of the sidebar this handle sits on: `.trailing` for the left
-    /// sidebar, `.leading` for the right one (flips the drag direction).
+    /// Edge of the sidebar this handle sits on: the inner edge facing the
+    /// panes (flips the drag direction when a panel moves to the other side).
     let edge: HorizontalEdge
     @Binding var width: Double
     let range: ClosedRange<Double>

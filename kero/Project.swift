@@ -7,7 +7,7 @@ import AppKit
 import Combine
 import Foundation
 
-/// A project groups tabs and appears as one row in the left sidebar. Each tab
+/// A project groups tabs and appears as one row in the project sidebar. Each tab
 /// is a recursive split layout of terminal, file, browser, and diff panes; see
 /// `PaneTab`. It always starts with one session; closing the last tab leaves
 /// the project open but empty — only the explicit "Close Project" action (see
