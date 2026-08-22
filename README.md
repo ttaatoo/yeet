@@ -21,7 +21,7 @@ brew upgrade --cask ttaatoo/kero/kerox
 
 Do **not** use `brew install egoist/tap/kero` if you want this fork. That command installs official [egoist/kero](https://github.com/egoist/kero) (Developer ID, Sparkle from `https://releases.kero.sh`) as `Kero.app` / `sh.kero`. This fork installs `Kerox.app` / `sh.kerox` and keeps settings in `~/.config/kerox`.
 
-The cask downloads `Kerox.zip` from this repo's GitHub Releases (`v0.1.49`). After install, the cask strips Gatekeeper quarantine so the ad-hoc app can launch.
+The cask downloads `Kerox.zip` from this repo's GitHub Releases (`v0.1.50`). After install, the cask strips Gatekeeper quarantine so the ad-hoc app can launch.
 
 If macOS still blocks the app: **System Settings → Privacy & Security → Open Anyway**.
 

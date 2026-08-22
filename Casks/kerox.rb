@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 cask "kerox" do
-  version "0.1.49"
-  # sha256 of the GitHub Release zip is unknown until v0.1.49 is published.
+  version "0.1.50"
+  # sha256 of the GitHub Release zip is unknown until v0.1.50 is published.
   sha256 :no_check
 
   url "https://github.com/ttaatoo/kero/releases/download/v#{version}/Kerox.zip"

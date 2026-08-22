@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Git tag to publish (for example v0.1.49). Created if missing."
+        description: "Git tag to publish (for example v0.1.50). Created if missing."
         required: true
-        default: "v0.1.49"
+        default: "v0.1.50"
         type: string
 
 permissions:
