@@ -41,9 +41,9 @@ export type HomeCopy = {
 
 const en: HomeCopy = {
   languageName: 'English',
-  title: 'Kerox — A native terminal workspace for macOS',
+  title: 'Yeet — A native terminal workspace for macOS',
   description:
-    'Kerox is a fast, keyboard-first terminal workspace for macOS. Projects, sessions, browser panes, git diffs, and coding agents — all in one native window.',
+    'Yeet is a fast, keyboard-first terminal workspace for macOS. Projects, sessions, browser panes, git diffs, and coding agents — all in one native window.',
   taglineBefore: 'Your terminal, with the ',
   taglineHighlight: 'whole project',
   taglineAfter: ' around it.',
@@ -56,7 +56,7 @@ const en: HomeCopy = {
   copied: 'Copied',
   copyAria: (command) => `Copy "${command}" to the clipboard`,
   pillFree: 'free & open-source',
-  screenshotAlt: "Kerox showing a project's terminal session with the git panel open",
+  screenshotAlt: "Yeet showing a project's terminal session with the git panel open",
   screenshotCaption: 'Projects, tabs, the info panel open beside it',
   featuresHeading: 'Features',
   shortcutsHeading: 'Shortcuts',
@@ -142,7 +142,7 @@ const en: HomeCopy = {
         {
           name: 'Agent-aware',
           detail:
-            'let coding agents delegate work and coordinate across Kerox panes while you follow status, notifications, and approvals',
+            'let coding agents delegate work and coordinate across Yeet panes while you follow status, notifications, and approvals',
         },
         {
           name: 'Desktop notifications',
@@ -162,7 +162,7 @@ const en: HomeCopy = {
         {
           name: 'Homebrew updates',
           detail:
-            'packaged builds have no Sparkle feed; upgrade with git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox or a new GitHub Release zip',
+            'packaged builds have no Sparkle feed; upgrade with git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet or a new GitHub Release zip',
         },
       ],
     },
@@ -190,12 +190,12 @@ const en: HomeCopy = {
   ],
   faq: [
     {
-      q: 'Is Kerox free?',
+      q: 'Is Yeet free?',
       a: 'Yes. Free to download, no subscription, no account.',
     },
     {
       q: 'Does it replace my shell?',
-      a: 'No. Kerox hosts the shell you already run and leaves your prompt, aliases, and dotfiles untouched. Terminal panes use Alacritty.',
+      a: 'No. Yeet hosts the shell you already run and leaves your prompt, aliases, and dotfiles untouched. Terminal panes use Alacritty.',
     },
     {
       q: 'Does it collect any data?',
@@ -217,9 +217,9 @@ const en: HomeCopy = {
 
 const zh: HomeCopy = {
   languageName: '中文',
-  title: 'Kerox — 原生 macOS 终端工作区',
+  title: 'Yeet — 原生 macOS 终端工作区',
   description:
-    'Kerox 是面向 macOS 的原生终端工作区：快速、键盘优先。项目、会话、浏览器窗格、git diff 和编码 agent，都在同一个窗口里。',
+    'Yeet 是面向 macOS 的原生终端工作区：快速、键盘优先。项目、会话、浏览器窗格、git diff 和编码 agent，都在同一个窗口里。',
   taglineBefore: '你的终端，',
   taglineHighlight: '整个项目',
   taglineAfter: '都在身边。',
@@ -232,7 +232,7 @@ const zh: HomeCopy = {
   copied: '已复制',
   copyAria: (command) => `将「${command}」复制到剪贴板`,
   pillFree: '免费开源',
-  screenshotAlt: 'Kerox 窗口：项目的终端会话，旁边开着 git 面板',
+  screenshotAlt: 'Yeet 窗口：项目的终端会话，旁边开着 git 面板',
   screenshotCaption: '项目、标签页，旁边开着信息面板',
   featuresHeading: '功能',
   shortcutsHeading: '快捷键',
@@ -310,7 +310,7 @@ const zh: HomeCopy = {
         },
         {
           name: '与 AI Agent 协作',
-          detail: '让编码 agent 在 Kerox 窗格间分派和协调工作，你通过状态、通知和批准掌握进度',
+          detail: '让编码 agent 在 Yeet 窗格间分派和协调工作，你通过状态、通知和批准掌握进度',
         },
         {
           name: '桌面通知',
@@ -329,7 +329,7 @@ const zh: HomeCopy = {
         {
           name: '用 Homebrew 更新',
           detail:
-            '打包构建没有 Sparkle 订阅源；用 git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox 或新的 GitHub Release zip 升级',
+            '打包构建没有 Sparkle 订阅源；用 git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet 或新的 GitHub Release zip 升级',
         },
       ],
     },
@@ -357,12 +357,12 @@ const zh: HomeCopy = {
   ],
   faq: [
     {
-      q: 'Kerox 免费吗？',
+      q: 'Yeet 免费吗？',
       a: '是的。免费下载，无需订阅，也不需要账号。',
     },
     {
       q: '它会替换我的 shell 吗？',
-      a: '不会。Kerox 运行的就是你本来在用的 shell，提示符、别名和 dotfiles 都不受影响。终端窗格使用 Alacritty。',
+      a: '不会。Yeet 运行的就是你本来在用的 shell，提示符、别名和 dotfiles 都不受影响。终端窗格使用 Alacritty。',
     },
     {
       q: '它会收集数据吗？',

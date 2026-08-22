@@ -416,7 +416,7 @@ extension TerminalSession {
             kind: kind,
             phase: .working,
             authority: .command,
-            reason: "Kerox launched \(kind.displayName)",
+            reason: "Yeet launched \(kind.displayName)",
             processID: nil,
             unseen: false
         )

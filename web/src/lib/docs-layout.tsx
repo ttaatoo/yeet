@@ -8,7 +8,7 @@ const NAV_LABELS = {
   zh: { home: '首页', changelog: '更新日志', download: '下载' },
 } as const
 
-/** Chrome shared by every docs page: the kerox wordmark plus links back to the site. */
+/** Chrome shared by every docs page: the yeet wordmark plus links back to the site. */
 export function docsLayoutOptions(lang: string): BaseLayoutProps {
   const labels = NAV_LABELS[lang as keyof typeof NAV_LABELS] ?? NAV_LABELS.en
   const home = lang === DEFAULT_LANGUAGE ? '/' : `/${lang}`
@@ -29,7 +29,7 @@ export function docsLayoutOptions(lang: string): BaseLayoutProps {
             height={100}
             className="size-5 rounded-[5px] border border-zinc-600"
           />
-          <span className="font-mono font-bold tracking-[0.02em]">kerox</span>
+          <span className="font-mono font-bold tracking-[0.02em]">yeet</span>
         </span>
       ),
     },

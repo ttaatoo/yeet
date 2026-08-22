@@ -371,13 +371,13 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         // Ghostty. The surface is Alacritty with in-tree Kitty graphics
         // (queryable via APC Gi). Tools that only key off ghostty will pick
         // the wrong protocol; we do not keep that lie. TERM_PROGRAM is this
-        // app; KERO_TERM names the emulator. Version tracks Kerox, not a
+        // app; KERO_TERM names the emulator. Version tracks Yeet, not a
         // vendored Ghostty.
         let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let programVersion = (version?.isEmpty == false) ? version! : "0.1.50"
         commands.append("export KERO_TERM=\(shellQuote("alacritty"))")
-        commands.append("export TERM_PROGRAM=\(shellQuote("Kerox"))")
+        commands.append("export TERM_PROGRAM=\(shellQuote("Yeet"))")
         commands.append("export TERM_PROGRAM_VERSION=\(shellQuote(programVersion))")
         if let commandArguments {
             let argv = commandArguments.map(shellQuote).joined(separator: " ")

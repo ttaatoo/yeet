@@ -78,11 +78,11 @@ struct SettingsView: View {
 
                 if settings.languageRequiresRelaunch {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("Relaunch Kerox to apply the language change.")
+                        Text("Relaunch Yeet to apply the language change.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("Relaunch Kerox") {
+                        Button("Relaunch Yeet") {
                             relaunch()
                         }
                     }
@@ -200,8 +200,8 @@ struct SettingsView: View {
                     // views exposed to VoiceOver.
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(Text(verbatim: """
-                    kerox ❯ echo "the quick brown fox" 0O 1lI
-                    \u{E0A0} main \u{E0B0} ~/dev/kerox \u{E711} \u{F024B} \u{F0A7D}
+                    yeet ❯ echo "the quick brown fox" 0O 1lI
+                    \u{E0A0} main \u{E0B0} ~/dev/yeet \u{E711} \u{F024B} \u{F0A7D}
                     bold — permission denied (os error 13)
                     """))
                     .accessibilityAddTraits(.isStaticText)
@@ -306,7 +306,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 440)
         .alert(
-            "Couldn’t Relaunch Kerox",
+            "Couldn’t Relaunch Yeet",
             isPresented: $isShowingRelaunchError
         ) {
             Button("OK", role: .cancel) {}
@@ -350,7 +350,7 @@ struct SettingsView: View {
     }
 
     /// The compact catalog of popular themes, split by the appearance slot
-    /// they suit. Kerox only hosts the Alacritty surface.
+    /// they suit. Yeet only hosts the Alacritty surface.
     private static let darkThemeNames = Theme.commonDarkThemes.map(\.name)
     private static let lightThemeNames = Theme.commonLightThemes.map(\.name)
 }
@@ -413,8 +413,8 @@ private final class FontThickenPreviewView: NSView {
 
     /// Regular / icon / bold lines — same samples as the old SwiftUI preview.
     private let lines: [(text: String, bold: Bool)] = [
-        ("kerox ❯ echo \"the quick brown fox\" 0O 1lI", false),
-        ("\u{E0A0} main \u{E0B0} ~/dev/kerox \u{E711} \u{F024B} \u{F0A7D}", false),
+        ("yeet ❯ echo \"the quick brown fox\" 0O 1lI", false),
+        ("\u{E0A0} main \u{E0B0} ~/dev/yeet \u{E711} \u{F024B} \u{F0A7D}", false),
         ("bold — permission denied (os error 13)", true),
     ]
 

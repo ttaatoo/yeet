@@ -1,15 +1,15 @@
 ---
 title: Installation
-description: Download Kerox, install it with Homebrew, keep it updated, and remove it cleanly.
+description: Download Yeet, install it with Homebrew, keep it updated, and remove it cleanly.
 ---
 
-This repository ships **Kerox**, the ttaatoo/kero fork of [egoist/kero](https://github.com/egoist/kero). Builds are **ad-hoc signed** (no Apple Developer Program / Developer ID). That is not the notarized app from [kero.sh](https://kero.sh). The current release needs macOS 15.6 (Sequoia) or later.
+This repository ships **Yeet**, based on [egoist/kero](https://github.com/egoist/kero) and published independently at [ttaatoo/yeet](https://github.com/ttaatoo/yeet). It is not a GitHub Fork, and it is not Kerox.app / `sh.kerox`. Builds are **ad-hoc signed** (no Apple Developer Program / Developer ID). That is not the notarized app from [kero.sh](https://kero.sh). The current release needs macOS 15.6 (Sequoia) or later.
 
-Do **not** run `brew install egoist/tap/kero` if you want this fork. That command installs official Kero (`Kero.app` / `sh.kero`). This fork installs `Kerox.app` / `sh.kerox` and keeps settings in `~/.config/kerox`.
+Do **not** run `brew install egoist/tap/kero` if you want Yeet. That command installs official Kero (`Kero.app` / `sh.kero`). Yeet installs `Yeet.app` / `sh.yeet` and keeps settings in `~/.config/yeet`. If that directory is missing, leftover `~/.config/kerox` (then older `~/.config/kero`) is copied in.
 
 ## Download
 
-Grab `Kerox.zip` from [GitHub Releases](https://github.com/ttaatoo/kero/releases) (or the Download button on the site), unzip it, and drag **Kerox** into your Applications folder.
+Grab `Yeet.zip` from [GitHub Releases](https://github.com/ttaatoo/yeet/releases) (or the Download button on the site), unzip it, and drag **Yeet** into your Applications folder.
 
 The first launch may be blocked by Gatekeeper. Use **System Settings → Privacy & Security → Open Anyway**.
 
@@ -18,29 +18,29 @@ The first launch may be blocked by Gatekeeper. Use **System Settings → Privacy
 The cask lives in this repo, so the tap URL has to be named:
 
 ```bash
-brew tap ttaatoo/kero https://github.com/ttaatoo/kero
-brew install --cask ttaatoo/kero/kerox
+brew tap ttaatoo/yeet https://github.com/ttaatoo/yeet
+brew install --cask ttaatoo/yeet/yeet
 ```
 
 Upgrade:
 
 ```bash
-git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox
+git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet
 ```
 
-The cask downloads `Kerox.zip` from GitHub Releases and strips Gatekeeper quarantine so the ad-hoc app can launch.
+The cask downloads `Yeet.zip` from GitHub Releases and strips Gatekeeper quarantine so the ad-hoc app can launch.
 
-Compiling from source (`brew install --formula --HEAD ttaatoo/kero/kerox`) needs a new-enough Xcode plus a [Rust toolchain](https://rustup.rs) for `Vendor/alacritty-bridge`. The cask is the supported install path.
+Compiling from source (`brew install --formula --HEAD ttaatoo/yeet/yeet`) needs a new-enough Xcode plus a [Rust toolchain](https://rustup.rs) for `Vendor/alacritty-bridge`. The cask is the supported install path.
 
 ## Updates
 
-Packaged Kerox has no [Sparkle](https://sparkle-project.org) feed. An official Kero feed would replace this fork with `Kero.app`. There is no in-app updater on packaged builds, and Settings hides update controls when there is no feed.
+Packaged Yeet has no [Sparkle](https://sparkle-project.org) feed. An official Kero feed would replace Yeet with `Kero.app`. There is no in-app updater on packaged builds, and Settings hides update controls when there is no feed.
 
-Use Homebrew (`git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox`) or a new GitHub Release zip.
+Use Homebrew (`git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet`) or a new GitHub Release zip.
 
 ## Open a folder from Finder
 
-Kerox registers a macOS service called **New Kerox Project Here**. Select one or
+Yeet registers a macOS service called **New Yeet Project Here**. Select one or
 more folders in Finder, right-click, and pick it from the **Services** submenu —
 each folder opens as a project with its terminal already started there.
 
@@ -51,24 +51,24 @@ service after the app has been launched once.
 ## Uninstalling
 
 If **Settings → Automation → AI** is enabled, turn it off before deleting the
-app so Kerox can remove the agent support it installed.
+app so Yeet can remove the agent support it installed.
 
 If you installed with Homebrew:
 
 ```bash
-brew uninstall --cask ttaatoo/kero/kerox
+brew uninstall --cask ttaatoo/yeet/yeet
 ```
 
-Otherwise delete `Kerox.app` from Applications. Then remove its settings if you want a
+Otherwise delete `Yeet.app` from Applications. Then remove its settings if you want a
 clean slate:
 
 ```bash
-rm -rf ~/.config/kerox
+rm -rf ~/.config/yeet
 ```
 
 Window layout, sidebar widths, and the session snapshot live in macOS's own
 preference store:
 
 ```bash
-defaults delete sh.kerox
+defaults delete sh.yeet
 ```

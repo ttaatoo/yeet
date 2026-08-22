@@ -1,48 +1,48 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "New Kerox Debug Project Here": {
+    "New Yeet Debug Project Here": {
       "comment": "Finder Services menu item used by debug builds.",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "New Kerox Debug Project Here"
+            "value": "New Yeet Debug Project Here"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ここに新規Kerox Debugプロジェクトを作成"
+            "value": "ここに新規Yeet Debugプロジェクトを作成"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在此处新建 Kerox Debug 项目"
+            "value": "在此处新建 Yeet Debug 项目"
           }
         }
       }
     },
-    "New Kerox Project Here": {
+    "New Yeet Project Here": {
       "comment": "Finder Services menu item used by release builds.",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "New Kerox Project Here"
+            "value": "New Yeet Project Here"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ここに新規Keroxプロジェクトを作成"
+            "value": "ここに新規Yeetプロジェクトを作成"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在此处新建 Kerox 项目"
+            "value": "在此处新建 Yeet 项目"
           }
         }
       }

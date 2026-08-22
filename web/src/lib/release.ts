@@ -1,18 +1,18 @@
 export type Release = { version: string; minSystem: string; zip: string }
 
-const REPO = 'ttaatoo/kero'
+const REPO = 'ttaatoo/yeet'
 const GITHUB_API_LATEST = `https://api.github.com/repos/${REPO}/releases/latest`
-const ZIP_ASSET = 'Kerox.zip'
+const ZIP_ASSET = 'Yeet.zip'
 /** Matches MACOSX_DEPLOYMENT_TARGET on the kero target in kero.xcodeproj. */
 const MIN_SYSTEM = '15.6'
 
 export const GITHUB_URL = `https://github.com/${REPO}`
 export const X_URL = 'https://x.com/localhost_4173'
 
-// The tap is this repo (`Casks/kerox.rb`), not `ttaatoo/homebrew-kero`, so the
+// The tap is this repo (`Casks/yeet.rb`), not `ttaatoo/homebrew-kero`, so the
 // tap URL has to be named. `--cask` is required: the same tap also has a formula.
 export const BREW_COMMAND =
-  'brew tap ttaatoo/kero https://github.com/ttaatoo/kero && brew install --cask ttaatoo/kero/kerox'
+  'brew tap ttaatoo/yeet https://github.com/ttaatoo/yeet && brew install --cask ttaatoo/yeet/yeet'
 
 // Shown only if GitHub Releases can't be reached; kept current so downloads still work.
 const FALLBACK: Release = {
@@ -27,7 +27,7 @@ type GitHubRelease = {
 }
 
 /**
- * Read the newest GitHub Release that ships Kerox.zip. Packaged Kerox has no
+ * Read the newest GitHub Release that ships Yeet.zip. Packaged Yeet has no
  * Sparkle feed; the site must not read releases.kero.sh (that is official Kero).
  */
 export function parseGitHubRelease(data: GitHubRelease): Release | null {
@@ -46,7 +46,7 @@ export async function fetchLatestRelease(): Promise<Release> {
     const res = await fetch(GITHUB_API_LATEST, {
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'kerox-web',
+        'User-Agent': 'yeet-web',
       },
       signal: AbortSignal.timeout(2500),
       // The site runs as a Cloudflare Worker; cache the payload at the edge so we

@@ -102,7 +102,7 @@ cloned_packages_populated() {
   return 1
 }
 
-echo "Packaging kerox ${VERSION} (Release, ad-hoc, ${HOST_ARCH})…"
+echo "Packaging yeet ${VERSION} (Release, ad-hoc, ${HOST_ARCH})…"
 echo "Resolving Swift packages into ${CLONED_PACKAGES}…"
 
 # Isolate from set -e: resolve may SIGABRT (exit 134) after a successful
@@ -164,33 +164,33 @@ xcodebuild \
   KERO_SU_FEED_URL="" \
   build
 
-APP="$(find "$DERIVED/Build/Products/Release" -maxdepth 1 -name "Kerox.app" -type d | head -n 1)"
+APP="$(find "$DERIVED/Build/Products/Release" -maxdepth 1 -name "Yeet.app" -type d | head -n 1)"
 if [[ -z "$APP" ]]; then
-  echo "error: Kerox.app was not produced (Release WRAPPER_NAME is \$(KERO_DISPLAY_NAME).app)" >&2
+  echo "error: Yeet.app was not produced (Release WRAPPER_NAME is \$(KERO_DISPLAY_NAME).app)" >&2
   exit 1
 fi
 
-rm -rf "$DEST/Kerox.app"
-cp -R "$APP" "$DEST/Kerox.app"
+rm -rf "$DEST/Yeet.app"
+cp -R "$APP" "$DEST/Yeet.app"
 
 # Belt-and-suspenders: never ship the official Sparkle appcast or the
 # official EdDSA key on a brew / GitHub Release build of this fork.
 # The official key + https://releases.kero.sh would let Sparkle replace
-# Kerox with notarized egoist Kero.
-PLIST="$DEST/Kerox.app/Contents/Info.plist"
+# Yeet with notarized egoist Kero.
+PLIST="$DEST/Yeet.app/Contents/Info.plist"
 if [[ -f "$PLIST" ]]; then
   plutil -replace SUFeedURL -string "" "$PLIST"
   plutil -replace SUPublicEDKey -string "" "$PLIST"
   plutil -replace SUEnableAutomaticChecks -bool false "$PLIST"
 fi
 
-codesign --force --deep --sign - "$DEST/Kerox.app"
-ditto -c -k --keepParent "$DEST/Kerox.app" "$DEST/Kerox.zip"
+codesign --force --deep --sign - "$DEST/Yeet.app"
+ditto -c -k --keepParent "$DEST/Yeet.app" "$DEST/Yeet.zip"
 
-echo "Built kerox ${VERSION}:"
-echo "  $DEST/Kerox.app"
-echo "  $DEST/Kerox.zip"
+echo "Built yeet ${VERSION}:"
+echo "  $DEST/Yeet.app"
+echo "  $DEST/Yeet.zip"
 echo
 echo "First run on another Mac:"
-echo "  xattr -dr com.apple.quarantine \"$DEST/Kerox.app\""
+echo "  xattr -dr com.apple.quarantine \"$DEST/Yeet.app\""
 echo "  Then open the app (System Settings → Privacy & Security → Open Anyway if Gatekeeper blocks it)."

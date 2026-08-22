@@ -421,18 +421,18 @@
         }
       }
     },
-    "`kero` must be run inside a Kerox terminal." : {
+    "`kero` must be run inside a Yeet terminal." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "`kero`はKeroxのターミナル内で実行してください。"
+            "value" : "`kero`はYeetのターミナル内で実行してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "`kero` 必须在 Kerox 终端内运行。"
+            "value" : "`kero` 必须在 Yeet 终端内运行。"
           }
         }
       }
@@ -1830,18 +1830,18 @@
         }
       }
     },
-    "Could not read Kerox's theme catalog: %@" : {
+    "Could not read Yeet's theme catalog: %@" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keroxのテーマカタログを読み込めませんでした: %@"
+            "value" : "Yeetのテーマカタログを読み込めませんでした: %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法读取 Kerox 的主题列表：%@"
+            "value" : "无法读取 Yeet 的主题列表：%@"
           }
         }
       }
@@ -1927,18 +1927,18 @@
         }
       }
     },
-    "Couldn’t Relaunch Kerox" : {
+    "Couldn’t Relaunch Yeet" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keroxを再起動できませんでした"
+            "value" : "Yeetを再起動できませんでした"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法重新启动 Kerox"
+            "value" : "无法重新启动 Yeet"
           }
         }
       }
@@ -3556,12 +3556,12 @@
         }
       }
     },
-    "Lets agents delegate work and coordinate across Kerox panes" : {
+    "Lets agents delegate work and coordinate across Yeet panes" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "让 agent 在 Kerox 窗格间分派工作并协作"
+            "value" : "让 agent 在 Yeet 窗格间分派工作并协作"
           }
         }
       }
@@ -3631,21 +3631,21 @@
         }
       }
     },
-    "Kerox" : {
+    "Yeet" : {
       "shouldTranslate" : false
     },
-    "Kerox did not provide any %@ themes." : {
+    "Yeet did not provide any %@ themes." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keroxに%@テーマは含まれていません。"
+            "value" : "Yeetに%@テーマは含まれていません。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kerox 未提供任何 %@ 主题。"
+            "value" : "Yeet 未提供任何 %@ 主题。"
           }
         }
       }
@@ -5255,34 +5255,34 @@
         }
       }
     },
-    "Relaunch Kerox" : {
+    "Relaunch Yeet" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keroxを再起動"
+            "value" : "Yeetを再起動"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "重新启动 Kerox"
+            "value" : "重新启动 Yeet"
           }
         }
       }
     },
-    "Relaunch Kerox to apply the language change." : {
+    "Relaunch Yeet to apply the language change." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "言語の変更を反映するにはKeroxを再起動してください。"
+            "value" : "言語の変更を反映するにはYeetを再起動してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "重新启动 Kerox 以应用语言更改。"
+            "value" : "重新启动 Yeet 以应用语言更改。"
           }
         }
       }
@@ -5887,18 +5887,18 @@
         }
       }
     },
-    "Saved %@ as Kerox's %@ theme." : {
+    "Saved %@ as Yeet's %@ theme." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@をKeroxの%@テーマとして保存しました。"
+            "value" : "%@をYeetの%@テーマとして保存しました。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已将 %@ 保存为 Kerox 的 %@ 主题。"
+            "value" : "已将 %@ 保存为 Yeet 的 %@ 主题。"
           }
         }
       }
@@ -5951,18 +5951,18 @@
         }
       }
     },
-    "Select one or more folders to open in Kerox." : {
+    "Select one or more folders to open in Yeet." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keroxで開くフォルダを1つ以上選択してください。"
+            "value" : "Yeetで開くフォルダを1つ以上選択してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择一个或多个要在 Kerox 中打开的文件夹。"
+            "value" : "选择一个或多个要在 Yeet 中打开的文件夹。"
           }
         }
       }
@@ -6569,19 +6569,19 @@
         }
       }
     },
-    "Summons or hides Kerox from any app. Click to record a new shortcut. Default ⌥Space is also Raycast's default." : {
+    "Summons or hides Yeet from any app. Click to record a new shortcut. Default ⌥Space is also Raycast's default." : {
       "comment" : "Explanation of what the global hotkey does.",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "どのアプリからでもKeroxを呼び出すか隠します。クリックして新しいショートカットを記録します。デフォルトの⌥SpaceはRaycastのデフォルトでもあります。"
+            "value" : "どのアプリからでもYeetを呼び出すか隠します。クリックして新しいショートカットを記録します。デフォルトの⌥SpaceはRaycastのデフォルトでもあります。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "从任何应用程序召唤或隐藏 Kerox。点击以录制新快捷键。默认的⌥Space也是Raycast的默认快捷键。"
+            "value" : "从任何应用程序召唤或隐藏 Yeet。点击以录制新快捷键。默认的⌥Space也是Raycast的默认快捷键。"
           }
         }
       }
@@ -7038,7 +7038,7 @@
         }
       }
     },
-    "This terminal predates Kerox automation. Open a new terminal and try again." : {
+    "This terminal predates Yeet automation. Open a new terminal and try again." : {
 
     },
     "This webpage couldn’t be loaded." : {
@@ -7461,18 +7461,18 @@
         }
       }
     },
-    "Unknown Kerox command “%@”. Run `kero +help`." : {
+    "Unknown Yeet command “%@”. Run `kero +help`." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "不明なKeroxコマンド「%@」です。`kero +help`を実行してください。"
+            "value" : "不明なYeetコマンド「%@」です。`kero +help`を実行してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未知的 Kerox 命令“%@”。请运行 `kero +help`。"
+            "value" : "未知的 Yeet 命令“%@”。请运行 `kero +help`。"
           }
         }
       }
@@ -7653,24 +7653,24 @@
         }
       }
     },
-    "Usage:\n  kero\n  kero <command> [arguments...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\nWith no arguments, kero creates a project with a normal login shell.\nAn argv creates a project whose first terminal runs it directly.\n\n+themes browses Kerox's themes in the terminal. Moving through the list\npreviews the theme across the whole app; Return saves it and Esc\nrestores the previous theme." : {
+    "Usage:\n  kero\n  kero <command> [arguments...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\nWith no arguments, kero creates a project with a normal login shell.\nAn argv creates a project whose first terminal runs it directly.\n\n+themes browses Yeet's themes in the terminal. Moving through the list\npreviews the theme across the whole app; Return saves it and Esc\nrestores the previous theme." : {
       "extractionState" : "stale",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使い方:\n  kero\n  kero <コマンド> [引数...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\n引数なしの場合、keroは通常のログインシェルでプロジェクトを作成します。\n引数を指定すると、最初のターミナルでそのコマンドを直接実行するプロジェクトを作成します。\n\n+themesではターミナル内でKeroxのテーマを閲覧できます。リストを移動すると\nアプリ全体でテーマをプレビューし、Returnで保存、Escで以前のテーマに戻します。"
+            "value" : "使い方:\n  kero\n  kero <コマンド> [引数...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\n引数なしの場合、keroは通常のログインシェルでプロジェクトを作成します。\n引数を指定すると、最初のターミナルでそのコマンドを直接実行するプロジェクトを作成します。\n\n+themesではターミナル内でYeetのテーマを閲覧できます。リストを移動すると\nアプリ全体でテーマをプレビューし、Returnで保存、Escで以前のテーマに戻します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "用法：\n  kero\n  kero <命令> [参数...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\n不带参数时，kero 会创建一个使用普通登录 Shell 的项目。\n若提供命令参数，则创建项目并在第一个终端中直接运行该命令。\n\n+themes 可在终端中浏览 Kerox 主题。在列表中移动时，\n会在整个应用中预览主题；按 Return 保存，按 Esc 恢复之前的主题。"
+            "value" : "用法：\n  kero\n  kero <命令> [参数...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +help\n\n不带参数时，kero 会创建一个使用普通登录 Shell 的项目。\n若提供命令参数，则创建项目并在第一个终端中直接运行该命令。\n\n+themes 可在终端中浏览 Yeet 主题。在列表中移动时，\n会在整个应用中预览主题；按 Return 保存，按 Esc 恢复之前的主题。"
           }
         }
       }
     },
-    "Usage:\n  kero\n  kero <command> [arguments...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +pane <command> [options]\n  kero +agent <command> [options]\n  kero +help\n\nWith no arguments, kero creates a project with a normal login shell.\nAn argv creates a project whose first terminal runs it directly.\n\n+themes browses Kerox's themes in the terminal. Moving through the list\npreviews the theme across the whole app; Return saves it and Esc\nrestores the previous theme.\n\n+pane provides project-scoped terminal layout, input, viewport reads,\nand output waits. +agent adds recognized-agent start, guarded prompts,\nlifecycle waits, result reads, and an installable, auto-updating\nskill for compatible coding agents. Run either command with --help for\nits complete contract." : {
+    "Usage:\n  kero\n  kero <command> [arguments...]\n  kero +themes [--dark | --light]\n  kero +themes --list [--dark | --light]\n  kero +pane <command> [options]\n  kero +agent <command> [options]\n  kero +help\n\nWith no arguments, kero creates a project with a normal login shell.\nAn argv creates a project whose first terminal runs it directly.\n\n+themes browses Yeet's themes in the terminal. Moving through the list\npreviews the theme across the whole app; Return saves it and Esc\nrestores the previous theme.\n\n+pane provides project-scoped terminal layout, input, viewport reads,\nand output waits. +agent adds recognized-agent start, guarded prompts,\nlifecycle waits, result reads, and an installable, auto-updating\nskill for compatible coding agents. Run either command with --help for\nits complete contract." : {
 
     },
     "Use Automatic Directory" : {

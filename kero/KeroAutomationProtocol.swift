@@ -140,9 +140,9 @@ final class KeroAutomationSocketServer: @unchecked Sendable {
 
     let path: String
     private let listener: Int32
-    private let queue = DispatchQueue(label: "sh.kerox.automation.socket")
+    private let queue = DispatchQueue(label: "sh.yeet.automation.socket")
     private let workers = DispatchQueue(
-        label: "sh.kerox.automation.clients",
+        label: "sh.yeet.automation.clients",
         qos: .userInitiated,
         attributes: .concurrent
     )
@@ -352,7 +352,7 @@ final class KeroAutomationSocketServer: @unchecked Sendable {
         }
         guard connected == 0 else {
             throw KeroAutomationWireError.message(
-                "Could not connect to Kerox automation: \(String(cString: strerror(errno)))."
+                "Could not connect to Yeet automation: \(String(cString: strerror(errno)))."
             )
         }
 
@@ -392,18 +392,18 @@ final class KeroAutomationSocketServer: @unchecked Sendable {
                 continue
             } else {
                 throw KeroAutomationWireError.message(
-                    "Could not read Kerox's automation response: \(String(cString: strerror(errno)))."
+                    "Could not read Yeet's automation response: \(String(cString: strerror(errno)))."
                 )
             }
         }
         guard responseData.count <= maximumMessageBytes else {
-            throw KeroAutomationWireError.message("Kerox returned an oversized automation response.")
+            throw KeroAutomationWireError.message("Yeet returned an oversized automation response.")
         }
         if let newline = responseData.firstIndex(of: 0x0A) {
             responseData = responseData[..<newline]
         }
         guard !responseData.isEmpty else {
-            throw KeroAutomationWireError.message("Kerox closed the automation connection without a response.")
+            throw KeroAutomationWireError.message("Yeet closed the automation connection without a response.")
         }
         return try JSONDecoder().decode(KeroAutomationResponse.self, from: responseData)
     }

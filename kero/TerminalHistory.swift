@@ -421,21 +421,28 @@ enum TerminalHistorySerializer {
 /// Each save rewrites the whole file from the live set of sessions, so keys
 /// belonging to sessions that no longer exist are pruned automatically.
 enum TerminalHistoryStore {
-    /// Debug builds keep their state under `kerox-dev`, matching `AppSettings`
-    /// and the separate `sh.kerox.dev` bundle id, so a dev build never clobbers
+    /// Debug builds keep their state under `yeet-dev`, matching `AppSettings`
+    /// and the separate `sh.yeet.dev` bundle id, so a dev build never clobbers
     /// an installed production build's history — or official Kero's.
+    /// Leftover Kerox (then older Kero) Application Support is copied when
+    /// Yeet has no history directory yet.
     private static let fileURL: URL = {
         #if DEBUG
-        let directory = "kerox-dev"
+        let directory = "yeet-dev"
+        let leftovers = ["kerox-dev", "kero-dev"]
         #else
-        let directory = "kerox"
+        let directory = "yeet"
+        let leftovers = ["kerox", "kero"]
         #endif
         let base = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask
         ).first ?? FileManager.default.temporaryDirectory
-        return base
-            .appendingPathComponent(directory, isDirectory: true)
-            .appendingPathComponent("terminal-history.json")
+        let destDir = base.appendingPathComponent(directory, isDirectory: true)
+        LegacyIdentityStore.adoptIfMissing(
+            destination: destDir,
+            leftovers: leftovers.map { base.appendingPathComponent($0, isDirectory: true) }
+        )
+        return destDir.appendingPathComponent("terminal-history.json")
     }()
 
     static func save(_ histories: [String: String]) {

@@ -17,7 +17,7 @@ export const loadDocsPage = createServerFn({ method: 'GET' })
       path: page.path,
       pageTree: await source.serializePageTree(source.getPageTree(lang)),
       meta: [
-        { title: `${page.data.title} — Kerox` },
+        { title: `${page.data.title} — Yeet` },
         ...(page.data.description
           ? [{ name: 'description', content: page.data.description }]
           : []),

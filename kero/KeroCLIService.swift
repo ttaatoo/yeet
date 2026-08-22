@@ -17,7 +17,7 @@ import Foundation
 final class KeroCLIService {
     static let shared = KeroCLIService()
 
-    private static let notificationName = Notification.Name("sh.kerox.cli")
+    private static let notificationName = Notification.Name("sh.yeet.cli")
 
     private struct CatalogTheme: Codable {
         let name: String
@@ -145,7 +145,7 @@ final class KeroCLIService {
             return .failure(
                 id: request.id,
                 code: "unsupported_version",
-                message: "Kerox supports automation protocol version 1."
+                message: "Yeet supports automation protocol version 1."
             )
         }
         guard let terminalID = UUID(uuidString: request.terminalID),

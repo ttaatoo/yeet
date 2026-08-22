@@ -1,15 +1,15 @@
 ---
 title: 安装
-description: 下载 Kerox、用 Homebrew 安装、保持更新，以及干净地卸载。
+description: 下载 Yeet、用 Homebrew 安装、保持更新，以及干净地卸载。
 ---
 
-本仓库发布的是 **Kerox**，也就是 [egoist/kero](https://github.com/egoist/kero) 的 ttaatoo/kero 分支。构建是 **ad-hoc 签名**（没有 Apple Developer Program / Developer ID），不是 [kero.sh](https://kero.sh) 上经过公证的官方应用。当前版本需要 macOS 15.6（Sequoia）或更高。
+本仓库发布的是 **Yeet**，基于 [egoist/kero](https://github.com/egoist/kero)，独立发布在 [ttaatoo/yeet](https://github.com/ttaatoo/yeet)。它不是 GitHub Fork，也不是 Kerox.app / `sh.kerox`。构建是 **ad-hoc 签名**（没有 Apple Developer Program / Developer ID），不是 [kero.sh](https://kero.sh) 上经过公证的官方应用。当前版本需要 macOS 15.6（Sequoia）或更高。
 
-如果你要的是这个分支，**不要**运行 `brew install egoist/tap/kero`。那条命令会安装官方 Kero（`Kero.app` / `sh.kero`）。本分支安装的是 `Kerox.app` / `sh.kerox`，配置在 `~/.config/kerox`。
+如果你要的是 Yeet，**不要**运行 `brew install egoist/tap/kero`。那条命令会安装官方 Kero（`Kero.app` / `sh.kero`）。Yeet 安装的是 `Yeet.app` / `sh.yeet`，配置在 `~/.config/yeet`。若该目录还不存在，会先只读拷贝遗留的 `~/.config/kerox`，再否则是更早的 `~/.config/kero`。
 
 ## 下载
 
-从 [GitHub Releases](https://github.com/ttaatoo/kero/releases)（或网站上的「下载」按钮）获取 `Kerox.zip`，解压后把 **Kerox** 拖进「应用程序」文件夹。
+从 [GitHub Releases](https://github.com/ttaatoo/yeet/releases)（或网站上的「下载」按钮）获取 `Yeet.zip`，解压后把 **Yeet** 拖进「应用程序」文件夹。
 
 第一次启动时，Gatekeeper 可能会拦截。到 **系统设置 → 隐私与安全性 → 仍要打开**。
 
@@ -18,51 +18,51 @@ description: 下载 Kerox、用 Homebrew 安装、保持更新，以及干净地
 cask 放在本仓库里，所以要写完整的 tap URL：
 
 ```bash
-brew tap ttaatoo/kero https://github.com/ttaatoo/kero
-brew install --cask ttaatoo/kero/kerox
+brew tap ttaatoo/yeet https://github.com/ttaatoo/yeet
+brew install --cask ttaatoo/yeet/yeet
 ```
 
 升级：
 
 ```bash
-git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox
+git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet
 ```
 
-cask 会从 GitHub Releases 下载 `Kerox.zip`，并去掉 Gatekeeper 隔离属性，这样 ad-hoc 签名的应用才能启动。
+cask 会从 GitHub Releases 下载 `Yeet.zip`，并去掉 Gatekeeper 隔离属性，这样 ad-hoc 签名的应用才能启动。
 
-从源码编译（`brew install --formula --HEAD ttaatoo/kero/kerox`）需要足够新的 Xcode，以及 [Rust 工具链](https://rustup.rs) 来构建 `Vendor/alacritty-bridge`。支持的安装方式仍是 cask。
+从源码编译（`brew install --formula --HEAD ttaatoo/yeet/yeet`）需要足够新的 Xcode，以及 [Rust 工具链](https://rustup.rs) 来构建 `Vendor/alacritty-bridge`。支持的安装方式仍是 cask。
 
 ## 更新
 
-打包的 Kerox 没有 [Sparkle](https://sparkle-project.org) 订阅源。官方 Kero 的订阅源会把本分支覆盖成 `Kero.app`。打包构建没有应用内更新，没有订阅源时，设置里也不再显示更新控件。
+打包的 Yeet 没有 [Sparkle](https://sparkle-project.org) 订阅源。官方 Kero 的订阅源会把本分支覆盖成 `Kero.app`。打包构建没有应用内更新，没有订阅源时，设置里也不再显示更新控件。
 
-请用 Homebrew（`git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox`）或新的 GitHub Release zip。
+请用 Homebrew（`git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet`）或新的 GitHub Release zip。
 
 ## 从 Finder 打开文件夹
 
-Kerox 注册了一个名为 **New Kerox Project Here** 的 macOS 服务。在 Finder 里选中一个或多个文件夹，右键，从 **服务** 子菜单里选它——每个文件夹都会作为一个项目打开，终端已经在对应目录里启动好了。
+Yeet 注册了一个名为 **New Yeet Project Here** 的 macOS 服务。在 Finder 里选中一个或多个文件夹，右键，从 **服务** 子菜单里选它——每个文件夹都会作为一个项目打开，终端已经在对应目录里启动好了。
 
 如果菜单里没有它，去 **系统设置 → 键盘 → 键盘快捷键 → 服务 → 文件和文件夹** 打开。macOS
 只会在应用至少启动过一次之后才列出新服务。
 
 ## 卸载
 
-如果打开了 **设置 → Automation → AI**，请先关掉再删除应用，让 Kerox 移除它安装的 agent 支持。
+如果打开了 **设置 → Automation → AI**，请先关掉再删除应用，让 Yeet 移除它安装的 agent 支持。
 
 如果是用 Homebrew 装的：
 
 ```bash
-brew uninstall --cask ttaatoo/kero/kerox
+brew uninstall --cask ttaatoo/yeet/yeet
 ```
 
-否则从「应用程序」里删掉 `Kerox.app`。如果想彻底清干净，再删掉它的配置：
+否则从「应用程序」里删掉 `Yeet.app`。如果想彻底清干净，再删掉它的配置：
 
 ```bash
-rm -rf ~/.config/kerox
+rm -rf ~/.config/yeet
 ```
 
 窗口布局、侧边栏宽度和会话快照存在 macOS 自己的偏好设置里：
 
 ```bash
-defaults delete sh.kerox
+defaults delete sh.yeet
 ```

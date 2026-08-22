@@ -2,7 +2,7 @@ import Darwin
 import Darwin.ncurses
 import Foundation
 
-private let notificationName = Notification.Name("sh.kerox.cli")
+private let notificationName = Notification.Name("sh.yeet.cli")
 
 private struct CLITheme: Codable {
     let name: String
@@ -84,7 +84,7 @@ final class AppConnection {
               !token.isEmpty
         else {
             throw CLIError.message(
-                String(localized: "`kero` must be run inside a Kerox terminal.")
+                String(localized: "`kero` must be run inside a Yeet terminal.")
             )
         }
         stateURL = URL(fileURLWithPath: statePath)
@@ -124,7 +124,7 @@ final class AppConnection {
             throw error
         } catch {
             throw CLIError.message(
-                String(localized: "Could not read Kerox's theme catalog: \(error.localizedDescription)")
+                String(localized: "Could not read Yeet's theme catalog: \(error.localizedDescription)")
             )
         }
     }
@@ -184,7 +184,7 @@ final class AppConnection {
               let automationToken, !automationToken.isEmpty,
               let terminalID, !terminalID.isEmpty else {
             throw CLIError.message(
-                String(localized: "This terminal predates Kerox automation. Open a new terminal and try again.")
+                String(localized: "This terminal predates Yeet automation. Open a new terminal and try again.")
             )
         }
         let request = KeroAutomationRequest(
@@ -208,11 +208,11 @@ final class AppConnection {
             throw CLIError.message(String(describing: error))
         }
         guard response.version == 1, response.id == request.id else {
-            throw CLIError.message("Kerox returned a mismatched automation response.")
+            throw CLIError.message("Yeet returned a mismatched automation response.")
         }
         guard response.ok, let result = response.result else {
             let code = response.error?.code ?? "automation_error"
-            let message = response.error?.message ?? "Kerox rejected the automation request."
+            let message = response.error?.message ?? "Yeet rejected the automation request."
             throw CLIError.message("\(code): \(message)")
         }
         return result
@@ -250,7 +250,7 @@ private final class ThemeBrowser {
             )
         }
         guard !themes(for: appearance).isEmpty else {
-            throw CLIError.message(String(localized: "Kerox did not provide any \(appearance.title) themes."))
+            throw CLIError.message(String(localized: "Yeet did not provide any \(appearance.title) themes."))
         }
 
         try enterTerminalUI()
@@ -384,7 +384,7 @@ private final class ThemeBrowser {
         let visible = filtered.dropFirst(start).prefix(height)
 
         var output = "\u{1B}[2J\u{1B}[H"
-        output += "  \u{1B}[1mKerox +themes\u{1B}[0m"
+        output += "  \u{1B}[1mYeet +themes\u{1B}[0m"
         output += "  \u{1B}[2m"
             + String(localized: "\(appearance.title) palette · Tab switches appearance")
             + "\u{1B}[0m\r\n"
@@ -580,7 +580,7 @@ private func printHelp() {
         With no arguments, kero creates a project with a normal login shell.
         An argv creates a project whose first terminal runs it directly.
 
-        +themes browses Kerox's themes in the terminal. Moving through the list
+        +themes browses Yeet's themes in the terminal. Moving through the list
         previews the theme across the whole app; Return saves it and Esc
         restores the previous theme.
 
@@ -609,7 +609,7 @@ private func run() throws {
     if arguments.first != "+themes" {
         if let command = arguments.first, command.hasPrefix("+") {
             throw CLIError.message(
-                String(localized: "Unknown Kerox command “\(command)”. Run `kero +help`.")
+                String(localized: "Unknown Yeet command “\(command)”. Run `kero +help`.")
             )
         }
         let connection = try AppConnection()
@@ -662,7 +662,7 @@ private func run() throws {
         initialAppearance: requestedAppearance
     )
     if let saved = try browser.run() {
-        print(String(localized: "Saved \(saved.theme) as Kerox's \(saved.appearance.title) theme."))
+        print(String(localized: "Saved \(saved.theme) as Yeet's \(saved.appearance.title) theme."))
     }
 }
 

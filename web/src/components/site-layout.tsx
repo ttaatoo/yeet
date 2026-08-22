@@ -24,7 +24,7 @@ export function SiteLayout({
               height={100}
               className="block size-12 rounded-md border border-zinc-600"
             />
-            kerox
+            yeet
           </HomeLink>
         </h1>
         {headerContent}

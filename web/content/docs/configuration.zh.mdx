@@ -3,11 +3,13 @@ title: 配置
 description: Kero 的全部持久化选项、各自作用，以及它们存在哪里。
 ---
 
-Kero 大多数持久化设置都在一个文件里：
+Yeet 大多数持久化设置都在一个文件里：
 
 ```
-~/.config/kero/config.toml
+~/.config/yeet/config.toml
 ```
+
+Debug 构建使用 `~/.config/yeet-dev/config.toml`。若 Yeet 目录还不存在，会先只读拷贝遗留的 `~/.config/kerox`，再否则是更早的 `~/.config/kero`。
 
 设置窗口（<kbd>Cmd</kbd>+<kbd>,</kbd>）写的也是这个文件。少数由 macOS 管理的设置——语言和自动更新——存在别处，列在本页末尾。
 
@@ -135,7 +137,7 @@ Powerline 分隔符和图标字形也能正常显示。
 
 ## 一份完整的例子
 
-```toml title="~/.config/kero/config.toml"
+```toml title="~/.config/yeet/config.toml"
 theme = "dark"
 theme-dark = "Catppuccin Mocha"
 theme-light = "Catppuccin Latte"
@@ -158,7 +160,7 @@ ai.enabled = true
 ## 不在这个文件里的设置
 
 - **语言。** 设置里可选「跟随系统」、English、简体中文和日本語。它使用 macOS 的单应用语言偏好，并且要重启后生效，所以不存进 TOML。
-- **自动检查更新。** 打包的 Kerox 没有 Sparkle 订阅源，设置里也不再显示更新开关。请用 Homebrew 或 GitHub Release zip。
+- **自动检查更新。** 打包的 Yeet 没有 Sparkle 订阅源，设置里也不再显示更新开关。请用 Homebrew 或 GitHub Release zip。
 - **窗口与布局状态。** 窗口尺寸、侧边栏宽度、当前面板、项目、标签页、窗格、浏览器 URL 和
   diff 控件偏好，都存在 Kero 的 macOS 偏好设置或会话快照里。
 - **后端自己的配置文件。** Kero 不读取 `~/.config/ghostty`，也不读取 Alacritty 配置。Kero 的设置就是两个后端共同支持的配置面。

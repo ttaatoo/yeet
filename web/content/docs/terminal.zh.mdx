@@ -3,23 +3,23 @@ title: 终端本身
 description: Kero 的终端后端、shell 环境、链接处理、通知与安全功能。
 ---
 
-每个终端窗格都运行你真正的登录 shell，并使用原生 GPU 加速的 Alacritty 后端。窗格焦点、搜索、通知、链接、历史、主题和粘贴安全由 Kerox 统一管理。
+每个终端窗格都运行你真正的登录 shell，并使用原生 GPU 加速的 Alacritty 后端。窗格焦点、搜索、通知、链接、历史、主题和粘贴安全由 Yeet 统一管理。
 
 ## 你的 shell，原封不动
 
 每个会话启动你账户的登录 shell，所以提示符、别名、函数和 dotfiles 都和其他终端里一样加载。
-Kerox 额外设置了能力与身份变量：
+Yeet 额外设置了能力与身份变量：
 
 | 变量 | 值 |
 | --- | --- |
-| `TERM_PROGRAM` | `Kerox` |
-| `TERM_PROGRAM_VERSION` | Kerox 的营销版本号 |
+| `TERM_PROGRAM` | `Yeet` |
+| `TERM_PROGRAM_VERSION` | Yeet 的营销版本号 |
 | `KERO_TERM` | `alacritty` |
 
-`TERM_PROGRAM` 表示本应用。官方 Kero 0.1.24 曾把它设为 `ghostty`，好让支持图片的 CLI 走 Ghostty 分支；Kerox 没有 Ghostty。Alacritty 表面实现了 Kitty 图形协议（可通过 APC `Gi` 查询）。`KERO_TERM` 标明模拟器。`TERM` 仍是 `xterm-256color`，`COLORTERM` 仍是 `truecolor`。
+`TERM_PROGRAM` 表示本应用。官方 Kero 0.1.24 曾把它设为 `ghostty`，好让支持图片的 CLI 走 Ghostty 分支；Yeet 没有 Ghostty。Alacritty 表面实现了 Kitty 图形协议（可通过 APC `Gi` 查询）。`KERO_TERM` 标明模拟器。`TERM` 仍是 `xterm-256color`，`COLORTERM` 仍是 `truecolor`。
 
 <Callout type="info">
-Kerox 不读取外部 Alacritty 配置。字体、颜色和输入行为都在 Kerox
+Yeet 不读取外部 Alacritty 配置。字体、颜色和输入行为都在 Yeet
 自己的[设置](/zh/docs/configuration)里配置。
 </Callout>
 

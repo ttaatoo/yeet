@@ -1,7 +1,7 @@
-# Kerox — website
+# Yeet — website
 
-Landing page and documentation for **Kerox**, the ttaatoo/kero fork of Kero,
-shipped as a native terminal workspace for macOS.
+Landing page and documentation for **Yeet**, based on Kero and published
+independently at ttaatoo/yeet, shipped as a native terminal workspace for macOS.
 
 ## Stack
 
