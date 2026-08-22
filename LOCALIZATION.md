@@ -1,8 +1,8 @@
-# Localizing Kerox
+# Localizing Yeet
 
-Kerox follows the macOS language selected by the user, including the per-app
+Yeet follows the macOS language selected by the user, including the per-app
 language in System Settings. Users can also choose a language from
-**Kerox → Settings → Appearance → Language**; Kerox asks to relaunch so native
+**Yeet → Settings → Appearance → Language**; Yeet asks to relaunch so native
 menus, dialogs, and SwiftUI views all change together. English is the
 development language. The currently maintained localizations are:
 
@@ -19,10 +19,10 @@ language, and edit its translation. Xcode keeps placeholders, plural variants,
 and translation state visible. The other catalogs cover macOS-owned UI:
 
 - `InfoPlist.xcstrings` — privacy permission text.
-- `ServicesMenu.xcstrings` — Kerox’s Finder Services menu item.
+- `ServicesMenu.xcstrings` — Yeet’s Finder Services menu item.
 
 Keep placeholders such as `%@` and `%lld` intact. Preserve product and
-technology names such as Kerox, Git, Finder, and VS Code, as well as keyboard
+technology names such as Yeet, Git, Finder, and VS Code, as well as keyboard
 shortcut symbols. Translation-only pull requests are welcome.
 
 For work outside Xcode, use **Product → Export Localizations…** to produce

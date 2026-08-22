@@ -35,7 +35,7 @@ final class Updater: ObservableObject {
     @Published var automaticallyChecksForUpdates: Bool {
         didSet {
             // Packaged fork builds leave the feed empty so Sparkle cannot
-            // replace Kerox with official egoist Kero from releases.kero.sh.
+            // replace Yeet with official egoist Kero from releases.kero.sh.
             // Never honor a persisted "check automatically" when there is
             // no feed of our own.
             if Self.sparkleFeedURL.isEmpty {

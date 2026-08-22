@@ -96,11 +96,11 @@ enum KeroAutomationSkill {
     static func bundledSkillText() throws -> String {
         let source = try source()
         guard let skillURL = source.files["SKILL.md"] else {
-            throw SkillError.message("Kerox's bundled automation SKILL.md is missing.")
+            throw SkillError.message("Yeet's bundled automation SKILL.md is missing.")
         }
         let data = try Data(contentsOf: skillURL)
         guard let text = String(data: data, encoding: .utf8), !text.isEmpty else {
-            throw SkillError.message("Kerox's bundled automation skill is not valid UTF-8.")
+            throw SkillError.message("Yeet's bundled automation skill is not valid UTF-8.")
         }
         return text
     }
@@ -175,7 +175,7 @@ enum KeroAutomationSkill {
             $0.state == .modified || $0.state == .unmanaged
         }), !force {
             throw SkillError.message(
-                "The skill at \(conflict.url.path) is not safely managed by Kerox. "
+                "The skill at \(conflict.url.path) is not safely managed by Yeet. "
                     + "Re-run with --force to remove it."
             )
         }
@@ -200,7 +200,7 @@ enum KeroAutomationSkill {
             subdirectories: ["Skills/\(name)", name, nil],
             bundle: bundle
         ) else {
-            throw SkillError.message("Kerox's bundled automation SKILL.md is missing.")
+            throw SkillError.message("Yeet's bundled automation SKILL.md is missing.")
         }
         guard let metadataURL = bundledURL(
             name: "openai",
@@ -208,15 +208,15 @@ enum KeroAutomationSkill {
             subdirectories: ["Skills/\(name)/agents", "\(name)/agents", "agents", nil],
             bundle: bundle
         ) else {
-            throw SkillError.message("Kerox's bundled automation skill metadata is missing.")
+            throw SkillError.message("Yeet's bundled automation skill metadata is missing.")
         }
         guard isRegularFile(skillURL), isRegularFile(metadataURL) else {
-            throw SkillError.message("Kerox's bundled automation skill resources are not files.")
+            throw SkillError.message("Yeet's bundled automation skill resources are not files.")
         }
 
         let skillData = try Data(contentsOf: skillURL)
         guard String(data: skillData, encoding: .utf8)?.contains("name: \(name)") == true else {
-            throw SkillError.message("Kerox's bundled automation SKILL.md has unexpected contents.")
+            throw SkillError.message("Yeet's bundled automation SKILL.md has unexpected contents.")
         }
         return Source(
             skillURL: skillURL,

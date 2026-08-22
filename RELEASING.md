@@ -1,20 +1,24 @@
 # Releasing kero
 
-> **This fork (ttaatoo/kero):** there is no Apple Developer ID. Do not run
+> **This fork (ttaatoo/yeet):** there is no Apple Developer ID. Do not run
 > `bun scripts/release.ts` expecting a notarized R2 upload or an
 > `egoist/homebrew-tap` bump. Ad-hoc zip: `scripts/package.sh` →
-> `dist/Kerox.zip`. Push a `v*` tag (or run the Release workflow) to attach
-> that zip to a GitHub Release. The in-repo tap is `Casks/kerox.rb` /
-> `Formula/kerox.rb`. The cask already points at GitHub Releases
-> (`Kerox.zip`); leave `sha256 :no_check` until you have the digest of that
+> `dist/Yeet.zip`. Push a `v*` tag (or run the Release workflow) to attach
+> that zip to a GitHub Release. The in-repo tap is `Casks/yeet.rb` /
+> `Formula/yeet.rb`. The cask already points at GitHub Releases
+> (`Yeet.zip`); leave `sha256 :no_check` until you have the digest of that
 > zip — do not invent one. Packaged Release builds clear `SUFeedURL` and
 > `SUPublicEDKey` so Sparkle cannot replace this fork with official egoist
-> Kero from `https://releases.kero.sh`. There is no Kerox Sparkle appcast;
-> users upgrade with `git -C "$(brew --repo ttaatoo/kero)" pull && brew upgrade --cask ttaatoo/kero/kerox`.
+> Kero from `https://releases.kero.sh`. There is no Yeet Sparkle appcast;
+> users upgrade with `git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet`.
 >
 > GitHub-hosted macOS runners may fail: this Xcode project uses format 110
 > and has already failed locally on Xcode 26.5. If CI cannot build, produce
-> `dist/Kerox.zip` on a Mac with a new-enough Xcode + Rust and upload it.
+> `dist/Yeet.zip` on a Mac with a new-enough Xcode + Rust and upload it.
+
+> **The official Sparkle / Cloudflare R2 flow below does not apply to Yeet.**
+> It documents how egoist/kero publishes notarized builds to
+> `https://releases.kero.sh`. Yeet must not use that feed.
 
 kero auto-updates with [Sparkle](https://sparkle-project.org). Releases live in a
 **Cloudflare R2** bucket served at **`https://releases.kero.sh`**. New users

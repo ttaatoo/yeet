@@ -1,9 +1,9 @@
 # CLAUDE.md
 
-Kerox is a native macOS terminal workspace with projects, panes, a file tree, a git panel,
+Yeet is a native macOS terminal workspace with projects, panes, a file tree, a git panel,
 an editor, and a diff viewer. Existing SwiftUI code is legacy; AppKit is the UI foundation.
 
-- [PRODUCT.md](PRODUCT.md) — who Kerox is for; product and design calls follow from it.
+- [PRODUCT.md](PRODUCT.md) — who Yeet is for; product and design calls follow from it.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — build, verify, and what a PR must say. Read before opening one.
 - [RELEASING.md](RELEASING.md) — maintainer-only. Never bump the version in a PR.
 

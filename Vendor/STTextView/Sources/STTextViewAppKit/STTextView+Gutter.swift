@@ -59,15 +59,43 @@ extension STTextView {
     }
 
 
+    /// Paragraphs strictly before `location`, using the last measurement as
+    /// an anchor so a small viewport move does not rescan the document head.
+    private func paragraphCount(before location: NSTextLocation) -> Int {
+        let documentStart = textLayoutManager.documentRange.location
+        if location.compare(documentStart) != .orderedDescending {
+            gutterParagraphsBeforeViewport = (location, 0)
+            return 0
+        }
+        if let anchor = gutterParagraphsBeforeViewport {
+            let order = anchor.location.compare(location)
+            if order == .orderedSame {
+                return anchor.count
+            }
+            if order == .orderedAscending,
+               let range = NSTextRange(location: anchor.location, end: location) {
+                let count = anchor.count + textContentManager.textElements(for: range).count
+                gutterParagraphsBeforeViewport = (location, count)
+                return count
+            }
+            if order == .orderedDescending,
+               let range = NSTextRange(location: location, end: anchor.location) {
+                let count = max(0, anchor.count - textContentManager.textElements(for: range).count)
+                gutterParagraphsBeforeViewport = (location, count)
+                return count
+            }
+        }
+        guard let range = NSTextRange(location: documentStart, end: location) else {
+            return 0
+        }
+        let count = textContentManager.textElements(for: range).count
+        gutterParagraphsBeforeViewport = (location, count)
+        return count
+    }
+
     private func layoutGutterLineNumbers() {
         guard let gutterView else {
             return
-        }
-
-        gutterView.containerView.subviews.compactMap {
-            $0 as? STGutterLineNumberCell
-        }.forEach {
-            $0.removeFromSuperviewWithoutNeedingDisplay()
         }
 
         let lineTextAttributes: [NSAttributedString.Key: Any] = [
@@ -81,6 +109,11 @@ extension STTextView {
 
         // if empty document
         if textLayoutManager.documentRange.isEmpty {
+            gutterView.containerView.subviews.compactMap {
+                $0 as? STGutterLineNumberCell
+            }.forEach {
+                $0.removeFromSuperviewWithoutNeedingDisplay()
+            }
             if let selectionFrame = textLayoutManager.textSegmentFrame(at: textLayoutManager.documentRange.location, type: .standard) {
                 let lineNumber = 1
 
@@ -139,16 +172,14 @@ extension STTextView {
                 return
             }
 
-            // Calculate how many lines exist before the viewport
-            let textElementsBeforeViewport = textContentManager.textElements(
-                for: NSTextRange(
-                    location: textLayoutManager.documentRange.location,
-                    end: viewportRange.location
-                )!
-            )
+            var existingCells: [Int: STGutterLineNumberCell] = [:]
+            for case let cell as STGutterLineNumberCell in gutterView.containerView.subviews {
+                existingCells[cell.lineNumber] = cell
+            }
+            var usedCells: Set<ObjectIdentifier> = []
 
             var requiredWidthFitText = gutterView.minimumThickness
-            let startLineIndex = textElementsBeforeViewport.count
+            let startLineIndex = paragraphCount(before: viewportRange.location)
             var linesCount = 0
 
             for (layoutFragment, fragmentView) in visibleFragmentViews {
@@ -174,32 +205,7 @@ extension STTextView {
                         fragmentViewFrame: fragmentView.frame
                     )
 
-                    // Prepare text attributes
-                    var effectiveLineTextAttributes = lineTextAttributes
-                    if gutterView.highlightSelectedLine, isLineSelected, !selectedLineTextAttributes.isEmpty {
-                        effectiveLineTextAttributes.merge(selectedLineTextAttributes, uniquingKeysWith: { (_, new) in new })
-                    }
-                    if let paragraphStyle = textLineFragment.attributedString.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle {
-                        effectiveLineTextAttributes[.paragraphStyle] = paragraphStyle
-                    }
-
-                    // Create and configure line number cell
-                    let numberCell = STGutterLineNumberCell(
-                        firstBaseline: locationForFirstCharacter.y + baselineYOffset,
-                        attributes: effectiveLineTextAttributes,
-                        number: lineNumber
-                    )
-                    numberCell.insets = gutterView.insets
-
-                    // Apply selection highlight if needed
-                    if gutterView.highlightSelectedLine, isLineSelected,
-                       textLayoutManager.textSelectionsRanges(.withoutInsertionPoints).isEmpty,
-                       !textLayoutManager.insertionPointSelections.isEmpty {
-                        numberCell.layer?.backgroundColor = gutterView.selectedLineHighlightColor.cgColor
-                    }
-
-                    // Position the cell
-                    numberCell.frame = CGRect(
+                    let cellFrameAligned = CGRect(
                         origin: CGPoint(
                             x: 0,
                             y: cellFrame.origin.y
@@ -210,9 +216,50 @@ extension STTextView {
                         )
                     ).pixelAligned
 
-                    gutterView.containerView.addSubview(numberCell)
+                    let highlightSelection = gutterView.highlightSelectedLine && isLineSelected
+                        && textLayoutManager.textSelectionsRanges(.withoutInsertionPoints).isEmpty
+                        && !textLayoutManager.insertionPointSelections.isEmpty
+
+                    var effectiveLineTextAttributes = lineTextAttributes
+                    if gutterView.highlightSelectedLine, isLineSelected, !selectedLineTextAttributes.isEmpty {
+                        effectiveLineTextAttributes.merge(selectedLineTextAttributes, uniquingKeysWith: { (_, new) in new })
+                    }
+                    if let paragraphStyle = textLineFragment.attributedString.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle {
+                        effectiveLineTextAttributes[.paragraphStyle] = paragraphStyle
+                    }
+
+                    let numberCell: STGutterLineNumberCell
+                    if let reused = existingCells[lineNumber] {
+                        numberCell = reused
+                        reused.frame = cellFrameAligned
+                        reused.applyAppearance(
+                            firstBaseline: locationForFirstCharacter.y + baselineYOffset,
+                            attributes: effectiveLineTextAttributes
+                        )
+                        reused.insets = gutterView.insets
+                    } else {
+                        numberCell = STGutterLineNumberCell(
+                            firstBaseline: locationForFirstCharacter.y + baselineYOffset,
+                            attributes: effectiveLineTextAttributes,
+                            number: lineNumber
+                        )
+                        numberCell.insets = gutterView.insets
+                        numberCell.frame = cellFrameAligned
+                        gutterView.containerView.addSubview(numberCell)
+                    }
+
+                    numberCell.layer?.backgroundColor = highlightSelection
+                        ? gutterView.selectedLineHighlightColor.cgColor
+                        : nil
+                    usedCells.insert(ObjectIdentifier(numberCell))
                     requiredWidthFitText = max(requiredWidthFitText, numberCell.intrinsicContentSize.width)
                     linesCount += 1
+                }
+            }
+
+            for case let cell as STGutterLineNumberCell in gutterView.containerView.subviews {
+                if !usedCells.contains(ObjectIdentifier(cell)) {
+                    cell.removeFromSuperviewWithoutNeedingDisplay()
                 }
             }
 

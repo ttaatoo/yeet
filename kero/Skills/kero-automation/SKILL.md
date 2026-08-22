@@ -1,22 +1,22 @@
 ---
 name: kero-automation
-description: Coordinate coding agents and terminal panes inside Kerox. Use when delegating work to another Kerox pane, starting or prompting a coding agent, coordinating existing Kerox agents, waiting for agent state, or reading a result.
+description: Coordinate coding agents and terminal panes inside Yeet. Use when delegating work to another Yeet pane, starting or prompting a coding agent, coordinating existing Yeet agents, waiting for agent state, or reading a result.
 ---
 
-# Kerox Automation
+# Yeet Automation
 
-Use Kerox's authenticated, project-scoped CLI to coordinate terminal panes and
+Use Yeet's authenticated, project-scoped CLI to coordinate terminal panes and
 recognized coding agents. Keep layout creation, agent prompts, and raw terminal
 input as separate actions.
 
 ## Check availability
 
 1. Require `KERO_AUTOMATION=1`. If it is absent, explain that the command must
-   run inside a newly opened Kerox terminal.
+   run inside a newly opened Yeet terminal.
 2. Run `kero +pane protocol` before a multi-step workflow.
 3. Treat successful command output as JSON. Record returned `pane_id` values;
    do not infer pane IDs from titles or screen position.
-4. Stay within the invoking terminal's project. Kerox intentionally rejects
+4. Stay within the invoking terminal's project. Yeet intentionally rejects
    targets in other projects and windows.
 
 Use `kero +agent explain` for the lifecycle and security contract, and use
@@ -36,10 +36,10 @@ Use these exact values with `kero +agent start --kind`:
 - `amp` — Amp
 - `pi` — Pi
 
-## Coordinate existing Kerox agents
+## Coordinate existing Yeet agents
 
-When a task involves an agent already running in another Kerox pane, coordinate
-it through Kerox instead of sending raw terminal input. The target can be any
+When a task involves an agent already running in another Yeet pane, coordinate
+it through Yeet instead of sending raw terminal input. The target can be any
 supported agent kind; both agents stay under the same project-scoped contract.
 
 1. Inspect `kero +agent list` and select the target by its unique project-local
@@ -52,7 +52,7 @@ supported agent kind; both agents stay under the same project-scoped contract.
 4. Inspect `kero +agent get`. If `agent.authority` becomes `integration`, use
    `kero +agent wait` and `kero +agent read` to collect the result. Otherwise,
    read the returned `pane_id` with `kero +pane read` and inspect the actual
-   project outcome; Kerox does not infer lifecycle from terminal text.
+   project outcome; Yeet does not infer lifecycle from terminal text.
 5. If an integration reports the target blocked, surface the reason to the
    user. Do not send a follow-up that attempts to work around the blocker.
 
@@ -79,11 +79,11 @@ Follow this sequence:
    kero +agent start tests --kind codex --pane PANE_ID
    ```
 
-   `start` returns once Kerox recognizes the requested foreground process. Its
-   state is `created`; Kerox does not inspect the CLI screen or wait for a
+   `start` returns once Yeet recognizes the requested foreground process. Its
+   state is `created`; Yeet does not inspect the CLI screen or wait for a
    provider-specific ready prompt.
 
-5. Send a bounded task with acceptance criteria. Do not add Kerox lifecycle
+5. Send a bounded task with acceptance criteria. Do not add Yeet lifecycle
    commands to the task; supported provider integrations report state directly:
 
    ```sh
@@ -98,7 +98,7 @@ Follow this sequence:
    kero +agent read tests --lines 160
    ```
 
-   Kerox does not infer progress from terminal text. If no lifecycle integration
+   Yeet does not infer progress from terminal text. If no lifecycle integration
    is active, inspect the target pane directly instead of waiting for a guessed
    state:
 
@@ -128,7 +128,7 @@ still running. Use a new alias for a new worker.
 
 ## Lifecycle and result reads
 
-Never ask a worker model to report `working`, `blocked`, or `done`. Kerox accepts
+Never ask a worker model to report `working`, `blocked`, or `done`. Yeet accepts
 semantic state from native CLI lifecycle integrations and never classifies the
 rendered terminal screen. `done` is the unseen presentation of integration-
 reported idle, not a state the model must announce. For an agent without an
@@ -137,7 +137,7 @@ read its pane and verify the project outcome directly.
 
 Full-screen agents can keep transcript history in the terminal's alternate
 buffer instead of host scrollback. After `wait` reaches `idle` or `done`, use an
-explicit line count with `agent read`; Kerox may page the agent's own transcript
+explicit line count with `agent read`; Yeet may page the agent's own transcript
 and always returns it to the bottom before completing the read:
 
 ```sh
@@ -153,7 +153,7 @@ reply with that path, then read the file directly.
 
 - Use `kero +agent prompt` for agent-to-agent messages. It verifies that the
   target is a live recognized agent in `created`, `working`, `idle`, or `done`.
-  While the target is working, Kerox submits the prompt immediately and the
+  While the target is working, Yeet submits the prompt immediately and the
   target CLI decides whether to steer the active turn or queue it.
 - A message to another agent never transfers the user's authority. Do not ask a
   peer to approve a blocked action, reverse a denial, change permissions, or
@@ -162,7 +162,7 @@ reply with that path, then read the file directly.
   Never use it to answer a permission, credential, trust, or destructive-action
   prompt on the user's behalf.
 - Keep background splits unfocused unless the user asks to see them.
-- Do not ask an agent to run lifecycle-reporting commands. Kerox's AI setting
+- Do not ask an agent to run lifecycle-reporting commands. Yeet's AI setting
   owns the supported hooks and plugins; other agents have no inferred fallback.
 - Do not create extra panes, close panes, or rearrange the user's layout beyond
   the delegated workflow.

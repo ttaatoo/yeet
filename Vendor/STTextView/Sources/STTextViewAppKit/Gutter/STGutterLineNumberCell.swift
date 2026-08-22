@@ -7,11 +7,11 @@ import STTextViewCommon
 final class STGutterLineNumberCell: NSView {
     /// Line number
     let lineNumber: Int
-    let firstBaseline: CGFloat
+    private(set) var firstBaseline: CGFloat
     /// Y position from cell top to the visual center of the line number text
-    let textVisualCenter: CGFloat
-    private let ctLine: CTLine
-    let textSize: CGSize
+    private(set) var textVisualCenter: CGFloat
+    private var ctLine: CTLine
+    private(set) var textSize: CGSize
     var insets = STRulerInsets()
 
     override func animation(forKey key: NSAnimatablePropertyKey) -> Any? {
@@ -28,26 +28,11 @@ final class STGutterLineNumberCell: NSView {
 
     init(firstBaseline: CGFloat, attributes: [NSAttributedString.Key: Any], number: Int) {
         self.lineNumber = number
-        self.firstBaseline = firstBaseline
-
-        let attributedString = NSAttributedString(string: "\(number)", attributes: attributes)
-        self.ctLine = CTLineCreateWithAttributedString(attributedString)
-
-        // Get actual typographic metrics to calculate visual center
-        var ascent: CGFloat = 0
-        var descent: CGFloat = 0
-        let typographicsBoundsWidth = CTLineGetTypographicBounds(ctLine, &ascent, &descent, nil)
-
-        // Calculate visual center: baseline + (descent - ascent) / 2
-        // This gives us the Y position from cell top to the visual middle of the text
-        self.textVisualCenter = firstBaseline + (descent - ascent) / 2
-
-        if let paragraphStyle = attributes[.paragraphStyle] as? NSParagraphStyle {
-            let lineHeight = floor(ctLine.height() * paragraphStyle.stLineHeightMultiple)
-            self.textSize = CGSize(width: ceil(typographicsBoundsWidth), height: lineHeight)
-        } else {
-            self.textSize = CGSize(width: ceil(typographicsBoundsWidth), height: ctLine.height())
-        }
+        let metrics = Self.metrics(number: number, firstBaseline: firstBaseline, attributes: attributes)
+        self.firstBaseline = metrics.firstBaseline
+        self.ctLine = metrics.ctLine
+        self.textVisualCenter = metrics.textVisualCenter
+        self.textSize = metrics.textSize
 
         super.init(frame: CGRect(origin: .zero, size: textSize))
         wantsLayer = true
@@ -58,6 +43,59 @@ final class STGutterLineNumberCell: NSView {
             layer?.borderColor = NSColor.systemOrange.cgColor
             layer?.borderWidth = 0.5
         }
+    }
+
+    /// kero patch: reuse keeps the cell for a line number; refresh baked-in
+    /// baseline / font / selected-line text so a font change or caret move
+    /// does not leave stale digits until the line scrolls off.
+    func applyAppearance(firstBaseline: CGFloat, attributes: [NSAttributedString.Key: Any]) {
+        let metrics = Self.metrics(number: lineNumber, firstBaseline: firstBaseline, attributes: attributes)
+        self.firstBaseline = metrics.firstBaseline
+        self.ctLine = metrics.ctLine
+        self.textVisualCenter = metrics.textVisualCenter
+        self.textSize = metrics.textSize
+        invalidateIntrinsicContentSize()
+        needsDisplay = true
+    }
+
+    private struct Metrics {
+        let firstBaseline: CGFloat
+        let ctLine: CTLine
+        let textVisualCenter: CGFloat
+        let textSize: CGSize
+    }
+
+    private static func metrics(
+        number: Int,
+        firstBaseline: CGFloat,
+        attributes: [NSAttributedString.Key: Any]
+    ) -> Metrics {
+        let attributedString = NSAttributedString(string: "\(number)", attributes: attributes)
+        let ctLine = CTLineCreateWithAttributedString(attributedString)
+
+        // Get actual typographic metrics to calculate visual center
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        let typographicsBoundsWidth = CTLineGetTypographicBounds(ctLine, &ascent, &descent, nil)
+
+        // Calculate visual center: baseline + (descent - ascent) / 2
+        // This gives us the Y position from cell top to the visual middle of the text
+        let textVisualCenter = firstBaseline + (descent - ascent) / 2
+
+        let textSize: CGSize
+        if let paragraphStyle = attributes[.paragraphStyle] as? NSParagraphStyle {
+            let lineHeight = floor(ctLine.height() * paragraphStyle.stLineHeightMultiple)
+            textSize = CGSize(width: ceil(typographicsBoundsWidth), height: lineHeight)
+        } else {
+            textSize = CGSize(width: ceil(typographicsBoundsWidth), height: ctLine.height())
+        }
+
+        return Metrics(
+            firstBaseline: firstBaseline,
+            ctLine: ctLine,
+            textVisualCenter: textVisualCenter,
+            textSize: textSize
+        )
     }
 
     override var isFlipped: Bool {

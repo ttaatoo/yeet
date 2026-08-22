@@ -122,7 +122,7 @@ enum KeroAgentIntegrations {
             if itemType(at: destination) != nil,
                !isManaged(destination, kind: kind, sourceURL: source.url) {
                 throw IntegrationError.message(
-                    "The \(kind.rawValue) integration at \(destination.path) is not managed by Kerox."
+                    "The \(kind.rawValue) integration at \(destination.path) is not managed by Yeet."
                 )
             }
         }
@@ -152,7 +152,7 @@ enum KeroAgentIntegrations {
             if itemType(at: destination) != nil,
                !isManaged(destination, kind: kind, sourceURL: source.url) {
                 throw IntegrationError.message(
-                    "The \(kind.rawValue) integration at \(destination.path) changed while Kerox was enabling AI."
+                    "The \(kind.rawValue) integration at \(destination.path) changed while Yeet was enabling AI."
                 )
             }
             try replaceWithLink(at: destination, sourceURL: source.url)
@@ -211,7 +211,7 @@ enum KeroAgentIntegrations {
             return Source(url: url.standardizedFileURL)
         }
         throw IntegrationError.message(
-            "Kerox's bundled \(kind.rawValue) lifecycle integration is missing."
+            "Yeet's bundled \(kind.rawValue) lifecycle integration is missing."
         )
     }
 

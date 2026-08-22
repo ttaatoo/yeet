@@ -3,7 +3,7 @@ import changelogSource from '../../../CHANGELOG.md?raw'
 import { SiteLayout } from '@/components/site-layout'
 
 const CONTRIBUTORS_URL =
-  'https://api.github.com/repos/ttaatoo/kero/contributors?per_page=1&anon=1'
+  'https://api.github.com/repos/ttaatoo/yeet/contributors?per_page=1&anon=1'
 const FALLBACK_CONTRIBUTOR_COUNT = 2
 
 async function getContributorCount() {
@@ -47,10 +47,10 @@ export const Route = createFileRoute('/changelog')({
   loader: getContributorCount,
   head: () => ({
     meta: [
-      { title: 'Changelog — Kerox' },
+      { title: 'Changelog — Yeet' },
       {
         name: 'description',
-        content: 'The latest improvements, fixes, and new features in Kerox.',
+        content: 'The latest improvements, fixes, and new features in Yeet.',
       },
     ],
   }),
@@ -124,7 +124,7 @@ function Changelog() {
       </section>
 
       <section
-        aria-label={`The last ${RELEASES.length} Kerox releases`}
+        aria-label={`The last ${RELEASES.length} Yeet releases`}
         className="relative ml-2 pl-7 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-[linear-gradient(to_bottom,var(--border)_0%,var(--border)_92%,transparent_100%)] sm:ml-3 sm:pl-10"
       >
         {RELEASES.map((release, index) => {

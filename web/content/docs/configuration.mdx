@@ -3,11 +3,14 @@ title: Configuration
 description: Every persistent Kero option, what it does, and where it is stored.
 ---
 
-Most persistent Kero settings live in one file:
+Most persistent Yeet settings live in one file:
 
 ```
-~/.config/kero/config.toml
+~/.config/yeet/config.toml
 ```
+
+Debug builds use `~/.config/yeet-dev/config.toml`. If the Yeet directory is
+missing, leftover `~/.config/kerox` (then older `~/.config/kero`) is copied in.
 
 The Settings window (<kbd>Cmd</kbd>+<kbd>,</kbd>) writes this same file. A few
 macOS-owned settings—language and automatic updates—live elsewhere and are
@@ -178,7 +181,7 @@ The human workflow is described in
 
 ## A complete example
 
-```toml title="~/.config/kero/config.toml"
+```toml title="~/.config/yeet/config.toml"
 theme = "dark"
 theme-dark = "Catppuccin Mocha"
 theme-light = "Catppuccin Latte"
@@ -203,7 +206,7 @@ Every key is optional. Delete a key to return that setting to its default.
 - **Language.** Settings offers System Default, English, Simplified Chinese,
   and Japanese. The choice uses macOS's per-app language preference and needs a
   relaunch, so it lives in Kero's preferences rather than TOML.
-- **Automatic update checks.** Packaged Kerox has no Sparkle feed, so Settings
+- **Automatic update checks.** Packaged Yeet has no Sparkle feed, so Settings
   does not show update controls. Use Homebrew or a GitHub Release zip.
 - **Window and layout state.** Window size, sidebar widths, selected panels,
   projects, tabs, panes, browser URLs, and diff control preferences live in

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Build the dev (Debug) app icon set from a recolored master image.
 
+Do not run this for Yeet. It uses macOS `sips` and transplants the old Kero
+frog icon's rounded-rect alpha, which would nest a squircle inside macOS's
+mask. Yeet App Icons are full-bleed charcoal, resized with Pillow LANCZOS.
+
+
 The orange recolor itself is produced with the `gpt-image` CLI (see the command
 in RELEASING-style docstring below). gpt-image can't emit transparency, so its
 output is a fully-opaque square. This script transplants the *original* icon's

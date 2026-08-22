@@ -10,7 +10,7 @@ struct keroApp: App {
     private var applicationDelegate
 
     // Held here so Sparkle can start at launch when a feed is configured.
-    // Packaged Kerox builds leave the feed empty and do not start it.
+    // Packaged Yeet builds leave the feed empty and do not start it.
     @StateObject private var updater = Updater.shared
 
     init() {
@@ -20,7 +20,7 @@ struct keroApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Kerox", id: "main") {
+        WindowGroup("Yeet", id: "main") {
             WindowRootView()
         }
         .windowStyle(.hiddenTitleBar)

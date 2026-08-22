@@ -380,6 +380,11 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
     /// Gutter view
     public var gutterView: STGutterView?
 
+    /// Last viewport-start location whose preceding paragraph count was
+    /// measured. Scrolling reuses this so gutter numbering does not walk
+    /// every text element from the document head on each frame.
+    var gutterParagraphsBeforeViewport: (location: NSTextLocation, count: Int)?
+
     /// The highlight color of the selected line.
     ///
     /// Note: Needs ``highlightSelectedLine`` to be set to `true`
@@ -1008,13 +1013,16 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
 
         var rect = rect
 
-        // Add a modest upward overdraw band so small viewport shifts can stay
-        // within the already prepared content during scrolling/live resize.
-        let verticalPrepExpansion = rect.height * 0.5
-        if verticalPrepExpansion > 0 {
-            let upwardShift = min(verticalPrepExpansion, max(0, rect.minY))
-            rect.origin.y -= upwardShift
-            rect.size.height += upwardShift
+        // kero patch: grow half a viewport both up and down. Upstream only
+        // grew upward, so scrolling down left the prepared band immediately.
+        // Skip expansion on the first prepare so opening a file does not lay
+        // out 1.5 viewports during the highlight storm.
+        let band = rect.height * 0.5
+        let firstPrepare = oldPreparedContentRect.isNull || oldPreparedContentRect.isEmpty || oldPreparedContentRect.isInfinite
+        if band > 0, !firstPrepare {
+            let up = min(band, max(0, rect.minY))
+            rect.origin.y -= up
+            rect.size.height += up + band
         }
 
         // Expand content to the full width.
@@ -1210,6 +1218,18 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
                 )
             }
         } else if let viewportRange = textLayoutManager.textViewportLayoutController.viewportRange {
+            // kero patch: the caret line is not in this viewport — skip the
+            // fragment walk. Range-highlight already cleared leftover views
+            // when the selection is caret-only.
+            let caretInViewport = textLayoutManager.insertionPointSelections.contains { selection in
+                selection.textRanges.contains { range in
+                    viewportRange.intersects(range) || viewportRange.contains(range.location)
+                }
+            }
+            if !caretInViewport {
+                return
+            }
+
             // build the rectangle out of fragments rectangles
             var combinedFragmentsRect: CGRect?
 
@@ -1274,11 +1294,22 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
             return
         }
 
+        let selectedRanges = textLayoutManager.textSelections.flatMap(\.textRanges)
+        // kero patch: a caret-only selection used to enumerate text segments
+        // and restart the insertion-point timer on every viewport layout.
+        let ranged = selectedRanges.filter { !$0.isEmpty }
+        if ranged.isEmpty {
+            if !selectionView.subviews.isEmpty {
+                selectionView.subviews = []
+            }
+            return
+        }
+
         if !selectionView.subviews.isEmpty {
             selectionView.subviews = []
         }
 
-        for textRange in textLayoutManager.textSelections.flatMap(\.textRanges).sorted(by: { $0.location < $1.location }).compactMap({ $0.clamped(to: viewportRange) }) {
+        for textRange in ranged.sorted(by: { $0.location < $1.location }).compactMap({ $0.clamped(to: viewportRange) }) {
             // NOTE: enumerateTextSegments is very slow https://github.com/krzyzanowskim/STTextView/discussions/25#discussioncomment-6464398
             //       Clamp enumerated range to viewport range
             textLayoutManager.enumerateTextSegments(in: textRange, type: .selection) { (_, textSegmentFrame, _, _) in
@@ -1496,59 +1527,29 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
     }
 
     func layoutViewport() {
-        // Convergence loop - max 5 iterations
-        // If layout triggers changes that require re-layout, needsRelayout is set
-        var iterations = 5
-        while iterations > 0 {
-            needsRelayout = false
-            textLayoutManager.textViewportLayoutController.layoutViewport()
-            if !needsRelayout { break }
-            iterations -= 1
-        }
-
-        #if DEBUG
-            if iterations == 0 {
-                logger.warning("layoutViewport() failed to converge after 5 iterations")
-            }
-        #endif
+        // kero patch: a 5-pass convergence loop re-laid the viewport on scroll
+        // whenever didLayout set needsRelayout (content-size / relocate). One
+        // pass is enough for clip-origin scrolling.
+        needsRelayout = false
+        textLayoutManager.textViewportLayoutController.layoutViewport()
     }
 
     func updateContentSizeIfNeeded() {
         let gutterWidth = gutterView?.frame.width ?? 0
         let scrollerInset = scrollView?.contentView.contentInsets.right ?? 0
+        let usage = textLayoutManager.usageBoundsForTextContainer.size
 
-        var estimatedSize = CGSize.zero
-        let documentEndLocation = textLayoutManager.documentRange.endLocation
-
-        textLayoutManager.enumerateTextLayoutFragments(
-            from: documentEndLocation,
-            options: [.reverse, .ensuresLayout, .ensuresExtraLineFragment]
-        ) { layoutFragment in
-            estimatedSize.width = max(estimatedSize.width, layoutFragment.layoutFragmentFrame.size.width)
-            return false
-        }
-        // kero patch: the final fragment is not necessarily the widest one.
-        // Preserve the widest laid-out line so NSScrollView has a horizontal
-        // range whenever no-wrap content extends beyond the viewport.
-        estimatedSize.width = max(
-            estimatedSize.width,
-            textLayoutManager.usageBoundsForTextContainer.width
-        )
+        // kero patch: size from usage bounds already tracked by TextKit.
+        // Walking fragments from the document end with ensuresLayout on every
+        // viewport pass was the scroll-frame cost. Grow the frame when usage
+        // grows; skip the walk when the current size already covers it.
+        var estimatedSize = usage
         if isHorizontallyResizable {
             // usageBounds stops one leading line-fragment padding short of
             // the glyphs' trailing typographic edge. Add that missing padding
             // plus a readable gap after the final glyph.
             estimatedSize.width += textContainer.lineFragmentPadding + 16
-        }
-
-        let segmentRange = NSTextRange(location: documentEndLocation)
-        textLayoutManager.ensureLayout(for: segmentRange)
-        textLayoutManager.enumerateTextSegments(in: segmentRange, type: .standard, options: .middleFragmentsExcluded) { _, rect, _, _ in
-            estimatedSize.height = max(estimatedSize.height, rect.origin.y + rect.size.height)
-            return true
-        }
-
-        if !isHorizontallyResizable {
+        } else {
             estimatedSize.width = effectiveVisibleRect.width - gutterWidth - scrollerInset
         }
 
@@ -1700,6 +1701,7 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
                 with: [NSTextParagraph(attributedString: replacementString)]
             )
         }
+        gutterParagraphsBeforeViewport = nil
 
         delegateProxy.textView(self, didChangeTextIn: textRange, replacementString: replacementString.string)
         didChangeText(in: textRange)

@@ -9,8 +9,8 @@ import Carbon
 /// Manages a process-wide summon/hide shortcut via Carbon Event Manager.
 ///
 /// `RegisterEventHotKey` works without Accessibility permission. The combo is
-/// a system resource, not per-bundle: Debug `sh.kerox.dev` and Release
-/// `sh.kerox` cannot both own the same keys, so callers must surface a failed
+/// a system resource, not per-bundle: Debug `sh.yeet.dev` and Release
+/// `sh.yeet` cannot both own the same keys, so callers must surface a failed
 /// register instead of treating the Settings row as bound.
 @MainActor
 final class GlobalHotKeyManager {

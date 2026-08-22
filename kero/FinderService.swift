@@ -23,7 +23,7 @@ final class KeroApplicationDelegate: NSObject, NSApplicationDelegate {
         NSApp.servicesProvider = self
     }
 
-    /// Toggles Kerox: hide when a main workspace window is already key;
+    /// Toggles Yeet: hide when a main workspace window is already key;
     /// otherwise unhide, activate, and reveal a main window.
     ///
     /// Uses `TerminalManager.revealMainWindow()` rather than the private
@@ -51,7 +51,7 @@ final class KeroApplicationDelegate: NSObject, NSApplicationDelegate {
     ) {
         let directories = Self.directories(from: pasteboard)
         guard !directories.isEmpty else {
-            error.pointee = String(localized: "Select one or more folders to open in Kerox.") as NSString
+            error.pointee = String(localized: "Select one or more folders to open in Yeet.") as NSString
             return
         }
 

@@ -18,7 +18,7 @@ final class GlobalHotKeySettingsView: NSView {
     )
     private let descriptionLabel = NSTextField(
         wrappingLabelWithString: String(
-            localized: "Summons or hides Kerox from any app. Click to record a new shortcut. Default ⌥Space is also Raycast's default.",
+            localized: "Summons or hides Yeet from any app. Click to record a new shortcut. Default ⌥Space is also Raycast's default.",
             comment: "Explanation of what the global hotkey does."
         )
     )

@@ -89,27 +89,62 @@ enum ToolbarVisibility: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// User-configurable settings, persisted to `$HOME/.config/kerox/config.toml`.
+/// Copies leftover Kerox (then older Kero) directories into Yeet paths when
+/// the Yeet directory does not exist yet. Used for `~/.config/yeet` and
+/// Application Support history so a rebrand does not drop existing settings.
+enum LegacyIdentityStore {
+    static func adoptIfMissing(destination: URL, leftovers: [URL]) {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: destination.path) { return }
+        for leftover in leftovers where fm.fileExists(atPath: leftover.path) {
+            do {
+                try fm.createDirectory(
+                    at: destination.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try fm.copyItem(at: leftover, to: destination)
+                return
+            } catch {
+                NSLog("kero: failed to copy leftover \(leftover.path) → \(destination.path): \(error)")
+            }
+        }
+    }
+}
+
+/// User-configurable settings, persisted to `$HOME/.config/yeet/config.toml`.
 /// Views observe this directly; `TerminalManager` re-themes live sessions on
 /// any change.
 @MainActor
 final class AppSettings: nonisolated ObservableObject {
     static let shared = AppSettings()
 
-    /// Development (Debug) builds store their config under `~/.config/kerox-dev`
-    /// instead of `~/.config/kerox`, so running a dev build alongside an
+    /// Development (Debug) builds store their config under `~/.config/yeet-dev`
+    /// instead of `~/.config/yeet`, so running a dev build alongside an
     /// installed production build doesn't clobber its settings. This mirrors
-    /// the separate `sh.kerox.dev` bundle identifier that keeps the two apps'
+    /// the separate `sh.yeet.dev` bundle identifier that keeps the two apps'
     /// `UserDefaults` (session snapshot, sidebar widths, Sparkle) apart —
-    /// and keeps this fork off official Kero's `sh.kero` / `~/.config/kero`.
+    /// and keeps this app off official Kero's `sh.kero` / `~/.config/kero`.
+    ///
+    /// If the Yeet directory is missing, leftover `~/.config/kerox`
+    /// (then older `~/.config/kero`) is copied in. Debug uses `yeet-dev`
+    /// with leftover `kerox-dev`, then `kero-dev`.
     static let configURL: URL = {
         #if DEBUG
-        let directory = "kerox-dev"
+        let directory = "yeet-dev"
+        let leftovers = ["kerox-dev", "kero-dev"]
         #else
-        let directory = "kerox"
+        let directory = "yeet"
+        let leftovers = ["kerox", "kero"]
         #endif
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/\(directory)/config.toml")
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let destDir = home.appendingPathComponent(".config/\(directory)", isDirectory: true)
+        LegacyIdentityStore.adoptIfMissing(
+            destination: destDir,
+            leftovers: leftovers.map {
+                home.appendingPathComponent(".config/\($0)", isDirectory: true)
+            }
+        )
+        return destDir.appendingPathComponent("config.toml")
     }()
 
     static let defaultFontSize: Double = 13
@@ -243,7 +278,7 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
-    /// Global hotkey that summons or hides Kerox from any app.
+    /// Global hotkey that summons or hides Yeet from any app.
     /// `nil` means none is registered. Default is Option+Space.
     @Published var globalHotkey: KeyCombo? {
         didSet {

@@ -18,7 +18,7 @@
 /* Begin PBXFileReference section */
 		AA50000000000000000000A0 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		AA50000000000000000000A1 /* Local.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.example.xcconfig; sourceTree = "<group>"; };
-		FF3FDD73300B6A7400112486 /* Kerox Debug.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kerox Debug.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		FF3FDD73300B6A7400112486 /* Yeet Debug.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Yeet Debug.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -78,7 +78,7 @@
 		FF3FDD74300B6A7400112486 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				FF3FDD73300B6A7400112486 /* Kerox Debug.app */,
+				FF3FDD73300B6A7400112486 /* Yeet Debug.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -110,7 +110,7 @@
 				AA60000000000000000000A1 /* FuzzyMatch */,
 			);
 			productName = kero;
-			productReference = FF3FDD73300B6A7400112486 /* Kerox Debug.app */;
+			productReference = FF3FDD73300B6A7400112486 /* Yeet Debug.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -335,7 +335,7 @@
 					"$(SRCROOT)/Vendor/alacritty-bridge/include",
 				);
 				INFOPLIST_FILE = kero/Info.plist;
-				KERO_DISPLAY_NAME = "Kerox Debug";
+				KERO_DISPLAY_NAME = "Yeet Debug";
 				KERO_SU_FEED_URL = "";
 				KERO_SU_PUBLIC_ED_KEY = "gv9GLMPjH5yMQkZMFXnoNfHOyL8/7KGzl/jzAqlzZZY=";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -352,7 +352,7 @@
 					"$(inherited)",
 					"-lkero_alacritty",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = sh.kerox.dev;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.yeet.dev;
 				PRODUCT_NAME = kero;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -384,7 +384,7 @@
 					"$(SRCROOT)/Vendor/alacritty-bridge/include",
 				);
 				INFOPLIST_FILE = kero/Info.plist;
-				KERO_DISPLAY_NAME = Kerox;
+				KERO_DISPLAY_NAME = Yeet;
 				KERO_SU_FEED_URL = "";
 				KERO_SU_PUBLIC_ED_KEY = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -401,7 +401,7 @@
 					"$(inherited)",
 					"-lkero_alacritty",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = sh.kerox;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.yeet;
 				PRODUCT_NAME = kero;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

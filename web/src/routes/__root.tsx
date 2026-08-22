@@ -14,13 +14,14 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Kerox — A native terminal workspace for macOS" },
+      { title: "Yeet — A native terminal workspace for macOS" },
       {
         name: "description",
         content:
-          "Kerox is a fast, keyboard-first terminal workspace for macOS. Projects, sessions, a command palette, and inline git diffs — all in one native window.",
+          "Yeet is a fast, keyboard-first terminal workspace for macOS. Projects, sessions, a command palette, and inline git diffs — all in one native window.",
       },
       { name: "theme-color", content: "#0d1117" },
+      { property: "og:image", content: "/yeet-icon.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
