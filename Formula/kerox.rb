@@ -6,7 +6,7 @@ class Kerox < Formula
   # Source-build fallback. The supported install is the cask
   # (`brew install --cask ttaatoo/kero/kerox`), which downloads Kerox.zip
   # from GitHub Releases. This formula compiles Kerox.app on the Mac.
-  url "https://github.com/ttaatoo/kero/archive/refs/tags/v0.1.48.tar.gz"
+  url "https://github.com/ttaatoo/kero/archive/refs/tags/v0.1.49.tar.gz"
   sha256 :no_check
   license "GPL-3.0-only"
   head "https://github.com/ttaatoo/kero.git", branch: "main"

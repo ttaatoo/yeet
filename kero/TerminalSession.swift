@@ -375,7 +375,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         // vendored Ghostty.
         let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let programVersion = (version?.isEmpty == false) ? version! : "0.1.48"
+        let programVersion = (version?.isEmpty == false) ? version! : "0.1.49"
         commands.append("export KERO_TERM=\(shellQuote("alacritty"))")
         commands.append("export TERM_PROGRAM=\(shellQuote("Kerox"))")
         commands.append("export TERM_PROGRAM_VERSION=\(shellQuote(programVersion))")
