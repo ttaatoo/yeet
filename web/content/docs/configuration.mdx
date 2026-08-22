@@ -100,8 +100,26 @@ Kero writes even when it has the default value.
 
 number, 9–18 — default `14`
 
-The base text size for both sidebars. Section headings, rows, metadata, and
-controls keep their relative hierarchy as the base changes.
+The base text size for the project sidebar and the Git/Info inspector. Section
+headings, rows, metadata, and controls keep their relative hierarchy as the
+base changes. File names in the Files tree use
+[`files.font-size`](#filesfont-size).
+
+### `files.font-family`
+
+string — default `""`, meaning the system UI font
+
+The family for file names in the Files inspector. Empty keeps the macOS UI
+font. Settings lists the same families as the terminal Font section, including
+bundled JetBrains Mono.
+
+### `files.font-size`
+
+number, 9–22 — default `11.5`
+
+The file-name size in the Files inspector, in points. Badges, disclosure
+chevrons, and metadata stay smaller than the name as this changes. The default
+matches the previous look at the default sidebar scale.
 
 ### `terminal.font-thicken`
 
@@ -166,6 +184,8 @@ theme-light = "Catppuccin Latte"
 font-family = "IBM Plex Mono"
 font-size = 14
 sidebar.font-size = 13
+files.font-family = "JetBrains Mono"
+files.font-size = 13
 toolbar.visibility = "auto"
 layout.swap-sidebars = true
 terminal.font-thicken = true

@@ -75,6 +75,23 @@ struct RightSidebarView: View {
                             onRename: { manager.fileRenamed(from: $0, to: $1) },
                             refreshGitStatus: { git.refresh() }
                         )
+                        // Files typography is independent of the shared
+                        // sidebar size so Git/Info and the tab bar stay put.
+                        .environment(
+                            \.sidebarFontScale,
+                            CGFloat(
+                                settings.filesFontSize
+                                    / AppSettings.defaultFilesFontSize
+                            )
+                        )
+                        .environment(\.sidebarFontFamily, settings.filesFontFamily)
+                        .environment(
+                            \.font,
+                            SidebarTypography.font(
+                                family: settings.filesFontFamily,
+                                size: CGFloat(settings.filesFontSize)
+                            )
+                        )
                     case .git:
                         GitPanel(
                             model: git,
@@ -345,7 +362,7 @@ private struct FileTreePanel: View {
                 PanelHeader(title: model.rootName, subtitle: model.rootPath)
                 if let rootBadge {
                     Text(verbatim: rootBadge.text)
-                        .font(.system(size: 9, weight: .medium))
+                        .sidebarFont(size: 9, weight: .medium)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
@@ -402,6 +419,7 @@ private struct FileTreeRow: View {
     @State private var isHovering = false
     @State private var editingName = ""
     @FocusState private var fieldFocused: Bool
+    @Environment(\.sidebarFontScale) private var sidebarFontScale
 
     private var isRenaming: Bool { model.renamingPath == item.path }
 
@@ -515,7 +533,7 @@ private struct FileTreeRow: View {
             HStack(spacing: 5) {
                 leadingGlyphs
                 Text(item.name)
-                    .sidebarFont(size: 11.5)
+                    .sidebarFont(size: SidebarTypography.designedFileNameSize)
                     .foregroundStyle(fileNameColor)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -596,7 +614,7 @@ private struct FileTreeRow: View {
     private func nameField(_ placeholder: String) -> some View {
         TextField(placeholder, text: $editingName)
             .textFieldStyle(.plain)
-            .sidebarFont(size: 11.5)
+            .sidebarFont(size: SidebarTypography.designedFileNameSize)
             .foregroundStyle(.primary)
             .focused($fieldFocused)
             .padding(.horizontal, 4)
@@ -625,18 +643,18 @@ private struct FileTreeRow: View {
                     .sidebarFont(size: 8, weight: .semibold)
                     .foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(model.isExpanded(item) ? 90 : 0))
-                    .frame(width: 10)
+                    .frame(width: 10 * sidebarFontScale)
             } else {
-                Spacer().frame(width: 10)
+                Spacer().frame(width: 10 * sidebarFontScale)
             }
             if item.isDirectory {
                 Image(systemName: "folder.fill")
                     .sidebarFont(size: 10)
                     .foregroundStyle(Color(nsColor: Theme.accent).opacity(0.8))
-                    .frame(width: 14)
+                    .frame(width: 14 * sidebarFontScale)
             } else {
-                MaterialFileIconView(path: item.path, size: 14)
-                    .frame(width: 14)
+                MaterialFileIconView(path: item.path, size: 14 * sidebarFontScale)
+                    .frame(width: 14 * sidebarFontScale)
             }
         }
     }

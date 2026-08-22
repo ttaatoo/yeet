@@ -116,6 +116,10 @@ final class AppSettings: nonisolated ObservableObject {
     static let fontSizeRange: ClosedRange<Double> = 8...32
     static let defaultSidebarFontSize: Double = 14
     static let sidebarFontSizeRange: ClosedRange<Double> = 9...18
+    /// Designed file-name size in the Files tree. The default matches today's
+    /// look at the default sidebar scale (11.5pt).
+    static let defaultFilesFontSize = Double(SidebarTypography.designedFileNameSize)
+    static let filesFontSizeRange: ClosedRange<Double> = 9...22
     static let defaultToolbarVisibility: ToolbarVisibility = .hide
 
     /// The language this process launched with, kept separate from the pending
@@ -165,9 +169,21 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
-    /// Base text size for both sidebars. Each panel preserves its relative
-    /// hierarchy for section labels, content, metadata, and controls.
+    /// Base text size for the project list and the Git/Info inspector.
+    /// Each of those panels keeps its relative hierarchy. The Files tree
+    /// uses `filesFontSize` instead.
     @Published var sidebarFontSize: Double {
+        didSet { save() }
+    }
+
+    /// Files inspector family; empty string means the system UI font.
+    @Published var filesFontFamily: String {
+        didSet { save() }
+    }
+
+    /// File-name size in the Files inspector, in points. Badges, chevrons,
+    /// and metadata keep their designed sizes relative to this.
+    @Published var filesFontSize: Double {
         didSet { save() }
     }
 
@@ -266,6 +282,11 @@ final class AppSettings: nonisolated ObservableObject {
         sidebarFontSize = Self.sidebarFontSizeRange.contains(sidebarSize)
             ? sidebarSize
             : Self.defaultSidebarFontSize
+        filesFontFamily = toml["files.font-family"]?.string ?? ""
+        let filesSize = toml["files.font-size"]?.double ?? Self.defaultFilesFontSize
+        filesFontSize = Self.filesFontSizeRange.contains(filesSize)
+            ? filesSize
+            : Self.defaultFilesFontSize
         toolbarVisibility = ToolbarVisibility(
             rawValue: toml["toolbar.visibility"]?.string ?? ""
         ) ?? Self.defaultToolbarVisibility
@@ -318,6 +339,8 @@ final class AppSettings: nonisolated ObservableObject {
         fontFamily = ""
         fontSize = Self.defaultFontSize
         sidebarFontSize = Self.defaultSidebarFontSize
+        filesFontFamily = ""
+        filesFontSize = Self.defaultFilesFontSize
         fontThicken = false
     }
 
@@ -400,6 +423,12 @@ final class AppSettings: nonisolated ObservableObject {
         lines.append("font-size = \(TOML.number(fontSize))")
         if sidebarFontSize != Self.defaultSidebarFontSize {
             lines.append("sidebar.font-size = \(TOML.number(sidebarFontSize))")
+        }
+        if !filesFontFamily.isEmpty {
+            lines.append("files.font-family = \(TOML.quote(filesFontFamily))")
+        }
+        if filesFontSize != Self.defaultFilesFontSize {
+            lines.append("files.font-size = \(TOML.number(filesFontSize))")
         }
         if toolbarVisibility != Self.defaultToolbarVisibility {
             lines.append("toolbar.visibility = \(TOML.quote(toolbarVisibility.rawValue))")

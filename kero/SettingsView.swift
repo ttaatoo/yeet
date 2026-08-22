@@ -130,11 +130,44 @@ struct SettingsView: View {
                     )
                     .labelsHidden()
                 }
-            }
 
-            Section("Sidebar") {
+                // Empty family is the system UI font — not the bundled
+                // terminal default, which is a separate tagged option.
+                Picker("Files panel", selection: $settings.filesFontFamily) {
+                    Text("System Font").tag("")
+                    Divider()
+                    Text("\(TerminalFont.bundledFamily) (Bundled)")
+                        .tag(TerminalFont.bundledFamily)
+                    ForEach(families.dropFirst(), id: \.self) { family in
+                        Text(family).tag(family)
+                    }
+                }
+                .accessibilityLabel("Files family")
+
                 HStack {
-                    Text("Font size")
+                    Text("Files size")
+                    Slider(
+                        value: $settings.filesFontSize,
+                        in: AppSettings.filesFontSizeRange,
+                        step: 0.5
+                    )
+                    .accessibilityLabel("Files font size")
+                    Text(pointsLabel(settings.filesFontSize))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 52, alignment: .trailing)
+                    Stepper(
+                        "",
+                        value: $settings.filesFontSize,
+                        in: AppSettings.filesFontSizeRange,
+                        step: 0.5
+                    )
+                    .labelsHidden()
+                    .accessibilityLabel("Files font size")
+                }
+
+                HStack {
+                    Text("Sidebar size")
                     Slider(
                         value: $settings.sidebarFontSize,
                         in: AppSettings.sidebarFontSizeRange,
@@ -251,6 +284,8 @@ struct SettingsView: View {
                     .disabled(settings.fontFamily.isEmpty
                         && settings.fontSize == AppSettings.defaultFontSize
                         && settings.sidebarFontSize == AppSettings.defaultSidebarFontSize
+                        && settings.filesFontFamily.isEmpty
+                        && settings.filesFontSize == AppSettings.defaultFilesFontSize
                         && !settings.fontThicken
                         && settings.cursorShape == .block
                         && settings.cursorBlinking
@@ -282,6 +317,15 @@ struct SettingsView: View {
 
     private var previewFont: NSFont {
         TerminalFont.resolve(family: settings.fontFamily, size: CGFloat(settings.fontSize))
+    }
+
+    /// Whole-point sizes match the terminal/sidebar labels (`13 pt`);
+    /// the Files default is 11.5, so keep one decimal when needed.
+    private func pointsLabel(_ size: Double) -> String {
+        if size == size.rounded() {
+            return "\(Int(size)) pt"
+        }
+        return String(format: "%.1f pt", size)
     }
 
     private func relaunch() {

@@ -2731,6 +2731,74 @@
         }
       }
     },
+    "Files family" : {
+      "comment" : "Accessibility label for the Files inspector font family picker.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルのフォント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件字体"
+          }
+        }
+      }
+    },
+    "Files font size" : {
+      "comment" : "Accessibility label for the Files inspector font size slider.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルパネルのフォントサイズ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件面板字体大小"
+          }
+        }
+      }
+    },
+    "Files panel" : {
+      "comment" : "Settings font picker label for the Files inspector tree.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルパネル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件面板"
+          }
+        }
+      }
+    },
+    "Files size" : {
+      "comment" : "Settings label for the Files inspector font size.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルのフォントサイズ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件字号"
+          }
+        }
+      }
+    },
     "Filter branches" : {
       "localizations" : {
         "ja" : {
@@ -6163,6 +6231,23 @@
         }
       }
     },
+    "Sidebar size" : {
+      "comment" : "Settings label for the project sidebar and Git/Info font size.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サイドバーのフォントサイズ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "侧边栏字号"
+          }
+        }
+      }
+    },
     "Size" : {
       "localizations" : {
         "ja" : {
@@ -6659,6 +6744,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "跟随系统"
+          }
+        }
+      }
+    },
+    "System Font" : {
+      "comment" : "Files inspector font that uses the macOS UI font.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システムフォント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统字体"
           }
         }
       }

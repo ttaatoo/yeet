@@ -15,6 +15,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Choose a font family and size for file names in the Files inspector, independently of the project sidebar and the Git/Info panels.
+
 ## [0.1.49]
 
 - Swap the project sidebar and the Files/Git/Info inspector from Settings, so the inspector can sit on the left and the project list on the right. ⌘B and ⇧⌘B still toggle those panels.
