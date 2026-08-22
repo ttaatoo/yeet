@@ -1,6 +1,6 @@
 # Yeet
 
-A native terminal workspace for macOS. **Yeet** is based on [Kero](https://github.com/egoist/kero) (EGOIST) and is published as an independent repository at [ttaatoo/yeet](https://github.com/ttaatoo/yeet). It is **not** a GitHub Fork of egoist/kero, and it is **not** Kerox.app / `sh.kerox`.
+A native terminal workspace for macOS, based on [Kero](https://github.com/egoist/kero) by [EGOIST](https://github.com/egoist). Licensed under GPLv3. Thanks to the Kero project and its contributors.
 
 ![preview](https://kero.sh/kero-screenshot.png)
 
@@ -59,11 +59,11 @@ git remote add upstream https://github.com/egoist/kero.git
 | Zip | notarized `.dmg` | `Yeet.zip` |
 | Sparkle | `https://releases.kero.sh` | none (empty feed; do not use the official Kero feed) |
 | Signing | Developer ID | ad-hoc |
-| Repository | [egoist/kero](https://github.com/egoist/kero) | [ttaatoo/yeet](https://github.com/ttaatoo/yeet) (independent; not a GitHub Fork) |
+| Repository | [egoist/kero](https://github.com/egoist/kero) | [ttaatoo/yeet](https://github.com/ttaatoo/yeet) |
 
 Internal names stay `kero` on purpose: `kero.xcodeproj`, the `kero` scheme, `PRODUCT_NAME = kero` (bundled CLI still `kero`), `kero_alacritty`, `KeroTerminal`, `KeroCell`, `KeroAutomation*`, skill id `kero-automation`, and env/build names `KERO_TERM` / `KERO_DISPLAY_NAME` / `KERO_SU_*`.
 
-This is also not the previous Kerox shipping identity (`Kerox.app` / `sh.kerox` / `~/.config/kerox`). Leftover Kerox (then older Kero) config and Application Support are copied into Yeet paths only when Yeet has none yet.
+Leftover Kerox (`~/.config/kerox`) and older Kero config are copied into Yeet paths only when Yeet has none yet.
 
 ## Features
 
