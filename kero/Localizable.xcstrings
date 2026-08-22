@@ -5999,22 +5999,6 @@
         }
       }
     },
-    "Send Feedback" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "フィードバックを送信"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "发送反馈"
-          }
-        }
-      }
-    },
     "Sends Option-key combinations to terminal programs as Meta shortcuts instead of macOS text input" : {
       "localizations" : {
         "ja" : {

@@ -91,15 +91,6 @@ struct SidebarView: View {
                 ) { manager.newProject() }
                 Spacer()
                 SidebarFooterButton(
-                    systemImage: "exclamationmark.bubble",
-                    tooltip: "Send Feedback",
-                    tooltipAlignment: .trailing
-                ) {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://github.com/egoist/kero/issues/new")!
-                    )
-                }
-                SidebarFooterButton(
                     systemImage: "gearshape",
                     tooltip: "Settings (⌘,)",
                     tooltipAlignment: .trailing
