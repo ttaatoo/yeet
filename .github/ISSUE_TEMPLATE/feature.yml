@@ -1,0 +1,28 @@
+name: Feature
+description: Propose a change. Open this before writing a large patch.
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Yeet says no to features that fit some other tool better. Read [PRODUCT.md](https://github.com/ttaatoo/yeet/blob/main/PRODUCT.md) and [CONTRIBUTING.md](https://github.com/ttaatoo/yeet/blob/main/CONTRIBUTING.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you cannot do today, in the terminal-centered workspace.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The smallest change that would fix that problem.
+    validations:
+      required: true
+  - type: textarea
+    id: out
+    attributes:
+      label: Out of scope
+      description: What this should not become (IDE features, telemetry, opaque automation).

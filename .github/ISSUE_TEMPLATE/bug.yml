@@ -1,0 +1,58 @@
+name: Bug
+description: Something in Yeet does not work as documented.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This tracker is **ttaatoo/yeet** (`Yeet.app` / `sh.yeet`). Official Kero bugs go to [egoist/kero](https://github.com/egoist/kero).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Yeet version
+      description: Yeet → About Yeet, or the GitHub Release tag.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options:
+        - Built from source
+        - Homebrew cask (Yeet.zip)
+        - Homebrew formula / HEAD
+        - GitHub Release zip (not Homebrew)
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "15.6"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Checks
+      options:
+        - label: This is Yeet (`sh.yeet` or `sh.yeet.dev`), not official Kero (`sh.kero`).
+          required: true
+        - label: I searched existing issues.
+          required: true
