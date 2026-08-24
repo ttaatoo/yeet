@@ -9,7 +9,67 @@ Yeet is published at https://github.com/ttaatoo/yeet.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, version 3.
+the Free Software Foundation, version 3 only (GPL-3.0-only).
 
 See the file LICENSE for the full text of the GNU General Public License.
 The license text itself is unchanged.
+
+Third-party works shipped with Yeet
+-----------------------------------
+
+Kero (upstream)
+  Copyright (C) EGOIST and Kero contributors
+  License: GNU GPL v3
+  https://github.com/egoist/kero
+
+STTextView
+  Copyright Marcin Krzyżanowski
+  License: GNU GPL v3 (commercial licenses available from the author)
+  Path: Vendor/STTextView/LICENSE.md
+
+STTextView-Plugin-Neon (syntax highlighting, Tree-sitter grammars)
+  Copyright (c) 2023 Marcin Krzyzanowski
+  License: MIT
+  Path: Vendor/STTextView-Plugin-Neon/LICENSE
+
+TreeSitterTSX (Tree-sitter TSX grammar, copied from tree-sitter-typescript)
+  Copyright (c) 2017 Max Brunsfeld
+  License: MIT
+  Path: Vendor/TreeSitterTSX/LICENSE
+
+alacritty-bridge (Yeet/Kero C ABI around Alacritty)
+  Copyright (c) 2026 Lasse Vestergaard
+  License: MIT
+  Path: Vendor/alacritty-bridge/TERMY_LICENSE
+
+alacritty_terminal (Alacritty VT emulator crate)
+  Copyright 2020 The Alacritty Project
+  License: Apache-2.0 OR MIT
+  Path: Vendor/alacritty-bridge/ALACRITTY-LICENSE-APACHE
+        Vendor/alacritty-bridge/ALACRITTY-LICENSE-MIT
+
+Sparkle (linked; packaged Yeet builds leave the update feed empty)
+  Copyright Sparkle Project
+  License: MIT
+  https://github.com/sparkle-project/Sparkle
+
+PierreDiffsSwift
+  https://github.com/egoist-labs/PierreDiffsSwift
+
+FuzzyMatch
+  https://github.com/ordo-one/FuzzyMatch
+
+JetBrains Mono
+  Copyright 2020 The JetBrains Mono Project Authors
+  License: SIL Open Font License 1.1
+  Path: yeet/Fonts/OFL.txt
+
+Symbols Nerd Font Mono
+  License: MIT (Nerd Fonts)
+  Path: yeet/Fonts/LICENSE-nerd-fonts.txt
+
+Material Icon Theme file icons (curated subset)
+  Source: https://github.com/PKief/vscode-material-icon-theme
+  License: MIT
+  Path: yeet/MaterialFileIcons/LICENSE-material-icon-theme.txt
+        yeet/MaterialFileIcons/NOTICE-material-icon-theme.txt
