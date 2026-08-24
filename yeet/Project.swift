@@ -7,6 +7,13 @@ import AppKit
 import Combine
 import Foundation
 
+/// Uncommitted files left by a finished agent. Cleared when Git is clean,
+/// not when the pane is focused.
+struct PendingReview: Equatable {
+    var fileCount: Int
+    var sessionID: UUID?
+}
+
 /// A project groups tabs and appears as one row in the project sidebar. Each tab
 /// is a recursive split layout of terminal, file, browser, and diff panes; see
 /// `PaneTab`. It always starts with one session; closing the last tab leaves
@@ -25,6 +32,9 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     /// selected session's working directory, re-derived as the session
     /// moves (see `panelRoot(followingSessionAt:)`).
     @Published var customDirectory: String?
+    /// Git-dirty files left after an agent turn. Independent of the agent
+    /// badge's "seen" state — focusing the pane does not clear this.
+    @Published var pendingReview: PendingReview?
     @Published var tabs: [PaneTab] = []
     @Published var selectedTabID: UUID? {
         didSet {
@@ -153,6 +163,42 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     /// Whether the selected tab's focused pane can be split (false for diffs).
     var canSplit: Bool {
         selectedTab?.canSplit ?? false
+    }
+
+    // MARK: - Pending review
+
+    func capturePendingReview(sessionID: UUID, fileCount: Int) {
+        if fileCount > 0 {
+            pendingReview = PendingReview(fileCount: fileCount, sessionID: sessionID)
+        } else {
+            pendingReview = nil
+        }
+    }
+
+    /// Refresh the file count from a later Git snapshot of this project.
+    /// No-op until `capturePendingReview` has armed the queue.
+    func updatePendingReviewFileCount(_ fileCount: Int) {
+        guard var review = pendingReview else { return }
+        if fileCount <= 0 {
+            pendingReview = nil
+        } else if review.fileCount != fileCount {
+            review.fileCount = fileCount
+            pendingReview = review
+        }
+    }
+
+    func beginPendingReviewCapture(from session: TerminalSession) {
+        let (root, _) = panelRoot(
+            followingSessionAt: session.currentDirectoryPath,
+            foregroundAt: session.foregroundDirectoryPath
+        )
+        let sessionID = session.id
+        Task { [weak self] in
+            let count = await Task.detached {
+                GitStatusModel.dirtyFileCount(in: root)
+            }.value
+            self?.capturePendingReview(sessionID: sessionID, fileCount: count)
+        }
     }
 
     // MARK: - Project directory

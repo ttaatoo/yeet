@@ -360,6 +360,7 @@ struct TabSwitcherOverlay: View {
                                     index: project.tabs.firstIndex { $0.id == tab.id } ?? 0,
                                     isHighlighted: tab.id == controller.highlightedTabID,
                                     terminalPreviews: controller.terminalPreviews,
+                                    pendingReviewFileCount: pendingReviewCount(for: tab),
                                     highlight: {
                                         controller.highlight(tab.id, in: project)
                                     },
@@ -439,6 +440,18 @@ struct TabSwitcherOverlay: View {
             : .primary.opacity(0.18)
     }
 
+    private func pendingReviewCount(for tab: PaneTab) -> Int? {
+        guard let review = project.pendingReview, review.fileCount > 0 else {
+            return nil
+        }
+        if let sessionID = review.sessionID {
+            guard tab.sessions.contains(where: { $0.id == sessionID }) else {
+                return nil
+            }
+        }
+        return review.fileCount
+    }
+
     private func columnsPerRow(count: Int, available: CGFloat) -> Int {
         let horizontalInsets = 44 + TabSwitcherLayout.gridInset * 2
         let usable = max(
@@ -483,9 +496,11 @@ private struct TabSwitcherCard: View {
     let index: Int
     let isHighlighted: Bool
     let terminalPreviews: [UUID: String]
+    let pendingReviewFileCount: Int?
     let highlight: () -> Void
     let select: () -> Void
     @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var themeChanges = Theme.changes
 
     var body: some View {
         VStack(alignment: .leading, spacing: TabSwitcherLayout.previewTitleSpacing) {
@@ -518,6 +533,15 @@ private struct TabSwitcherCard: View {
                     .foregroundStyle(.primary.opacity(isHighlighted ? 1 : 0.82))
                     .lineLimit(1)
                 Spacer(minLength: 0)
+                if let count = pendingReviewFileCount, count > 0 {
+                    Text(verbatim: "\(count)")
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(Color(nsColor: Theme.chromeProgress))
+                }
+                if let rollup = tab.agentRollup {
+                    AgentStatusBadgeRepresentable(rollup: rollup)
+                        .fixedSize()
+                }
                 if tab.focusedContent?.isDirty == true {
                     Circle()
                         .fill(.secondary)
@@ -552,12 +576,7 @@ private struct TabSwitcherCard: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            String(
-                localized: "Tab \(index + 1), \(tab.displayTitle ?? String(localized: "Untitled"))",
-                comment: "Accessibility label for a tab. The placeholders are its position and title."
-            )
-        )
+        .accessibilityLabel(cardAccessibilityLabel)
         .accessibilityValue(isHighlighted ? "Selected on release" : "")
         .accessibilityAddTraits(.isButton)
         .accessibilityAddTraits(isHighlighted ? .isSelected : [])
@@ -572,6 +591,35 @@ private struct TabSwitcherCard: View {
             MaterialFileIconView(path: path, size: 16)
         } else {
             Image(systemName: tab.focusedContent?.systemImage ?? "rectangle")
+        }
+    }
+
+    private var cardAccessibilityLabel: String {
+        let title = tab.displayTitle ?? String(localized: "Untitled")
+        var label = String(
+            localized: "Tab \(index + 1), \(title)",
+            comment: "Accessibility label for a tab. The placeholders are its position and title."
+        )
+        if let rollup = tab.agentRollup {
+            label += ", \(agentPhaseLabel(rollup.phase))"
+        }
+        if let count = pendingReviewFileCount, count > 0 {
+            label += ", " + String(
+                localized: "\(count) files to review",
+                comment: "Count of uncommitted files after an agent finished. The placeholder is the file count."
+            )
+        }
+        return label
+    }
+
+    private func agentPhaseLabel(_ phase: KeroAgentPhase) -> String {
+        switch phase {
+        case .created: String(localized: "Agent starting")
+        case .working: String(localized: "Agent working")
+        case .blocked: String(localized: "Agent needs attention")
+        case .done: String(localized: "Agent finished")
+        case .idle: String(localized: "Agent idle")
+        case .unknown: String(localized: "Agent state unknown")
         }
     }
 

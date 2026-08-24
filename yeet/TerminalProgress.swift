@@ -52,6 +52,11 @@ final class KeroTerminalProgressBarView: NSView {
         updateForCurrentState(animated: false)
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        apply(state: state, progress: progress)
+    }
+
     func applyReport(state: TerminalProgressState, percent: Int?) {
         if case .remove = state {
             clearReport()
@@ -114,9 +119,9 @@ final class KeroTerminalProgressBarView: NSView {
         case .error:
             color = .systemRed
         case .pause:
-            color = .systemOrange
+            color = Theme.chromeAccent
         default:
-            color = .controlAccentColor
+            color = Theme.chromeProgress
         }
         barLayer.backgroundColor = color.cgColor
         trackLayer.backgroundColor = color.withAlphaComponent(0.3).cgColor

@@ -210,6 +210,18 @@ final class GitStatusModel: nonisolated ObservableObject {
         mergeEntries.count + stagedEntries.count + changedEntries.count
     }
 
+    /// Distinct paths across merge / staged / unstaged / untracked rows.
+    /// `totalChangeCount` can count one file twice when it is both staged
+    /// and unstaged; review chrome uses this unique count instead.
+    var uniqueDirtyPathCount: Int {
+        var paths = Set<String>()
+        paths.reserveCapacity(mergeEntries.count + stagedEntries.count + changedEntries.count)
+        for entry in mergeEntries { paths.insert(entry.path) }
+        for entry in stagedEntries { paths.insert(entry.path) }
+        for entry in changedEntries { paths.insert(entry.path) }
+        return paths.count
+    }
+
     /// True while the first status load for the current directory is still in
     /// flight, so later event-driven refreshes do not replace resolved content
     /// with a loading state.
@@ -1777,6 +1789,30 @@ final class GitStatusModel: nonisolated ObservableObject {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
         return message ?? fallback
+    }
+
+    /// Counts porcelain entries in `directory`'s repository. Ignored paths
+    /// are omitted. Returns 0 when `directory` is not a git worktree.
+    nonisolated static func dirtyFileCount(in directory: String) -> Int {
+        guard !directory.isEmpty else { return 0 }
+        let top = runGit(["rev-parse", "--show-toplevel"], in: directory, timeout: 2)
+        guard top.status == 0 else { return 0 }
+        let root = strippingTrailingLineEnding(top.stdout)
+        guard !root.isEmpty else { return 0 }
+        let status = runGit(
+            [
+                "status", "--porcelain=v2", "-z",
+                "--untracked-files=all", "--ignored=no",
+            ],
+            in: root,
+            timeout: 2
+        )
+        guard status.status == 0 else { return 0 }
+        return dirtyFileCount(from: parseStatus(status.stdout))
+    }
+
+    nonisolated static func dirtyFileCount(from result: StatusResult) -> Int {
+        result.entries.count
     }
 
     /// Parses NUL-delimited porcelain v2. Unlike Git's default quoted output,

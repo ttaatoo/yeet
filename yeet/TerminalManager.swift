@@ -17,6 +17,18 @@ enum RightPanel: String, Codable {
     case info
 }
 
+struct AgentAttentionRef: Equatable {
+    enum Kind: Equatable {
+        case blocked
+        case pendingReview
+        case done
+    }
+
+    let sessionID: UUID
+    let projectID: UUID
+    let kind: Kind
+}
+
 /// One Find menu command, routed from the menu bar to whichever find
 /// implementation the focused pane owns: Ghostty's own search in a terminal,
 /// `NSTextFinder`'s find bar in a file editor.
@@ -579,39 +591,104 @@ final class TerminalManager: nonisolated ObservableObject {
     }
 
     var hasAgentAttention: Bool {
-        projects.contains { project in
-            project.sessions.contains {
-                $0.agentStatus?.phase == .blocked || $0.agentStatus?.phase == .done
-            }
-        }
+        !Self.agentAttentionRefs(in: projects).isEmpty
     }
 
-    /// Cycles blocked agents first, then unseen completions, preserving project,
-    /// tab, and split-tree order within each state. Only an explicit focus
-    /// action acknowledges `done`; automation reads never call this path.
+    /// Cycles blocked agents first, then pending-review projects, then leftover
+    /// unseen completions, preserving project, tab, and split-tree order within
+    /// each state. Only an explicit focus action acknowledges `done`; automation
+    /// reads never call this path. Pending review also opens the Git inspector.
     func focusNextAgentAttention() {
-        let ordered = projects.flatMap { project in
-            project.tabs.flatMap(\.sessions)
-        }
-        let attention = ordered.filter { $0.agentStatus?.phase == .blocked }
-            + ordered.filter { $0.agentStatus?.phase == .done }
-        guard !attention.isEmpty else { return }
+        let refs = Self.agentAttentionRefs(in: projects)
+        guard !refs.isEmpty else { return }
 
         let currentID: UUID? = {
             guard let pane = selectedProject?.selectedTab?.focusedPane,
                   case .session(let session) = pane.content else { return nil }
             return session.id
         }()
-        let next: TerminalSession
+        let nextRef: AgentAttentionRef
         if let currentID,
-           let index = attention.firstIndex(where: { $0.id == currentID }) {
-            next = attention[(index + 1) % attention.count]
+           let index = refs.firstIndex(where: { $0.sessionID == currentID }) {
+            nextRef = refs[(index + 1) % refs.count]
         } else {
-            next = attention[0]
+            nextRef = refs[0]
         }
-        revealSession(next)
-        next.markAutomationAgentSeen()
+        guard let project = projects.first(where: { $0.id == nextRef.projectID }),
+              let session = project.sessions.first(where: { $0.id == nextRef.sessionID })
+        else { return }
+        revealSession(session)
+        if nextRef.kind != .blocked {
+            showPanel(.git)
+        }
+        session.markAutomationAgentSeen()
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    func revealPendingReview(_ project: Project) {
+        selectedProjectID = project.id
+        if let sessionID = project.pendingReview?.sessionID,
+           let session = project.sessions.first(where: { $0.id == sessionID }) {
+            revealSession(session)
+        }
+        showPanel(.git)
+        window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Shows the inspector on `panel`. Unlike `togglePanel`, never hides it.
+    func showPanel(_ panel: RightPanel) {
+        panelTab = panel
+        isPanelVisible = true
+    }
+
+    /// Snapshot Git after an agent turn. The badge may still go quiet on
+    /// focus; this queue stays until the worktree is clean.
+    static func noteAgentFinished(_ session: TerminalSession) {
+        for manager in registry {
+            if let project = manager.projects.first(where: {
+                $0.sessions.contains(where: { $0.id == session.id })
+            }) {
+                project.beginPendingReviewCapture(from: session)
+                return
+            }
+        }
+    }
+
+    /// Blocked first, then pending-review, then leftover `done` badges.
+    static func agentAttentionRefs(in projects: [Project]) -> [AgentAttentionRef] {
+        var blocked: [AgentAttentionRef] = []
+        var reviews: [AgentAttentionRef] = []
+        var done: [AgentAttentionRef] = []
+        var reviewSessionIDs = Set<UUID>()
+        for project in projects {
+            for session in project.tabs.flatMap(\.sessions) {
+                if session.agentStatus?.phase == .blocked {
+                    blocked.append(AgentAttentionRef(
+                        sessionID: session.id, projectID: project.id, kind: .blocked
+                    ))
+                }
+            }
+            if let review = project.pendingReview, review.fileCount > 0 {
+                let sessionID = review.sessionID
+                    ?? project.sessions.first(where: { $0.agentStatus?.phase == .done })?.id
+                    ?? project.selectedSession?.id
+                if let sessionID {
+                    reviews.append(AgentAttentionRef(
+                        sessionID: sessionID, projectID: project.id, kind: .pendingReview
+                    ))
+                    reviewSessionIDs.insert(sessionID)
+                }
+            }
+            for session in project.tabs.flatMap(\.sessions) {
+                if session.agentStatus?.phase == .done,
+                   !reviewSessionIDs.contains(session.id) {
+                    done.append(AgentAttentionRef(
+                        sessionID: session.id, projectID: project.id, kind: .done
+                    ))
+                }
+            }
+        }
+        return blocked + reviews + done
     }
 
     /// Clears the terminal in the focused pane. No-op while another content

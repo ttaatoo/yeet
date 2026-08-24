@@ -389,7 +389,10 @@ final class AppSettings: nonisolated ObservableObject {
     private static func knownTheme(
         _ name: String?, dark: Bool, fallback: String
     ) -> String {
-        guard let name, Theme.isCommonTheme(named: name, dark: dark) else {
+        guard let name else { return fallback }
+        if dark, Theme.isDefaultDarkName(name) { return Theme.defaultDarkThemeName }
+        if !dark, Theme.isDefaultLightName(name) { return Theme.defaultLightThemeName }
+        guard Theme.isCommonTheme(named: name, dark: dark) else {
             return fallback
         }
         return name
@@ -627,6 +630,11 @@ enum TOML {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
             return nil
         }
+        return parse(text)
+    }
+
+    /// Same grammar as `parse(at:)`, from an already-read string.
+    static func parse(_ text: String) -> [String: Value] {
         var table = ""
         var result: [String: Value] = [:]
         for rawLine in text.split(separator: "\n", omittingEmptySubsequences: true) {

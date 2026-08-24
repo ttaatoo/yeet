@@ -28,6 +28,7 @@ final class GitPorcelainTests: XCTestCase {
         XCTAssertEqual(result.entries[0].unstaged, Character("M"))
         XCTAssertEqual(result.entries[1].path, "new.txt")
         XCTAssertTrue(result.ignoredPaths.contains("ignored.bin"))
+        XCTAssertEqual(GitStatusModel.dirtyFileCount(from: result), 2)
     }
 
     func testParseStatusRenameUsesFollowingToken() {
@@ -175,6 +176,67 @@ final class GitPorcelainTests: XCTestCase {
                 path: "/repo/other.txt", modificationDate: date, size: 12
             )
         )
+    }
+
+    func testParseStatusDetachedInitialAndConflict() {
+        let output = [
+            "# branch.oid (initial)",
+            "# branch.head (detached)",
+            "u UU N... 100644 100644 100644 100644 0 0 0 conflict.swift",
+            "? path with space.txt",
+        ].joined(separator: "\0") + "\0"
+
+        let result = GitStatusModel.parseStatus(output)
+        XCTAssertFalse(result.hasHead)
+        XCTAssertNil(result.headOID)
+        XCTAssertEqual(result.branch, "detached HEAD")
+        XCTAssertEqual(result.entries.count, 2)
+        XCTAssertTrue(result.entries[0].isConflict)
+        XCTAssertEqual(result.entries[0].path, "conflict.swift")
+        XCTAssertEqual(result.entries[1].path, "path with space.txt")
+        XCTAssertEqual(result.entries[1].staged, Character("?"))
+    }
+
+    func testParseRecentCommitsModifiedAndRename() {
+        let modified = [
+            "abc123", "abc", "fix bug", "Ada", "1700000000", "def456", "HEAD -> main",
+        ].joined(separator: "\u{1f}") + "\nM\u{0}foo.swift"
+        let renamed = [
+            "aaa111", "aaa", "rename", "Ada", "1700000001", "abc123", "",
+        ].joined(separator: "\u{1f}") + "\nR100\u{0}old.swift\u{0}new.swift"
+        let commits = GitStatusModel.parseRecentCommits(modified + "\u{1e}" + renamed)
+        XCTAssertEqual(commits.count, 2)
+        XCTAssertEqual(commits[0].hash, "abc123")
+        XCTAssertEqual(commits[0].subject, "fix bug")
+        XCTAssertEqual(commits[0].files.count, 1)
+        XCTAssertEqual(commits[0].files[0].path, "foo.swift")
+        XCTAssertEqual(commits[0].files[0].status, Character("M"))
+        XCTAssertEqual(commits[0].parentHash, "def456")
+        XCTAssertEqual(commits[0].references, ["HEAD -> main"])
+        XCTAssertEqual(commits[1].files[0].status, Character("R"))
+        XCTAssertEqual(commits[1].files[0].originalPath, "old.swift")
+        XCTAssertEqual(commits[1].files[0].path, "new.swift")
+    }
+
+    func testDetectRepositoryOperationPrefersRebaseThenClears() throws {
+        let git = FileManager.default.temporaryDirectory
+            .appendingPathComponent("yeet-git-op-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: git, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: git) }
+
+        XCTAssertNil(GitStatusModel.detectRepositoryOperation(gitDirectory: git.path))
+
+        try Data().write(to: git.appendingPathComponent("MERGE_HEAD"))
+        XCTAssertNotNil(GitStatusModel.detectRepositoryOperation(gitDirectory: git.path))
+
+        try FileManager.default.createDirectory(
+            at: git.appendingPathComponent("rebase-merge"),
+            withIntermediateDirectories: true
+        )
+        let rebase = try XCTUnwrap(
+            GitStatusModel.detectRepositoryOperation(gitDirectory: git.path)
+        )
+        XCTAssertTrue(rebase.localizedCaseInsensitiveContains("rebase"))
     }
 
     func testUntrackedLineCacheKeyNilWhenDateOrSizeMissing() {

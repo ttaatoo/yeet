@@ -15,6 +15,13 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Yeet Dark and Yeet Light are the default themes. Dark chrome is a warm near-black frame with an orange selection mark and a mint cursor; light chrome uses warm paper. Older `Default Dark` / `Default Light` names in `config.toml` still load these built-ins.
+- When an agent finishes with uncommitted files, the project row shows a file count. Shift-Cmd-A and the command palette Pending Review section open Git so you can inspect, stage, or discard. Focusing the pane quiets the agent badge; the file count stays until Git is clean.
+- The empty window shows the Yeet mascot and an Open a repository prompt.
+- The project list defaults narrower. Split panes mark the focused header and show a 1-point mint bar on an agent that is working or finished. Ctrl-Tab cards show agent state and a pending file count.
+- Dragging left or right in a terminal selects text on that line.
+
+
 ## [0.1.52]
 
 - Opening a project no longer creates a `default.profraw` file in that folder.

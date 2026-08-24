@@ -6,6 +6,10 @@
 import AppKit
 import SwiftUI
 
+enum SidebarMetrics {
+    static let defaultWidth: Double = 180
+}
+
 /// Vertical tab strip listing projects, otty-style. Each row is a project;
 /// its sessions show as horizontal tabs in the main header. `placement`
 /// is the physical edge; ⌘B and the width key stay bound to this panel.
@@ -16,7 +20,7 @@ struct SidebarView: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var themeChanges = Theme.changes
     @Environment(\.openSettings) private var openSettings
-    @AppStorage("leftSidebarWidth") private var width: Double = 220
+    @AppStorage("leftSidebarWidth") private var width: Double = SidebarMetrics.defaultWidth
     @State private var draggedProjectID: UUID?
     @State private var projectFrames: [UUID: CGRect] = [:]
 
@@ -105,9 +109,9 @@ struct SidebarView: View {
             }
         }
         .frame(width: width)
-        // Opaque Codex Dark (or the light theme's solid fill). Vibrancy
-        // made this column look like a different app from the inspector
-        // after Swap sidebars.
+        // Opaque lifted near-black frame (or the light theme's solid fill).
+        // Vibrancy made this column look like a different app from the
+        // inspector after Swap sidebars.
         .background(Color(nsColor: Theme.sidebar))
         .overlay(alignment: innerAlignment) {
             Rectangle()
@@ -120,7 +124,7 @@ struct SidebarView: View {
                 edge: isLeading ? .trailing : .leading,
                 width: $width,
                 range: 160...400,
-                defaultWidth: 220
+                defaultWidth: SidebarMetrics.defaultWidth
             )
         }
         .onPreferenceChange(ProjectFramePreferenceKey.self) { frames in
@@ -277,6 +281,14 @@ private struct SidebarProjectRow: View {
                         : (isHovering ? Color(nsColor: Theme.chromeHover) : .clear)
                 )
         )
+        .overlay(alignment: .leading) {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color(nsColor: Theme.chromeAccent))
+                    .frame(width: 2)
+                    .padding(.vertical, 6)
+            }
+        }
         .onHover { isHovering = $0 }
         .contextMenu {
             Button("Rename…") {
@@ -371,6 +383,18 @@ private struct SidebarProjectRow: View {
 
             Spacer(minLength: 0)
 
+            if let review = project.pendingReview, review.fileCount > 0, !isRenaming {
+                Text(verbatim: "\(review.fileCount)")
+                    .font(.system(size: supportingFontSize, weight: .medium).monospacedDigit())
+                    .foregroundStyle(Color(nsColor: Theme.chromeProgress))
+                    .accessibilityLabel(
+                        String(
+                            localized: "\(review.fileCount) files to review",
+                            comment: "Count of uncommitted files after an agent finished. The placeholder is the file count."
+                        )
+                    )
+            }
+
             if let rollup = project.agentRollup, !isRenaming {
                 AgentStatusBadgeRepresentable(rollup: rollup)
                     .fixedSize()
@@ -401,6 +425,11 @@ private struct SidebarProjectRow: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .contentShape(RoundedRectangle(cornerRadius: 6))
+        .help(rowHelp)
+    }
+
+    private var rowHelp: String {
+        project.selectedSession?.currentDirectoryPath ?? ""
     }
 
     private func beginRename() {
@@ -423,8 +452,6 @@ private struct SidebarProjectRow: View {
                 .font(.system(size: supportingFontSize))
                 .foregroundStyle(Color(nsColor: Theme.chromeMutedText))
                 .lineLimit(1)
-        } else if let session = project.selectedSession {
-            SessionDirectoryLabel(session: session, fontSize: supportingFontSize)
         }
     }
 
@@ -440,21 +467,5 @@ private struct SidebarProjectRow: View {
 
     private var sidebarFontScale: Double {
         fontSize / AppSettings.defaultSidebarFontSize
-    }
-}
-
-/// Small subtitle showing a session's current directory; separate view so
-/// it observes the session's own published working directory.
-private struct SessionDirectoryLabel: View {
-    @ObservedObject var session: TerminalSession
-    let fontSize: Double
-
-    var body: some View {
-        if let dir = session.directoryLabel {
-            Text(dir)
-                .font(.system(size: fontSize))
-                .foregroundStyle(Color(nsColor: Theme.chromeMutedText))
-                .lineLimit(1)
-        }
     }
 }

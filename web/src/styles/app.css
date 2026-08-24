@@ -66,7 +66,7 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Kero — GitHub Light palette (light mode) */
+/* Yeet — warm paper / orange brand (light mode) */
 :root {
   --background: #ffffff;
   --foreground: #1f2328;
@@ -85,8 +85,8 @@
   --destructive: #cf222e;
   --border: #d1d9e0;
   --input: #d1d9e0;
-  --ring: #0969da;
-  --brand: #0969da;
+  --ring: #ff4d2e;
+  --brand: #ff4d2e;
   --brand-foreground: #ffffff;
   --success: #1a7f37;
   --chart-1: #0969da;
@@ -97,15 +97,15 @@
   --radius: 0.75rem;
   --sidebar: #f6f8fa;
   --sidebar-foreground: #1f2328;
-  --sidebar-primary: #0969da;
+  --sidebar-primary: #ff4d2e;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #eaeef2;
   --sidebar-accent-foreground: #1f2328;
   --sidebar-border: #d1d9e0;
-  --sidebar-ring: #0969da;
+  --sidebar-ring: #ff4d2e;
 }
 
-/* Kero — near-black developer canvas (default) */
+/* Yeet — warm near-black canvas (default) */
 .dark {
   --background: #08090d;
   --foreground: #e6edf3;
@@ -124,9 +124,9 @@
   --destructive: #ff7b72;
   --border: #1d232b;
   --input: #1d232b;
-  --ring: #58a6ff;
-  --brand: #58a6ff;
-  --brand-foreground: #0d1117;
+  --ring: #ff4d2e;
+  --brand: #ff4d2e;
+  --brand-foreground: #0b0a09;
   --success: #3fb950;
   --chart-1: #58a6ff;
   --chart-2: #3fb950;
@@ -135,12 +135,12 @@
   --chart-5: #e3b341;
   --sidebar: #010409;
   --sidebar-foreground: #e6edf3;
-  --sidebar-primary: #58a6ff;
-  --sidebar-primary-foreground: #0d1117;
+  --sidebar-primary: #ff4d2e;
+  --sidebar-primary-foreground: #0b0a09;
   --sidebar-accent: #161b22;
   --sidebar-accent-foreground: #e6edf3;
   --sidebar-border: #21262d;
-  --sidebar-ring: #58a6ff;
+  --sidebar-ring: #7dffb3;
 }
 
 @layer base {
