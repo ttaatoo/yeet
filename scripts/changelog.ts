@@ -1,28 +1,41 @@
 // Pull a single version's notes out of a Keep-a-Changelog-style CHANGELOG.md.
 
+const UNRELEASED = "unreleased";
+
+/** Keep-a-Changelog reserved heading, compared case-insensitively. */
+export function isUnreleasedVersion(name: string): boolean {
+  return name.trim().toLowerCase() === UNRELEASED;
+}
+
 /** The version token from a level-2 heading, or null if it isn't one.
- *  Handles `## [1.1] - 2026-07-20`, `## 1.1`, `## v1.1`, etc. */
+ *  Handles `## [1.1] - 2026-07-20`, `## 1.1`, `## v1.1`, etc.
+ *  Skips the reserved Unreleased heading so it cannot be treated as a version. */
 function headingVersion(line: string): string | null {
   const m = line.match(/^##\s+(.+)$/); // level 2 only — `### …` won't match
   if (!m) return null;
-  return m[1]
+  const token = m[1]
     .trim()
     .split(/\s+/)[0] // first token, before any ` - date`
-    .replace(/^\[|\]$/g, "") // strip [ ]
-    .replace(/^v/i, ""); // strip a leading v
+    .replace(/^\[|\]$/g, ""); // strip [ ]
+  if (isUnreleasedVersion(token)) return null;
+  return token.replace(/^v/i, ""); // strip a leading v from version tags
 }
 
 /** Return the notes body for `version` (without its heading), or null if the
- *  changelog has no section for it. */
+ *  changelog has no section for it. Unreleased is never returned. */
 export function extractReleaseNotes(
   changelog: string,
   version: string,
 ): string | null {
+  const wanted = version.replace(/^v/i, "").toLowerCase();
+  if (!wanted || wanted === UNRELEASED) return null;
+
   const lines = changelog.split("\n");
 
   let start = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (headingVersion(lines[i]) === version) {
+    const heading = headingVersion(lines[i]);
+    if (heading !== null && heading.toLowerCase() === wanted) {
       start = i + 1;
       break;
     }

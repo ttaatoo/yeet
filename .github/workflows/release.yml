@@ -17,16 +17,10 @@ permissions:
 
 jobs:
   release:
-    # kero.xcodeproj is objectVersion 110 / LastUpgradeCheck 2700 /
-    # CreatedOnToolsVersion 27.0. macos-26 only ships Xcode 26.0.1–26.6
-    # (default 26.6); run 32471771040 failed in ~3s with xcodebuild
-    # exit 74: "future Xcode project file format (110)". The xcode-27
-    # public-preview image (2026-07-16) defaults to Xcode 27.0 and
-    # /Applications/Xcode.app already points at 27. macos-26 does not
-    # include Xcode 27.
-    # https://github.blog/changelog/2026-07-16-xcode-27-runner-image-now-in-public-preview/
-    # https://github.com/actions/runner-images/issues/14404
-    runs-on: xcode-27
+    # yeet.xcodeproj stays on Xcode 16 project format (objectVersion 77)
+    # so Xcode 26.5 can open it. macos-26 ships Xcode 26.x (default 26.6).
+    # Do not accept an Xcode 27 upgrade that writes format 110.
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,26 +35,22 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
 
-      # Xcode 27.0 beta 4 (27A5228h) fetches remotes then abort-traps in
-      # IDESwiftPackageCore (12 vs 11 file refs) after package graph
-      # finish — Release #4:
-      # https://github.com/ttaatoo/kero/actions/runs/32492042501
-      # scripts/package.sh resolves into a stable SourcePackages dir
-      # first (non-zero resolve is OK if clones exist), then builds with
-      # -disableAutomaticPackageResolution. Nested Package.swift is
-      # already gone; this is the remaining IDE bug after fetch.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Build ad-hoc signed app
         run: bash scripts/package.sh
 
-      - name: Publish GitHub Release
+      - name: Resolve tag
+        id: tag
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_NAME: ${{ github.event_name }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
           INPUT_TAG: ${{ github.event.inputs.tag }}
-          TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
@@ -75,6 +65,31 @@ jobs:
             echo "Refusing to publish a non-v* tag: $TAG" >&2
             exit 1
           fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Release notes from CHANGELOG
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          bun -e '
+            import { extractReleaseNotes } from "./scripts/changelog.ts";
+            const version = process.env.VERSION ?? "";
+            const notes = extractReleaseNotes(await Bun.file("CHANGELOG.md").text(), version);
+            const body = notes?.trim()
+              ? `${notes.trim()}\n`
+              : `See CHANGELOG.md for ${version}.\n`;
+            await Bun.write("release-notes.md", body);
+          '
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
           if [[ ! -f dist/Yeet.zip ]]; then
             echo "dist/Yeet.zip was not produced" >&2
             exit 1
@@ -82,6 +97,29 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists"
           else
-            gh release create "$TAG" --title "$TAG" --generate-notes --target "$TARGET_SHA"
+            gh release create "$TAG" --title "$TAG" --notes-file release-notes.md --target "$TARGET_SHA"
           fi
-          gh release upload "$TAG" "dist/Yeet.zip#Yeet.zip" --clobber
+          gh release upload "$TAG" "dist/Yeet.zip#Yeet.zip"
+
+      - name: Pin Homebrew tap on main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          bun scripts/pin-homebrew.ts "$VERSION" dist/Yeet.zip
+          cp Casks/yeet.rb "${RUNNER_TEMP}/yeet.cask.rb"
+          cp Formula/yeet.rb "${RUNNER_TEMP}/yeet.formula.rb"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout --force origin/main
+          cp "${RUNNER_TEMP}/yeet.cask.rb" Casks/yeet.rb
+          cp "${RUNNER_TEMP}/yeet.formula.rb" Formula/yeet.rb
+          git add Casks/yeet.rb Formula/yeet.rb
+          if git diff --cached --quiet; then
+            echo "Homebrew pins already match"
+            exit 0
+          fi
+          git commit -m "chore: pin homebrew to v${VERSION}"
+          git push origin HEAD:main

@@ -1,9 +1,11 @@
 {
-  "name": "kero-monorepo",
+  "name": "yeet-monorepo",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "package": "bash scripts/package.sh",
+    "pin-homebrew": "bun run scripts/pin-homebrew.ts",
     "release": "bun run scripts/release.ts",
     "appcast": "bun run scripts/generate-appcast.ts"
   },

@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Export options for `xcodebuild -exportArchive`, used by scripts/release.ts to
-  produce a Developer ID-signed Kero.app for distribution outside the App Store.
-
-  Fill in teamID with your 10-character Apple Developer Team ID. Find it via:
-    xcrun security find-identity -v -p codesigning
-  (the ID in parentheses of your "Developer ID Application" identity), or at
-  https://developer.apple.com/account → Membership.
+  Unused on ttaatoo/yeet. Official Kero's scripts/release.ts would pass this
+  to xcodebuild -exportArchive for Developer ID. That command dies on this
+  fork (see RELEASING.md). Yeet ships ad-hoc signed (CODE_SIGN_IDENTITY = "-").
+  Do not put another project's Apple team ID here.
 -->
 <plist version="1.0">
 <dict>
@@ -16,6 +13,6 @@
 	<key>signingStyle</key>
 	<string>automatic</string>
 	<key>teamID</key>
-	<string>GJE9R5VE87</string>
+	<string>YOUR_TEAM_ID</string>
 </dict>
 </plist>
