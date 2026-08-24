@@ -121,9 +121,9 @@ typedef struct {
   uint64_t placement_serial;
   uint32_t image_id;
   uint32_t placement_id;
-  /// PNG bytes owned by the terminal handle and valid until its next FFI call.
-  const uint8_t *png;
-  size_t png_len;
+  /// 8-bit RGBA owned by the terminal handle and valid until its next FFI call.
+  const uint8_t *pixels;
+  size_t pixels_len;
   uint32_t image_width;
   uint32_t image_height;
   uint64_t image_generation;
@@ -251,14 +251,24 @@ typedef struct {
 
 /// Which viewport rows changed since the last call, resetting damage as it
 /// goes. A wakeup only means bytes arrived — ask this before paying for a
-/// snapshot, and rebuild only the rows it names.
+/// snapshot, and rebuild only the rows it names. Selection is not in the
+/// emulator's grid damage; this unions the previous and current selected
+/// viewport rows so a drag can rebuild those lines only.
 void kero_alacritty_take_damage(KeroTerminal *handle, KeroDamage *out);
 
 /// Whether a DEC synchronized update is still being buffered.
 bool kero_alacritty_synchronized_update(KeroTerminal *handle);
 
-/// Fills `out` with the visible grid.
+/// Fills `out` with the visible grid. Always a full refill.
 void kero_alacritty_snapshot(KeroTerminal *handle, KeroSnapshot *out);
+
+/// Like `kero_alacritty_snapshot`, but only walks the named viewport rows.
+/// `dirty_rows` NULL: full refill. Non-NULL with `dirty_rows_len` 0: cursor
+/// fields only; cells are left as they are. Non-empty: refill those rows.
+/// Resize, an empty cell buffer, or a display_offset change still refill
+/// the whole grid.
+void kero_alacritty_snapshot_rows(KeroTerminal *handle, KeroSnapshot *out,
+                                  const size_t *dirty_rows, size_t dirty_rows_len);
 
 /// Fills `out` with visible Kitty image placements.
 void kero_alacritty_kitty_snapshot(KeroTerminal *handle, KeroKittySnapshot *out);

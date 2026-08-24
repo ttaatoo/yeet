@@ -31,12 +31,12 @@ use alacritty_terminal::event::{Event, EventListener, Notify, OnResize, WindowSi
 use alacritty_terminal::grid::{BidirectionalIterator, Dimensions, Scroll};
 use alacritty_terminal::index::Direction;
 use alacritty_terminal::index::{Boundary, Column, Line, Point, Side};
-use alacritty_terminal::selection::{Selection, SelectionType};
+use alacritty_terminal::selection::{Selection, SelectionRange, SelectionType};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::cell::{Cell, Flags};
 use alacritty_terminal::term::color::Colors;
 use alacritty_terminal::term::search::{Match, RegexIter, RegexSearch};
-use alacritty_terminal::term::{Config, Osc52, Term, TermDamage, TermMode};
+use alacritty_terminal::term::{Config, Osc52, RenderableContent, Term, TermDamage, TermMode};
 use alacritty_terminal::tty::{self, EventedPty, EventedReadWrite};
 use alacritty_terminal::vte::ansi::{Color, CursorShape, CursorStyle, NamedColor, Rgb};
 use polling::{Event as PollingEvent, PollMode, Poller};
@@ -98,7 +98,7 @@ pub type KeroEventCallback =
     extern "C" fn(context: *mut c_void, kind: u32, data: *const u8, len: usize);
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct KeroCell {
     /// Unicode scalar; a space for an empty cell.
     pub ch: u32,
@@ -164,9 +164,9 @@ pub struct KeroKittyPlacement {
     pub placement_serial: u64,
     pub image_id: u32,
     pub placement_id: u32,
-    /// PNG bytes retained by the terminal handle until its next FFI call.
-    pub png: *const u8,
-    pub png_len: usize,
+    /// 8-bit RGBA, retained by the terminal handle until its next FFI call.
+    pub pixels: *const u8,
+    pub pixels_len: usize,
     pub image_width: u32,
     pub image_height: u32,
     pub image_generation: u64,
@@ -947,6 +947,15 @@ pub struct KeroTerminal {
     cells: Vec<KeroCell>,
     /// Variable-length UTF-8 cell contents for combining character clusters.
     cell_text: Vec<u8>,
+    /// Palette used when packing snapshot cells. Copied on `set_theme` so a
+    /// redraw does not take the PTY-shared lock.
+    theme: KeroTheme,
+    /// Viewport `display_offset` of the last packed snapshot. A change means
+    /// every cached cell is on the wrong grid line.
+    last_display_offset: Option<usize>,
+    /// Inclusive viewport-relative row span of the last reported selection.
+    /// Alacritty's grid damage does not include selection.
+    last_selection_rows: Option<(i32, i32)>,
     child_pid: i32,
     /// Kept so the host can ask which process group is in the foreground —
     /// that is how Kero tells a shell at its prompt from a running TUI.
@@ -961,7 +970,7 @@ pub struct KeroTerminal {
     /// Reused per frame so damage reporting does not allocate.
     dirty_rows: Vec<usize>,
     kitty_placements: Vec<KeroKittyPlacement>,
-    /// Retains each placement's PNG while C pointers are visible to Swift.
+    /// Retains each placement's RGBA while C pointers are visible to Swift.
     kitty_images: Vec<Arc<[u8]>>,
     last_kitty_damage_revision: u64,
     /// Set once the shell has exited, so teardown does not wait on a loop that
@@ -1156,6 +1165,9 @@ pub unsafe extern "C" fn kero_alacritty_new(
         kitty_graphics_size,
         cells: Vec::new(),
         cell_text: Vec::new(),
+        theme: *theme,
+        last_display_offset: None,
+        last_selection_rows: None,
         child_pid,
         master_fd,
         matches: Vec::new(),
@@ -1374,7 +1386,11 @@ pub unsafe extern "C" fn kero_alacritty_set_theme(
     if handle.is_null() || theme.is_null() {
         return;
     }
-    (*handle).shared.lock().theme = *theme;
+    let theme = *theme;
+    let terminal = &mut *handle;
+    terminal.theme = theme;
+    // ColorRequest on the PTY thread still reads Shared.
+    terminal.shared.lock().theme = theme;
 }
 
 /// Updates the default cursor used when the terminal application has not
@@ -2390,6 +2406,150 @@ mod tests {
         assert!(output.is_empty());
         assert!(events.is_empty());
     }
+
+    fn write_vt(term: &mut Term<VoidListener>, input: &[u8]) {
+        let mut processor: Processor = Processor::new();
+        processor.advance(term, input);
+    }
+
+    fn empty_snapshot() -> KeroSnapshot {
+        KeroSnapshot {
+            cells: std::ptr::null(),
+            columns: 0,
+            rows: 0,
+            cursor_line: 0,
+            cursor_column: 0,
+            cursor_shape: 0,
+            cursor_color: 0,
+            background: 0,
+            cursor_blinking: false,
+            text: std::ptr::null(),
+            text_len: 0,
+            display_offset: 0,
+            total_lines: 0,
+            screen_lines: 0,
+        }
+    }
+
+    struct SnapshotState {
+        cells: Vec<KeroCell>,
+        cell_text: Vec<u8>,
+        last_display_offset: Option<usize>,
+        out: KeroSnapshot,
+    }
+
+    impl SnapshotState {
+        fn new() -> Self {
+            Self {
+                cells: Vec::new(),
+                cell_text: Vec::new(),
+                last_display_offset: None,
+                out: empty_snapshot(),
+            }
+        }
+
+        fn fill(&mut self, term: &Term<VoidListener>, dirty_rows: Option<&[usize]>) {
+            fill_snapshot(
+                &mut self.cells,
+                &mut self.cell_text,
+                &mut self.last_display_offset,
+                &theme(),
+                term,
+                dirty_rows,
+                &mut self.out,
+            );
+        }
+
+        fn ch(&self, row: usize, column: usize) -> char {
+            char::from_u32(self.cells[row * self.out.columns + column].ch).unwrap()
+        }
+    }
+
+    #[test]
+    fn snapshot_full_refill_writes_every_cell() {
+        let term = parse(b"Hi");
+        let mut snap = SnapshotState::new();
+        snap.fill(&term, None);
+
+        assert_eq!(snap.cells.len(), 40 * 3);
+        assert_eq!(snap.out.columns, 40);
+        assert_eq!(snap.out.rows, 3);
+        assert_eq!(snap.ch(0, 0), 'H');
+        assert_eq!(snap.ch(0, 1), 'i');
+        assert_eq!(snap.ch(0, 2), ' ');
+        assert_eq!(snap.ch(1, 0), ' ');
+        assert_eq!(snap.out.cursor_line, 0);
+        assert_eq!(snap.out.cursor_column, 2);
+    }
+
+    #[test]
+    fn snapshot_row_limited_refill_updates_only_that_row() {
+        let mut term = parse(b"AAA\r\nBBB\r\nCCC");
+        let mut snap = SnapshotState::new();
+        snap.fill(&term, None);
+        assert_eq!(snap.ch(0, 0), 'A');
+        assert_eq!(snap.ch(1, 0), 'B');
+        assert_eq!(snap.ch(2, 0), 'C');
+
+        write_vt(&mut term, b"\x1b[2;1HXXX");
+        snap.fill(&term, Some(&[1]));
+        assert_eq!(snap.ch(0, 0), 'A');
+        assert_eq!(snap.ch(1, 0), 'X');
+        assert_eq!(snap.ch(1, 1), 'X');
+        assert_eq!(snap.ch(1, 2), 'X');
+        assert_eq!(snap.ch(2, 0), 'C');
+    }
+
+    #[test]
+    fn snapshot_empty_dirty_rows_leave_cells_and_refresh_cursor() {
+        let mut term = parse(b"Hi");
+        let mut snap = SnapshotState::new();
+        snap.fill(&term, None);
+        let before = snap.cells.clone();
+        let before_column = snap.out.cursor_column;
+
+        write_vt(&mut term, b"\x1b[2;1HZ\x1b[1;10H");
+        snap.fill(&term, Some(&[]));
+        assert_eq!(snap.cells, before);
+        assert_eq!(snap.ch(1, 0), ' ');
+        assert_eq!(snap.out.cursor_line, 0);
+        assert_eq!(snap.out.cursor_column, 9);
+        assert_ne!(snap.out.cursor_column, before_column);
+    }
+
+    #[test]
+    fn snapshot_display_offset_change_full_refills() {
+        let mut term = parse(b"one\r\ntwo\r\nthree\r\nfour");
+        let mut snap = SnapshotState::new();
+        snap.fill(&term, None);
+        assert_eq!(snap.out.display_offset, 0);
+        assert_eq!(snap.ch(0, 0), 't');
+
+        term.scroll_display(Scroll::Delta(1));
+        snap.fill(&term, Some(&[]));
+        assert_eq!(snap.out.display_offset, 1);
+        assert_eq!(snap.ch(0, 0), 'o');
+        assert_eq!(snap.ch(1, 0), 't');
+    }
+
+    #[test]
+    fn snapshot_resize_full_refills() {
+        let mut term = parse(b"Hi\r\nYo");
+        let mut snap = SnapshotState::new();
+        snap.fill(&term, None);
+        assert_eq!(snap.cells.len(), 40 * 3);
+
+        term.resize(TermSize {
+            columns: 40,
+            screen_lines: 5,
+        });
+        snap.fill(&term, Some(&[0]));
+        assert_eq!(snap.cells.len(), 40 * 5);
+        assert_eq!(snap.out.rows, 5);
+        assert_eq!(snap.ch(0, 0), 'H');
+        assert_eq!(snap.ch(1, 0), 'Y');
+        assert_eq!(snap.ch(4, 0), ' ');
+    }
 }
 
 /// Which viewport rows changed since the last call, resetting the emulator's
@@ -2419,6 +2579,7 @@ pub unsafe extern "C" fn kero_alacritty_take_damage(
     terminal.dirty_rows.clear();
 
     let mut term = terminal.term.lock();
+    let screen_lines = term.screen_lines();
     let mut kind = match term.damage() {
         TermDamage::Full => KERO_DAMAGE_FULL,
         TermDamage::Partial(iter) => {
@@ -2433,6 +2594,7 @@ pub unsafe extern "C" fn kero_alacritty_take_damage(
         }
     };
     term.reset_damage();
+    let selection_rows = selection_viewport_row_range(&term);
     drop(term);
     let graphics_revision = terminal.kitty_graphics.lock().revision;
     if graphics_revision != terminal.last_kitty_damage_revision {
@@ -2441,6 +2603,24 @@ pub unsafe extern "C" fn kero_alacritty_take_damage(
         terminal.dirty_rows.clear();
     }
 
+    // Selection is not in Term::damage. Union the previous and current
+    // selected viewport rows so a drag can rebuild those lines only.
+    if kind != KERO_DAMAGE_FULL {
+        let previous = terminal.last_selection_rows;
+        if previous != selection_rows {
+            if let Some(range) = previous {
+                union_viewport_rows(&mut terminal.dirty_rows, range, screen_lines);
+            }
+            if let Some(range) = selection_rows {
+                union_viewport_rows(&mut terminal.dirty_rows, range, screen_lines);
+            }
+            if kind == KERO_DAMAGE_NONE && !terminal.dirty_rows.is_empty() {
+                kind = KERO_DAMAGE_PARTIAL;
+            }
+        }
+    }
+    terminal.last_selection_rows = selection_rows;
+
     *out = KeroDamage {
         kind,
         rows: terminal.dirty_rows.as_ptr(),
@@ -2448,127 +2628,158 @@ pub unsafe extern "C" fn kero_alacritty_take_damage(
     };
 }
 
-/// Fills `out` with the visible grid.
-///
-/// The cell array belongs to the handle and stays valid only until the next
-/// call on it, which keeps a redraw from allocating.
-///
-/// # Safety
-/// `handle` must be live and `out` must be a valid `KeroSnapshot`.
-#[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_snapshot(
-    handle: *mut KeroTerminal,
-    out: *mut KeroSnapshot,
-) {
-    if handle.is_null() || out.is_null() {
+fn selection_viewport_row_range<L: EventListener>(term: &Term<L>) -> Option<(i32, i32)> {
+    let range = term
+        .selection
+        .as_ref()
+        .and_then(|selection| selection.to_range(term))?;
+    let offset = term.grid().display_offset() as i32;
+    Some((range.start.line.0 + offset, range.end.line.0 + offset))
+}
+
+fn union_viewport_rows(rows: &mut Vec<usize>, range: (i32, i32), screen_lines: usize) {
+    if screen_lines == 0 {
         return;
     }
-    let terminal = &mut *handle;
-    let theme = terminal.shared.lock().theme;
-    let term = terminal.term.lock();
+    let first = range.0.max(0) as usize;
+    if first >= screen_lines {
+        return;
+    }
+    let last = (range.1.max(0) as usize).min(screen_lines - 1);
+    if last < first {
+        return;
+    }
+    for row in first..=last {
+        if !rows.contains(&row) {
+            rows.push(row);
+        }
+    }
+}
 
-    let columns = term.columns();
-    let screen_lines = term.screen_lines();
-    let background = term.colors()[NamedColor::Background as usize]
-        .map(pack)
-        .unwrap_or(theme.background);
+fn kero_cell_flags(cell: &Cell, selected: bool) -> u16 {
+    let mut flags = 0u16;
+    let source = cell.flags;
+    if source.contains(Flags::INVERSE) {
+        flags |= KERO_CELL_INVERSE;
+    }
+    if source.contains(Flags::BOLD) {
+        flags |= KERO_CELL_BOLD;
+    }
+    if source.contains(Flags::ITALIC) {
+        flags |= KERO_CELL_ITALIC;
+    }
+    if source.intersects(Flags::ALL_UNDERLINES) {
+        flags |= KERO_CELL_UNDERLINE;
+    }
+    if source.contains(Flags::STRIKEOUT) {
+        flags |= KERO_CELL_STRIKEOUT;
+    }
+    if source.contains(Flags::DIM) {
+        flags |= KERO_CELL_DIM;
+    }
+    if source.contains(Flags::HIDDEN) {
+        flags |= KERO_CELL_HIDDEN;
+    }
+    if source.contains(Flags::WIDE_CHAR) {
+        flags |= KERO_CELL_WIDE;
+    }
+    if source.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+        flags |= KERO_CELL_WIDE_SPACER;
+    }
+    if selected {
+        flags |= KERO_CELL_SELECTED;
+    }
+    flags
+}
 
-    terminal.cells.clear();
-    terminal.cell_text.clear();
-    terminal.cells.resize(
-        columns * screen_lines,
-        KeroCell {
-            ch: u32::from(' '),
-            fg: theme.foreground,
-            bg: background,
-            text_offset: 0,
-            text_len: 0,
-            flags: 0,
-        },
-    );
+fn encode_cell_text(cell: &Cell, cell_text: &mut Vec<u8>) -> (u32, u16) {
+    let Some(marks) = cell.zerowidth().filter(|marks| !marks.is_empty()) else {
+        return (0, 0);
+    };
+    let offset = cell_text.len();
+    let mut encoded = [0; 4];
+    cell_text.extend_from_slice(cell.c.encode_utf8(&mut encoded).as_bytes());
+    for mark in marks {
+        cell_text.extend_from_slice(mark.encode_utf8(&mut encoded).as_bytes());
+    }
+    let len = cell_text.len() - offset;
+    if offset <= u32::MAX as usize && len <= u16::MAX as usize {
+        (offset as u32, len as u16)
+    } else {
+        cell_text.truncate(offset);
+        (0, 0)
+    }
+}
 
-    let content = term.renderable_content();
-    let selection = content.selection;
-    let colors = content.colors;
+fn pack_kero_cell(
+    cell: &Cell,
+    point: Point,
+    selection: Option<SelectionRange>,
+    colors: &Colors,
+    theme: &KeroTheme,
+    cell_text: &mut Vec<u8>,
+) -> KeroCell {
+    let selected = selection.is_some_and(|range| range.contains(point));
+    let (text_offset, text_len) = encode_cell_text(cell, cell_text);
+    KeroCell {
+        ch: u32::from(cell.c),
+        fg: resolve(cell.fg, colors, theme),
+        bg: resolve(cell.bg, colors, theme),
+        text_offset,
+        text_len,
+        flags: kero_cell_flags(cell, selected),
+    }
+}
 
-    for item in content.display_iter {
-        // `display_iter` numbers lines relative to the *display*, not the
-        // viewport: scrolled back by N, it yields -N..screen_lines-N. Adding
-        // the offset maps that onto viewport rows 0..screen_lines. Dropping
-        // the negative half instead would blank exactly the N rows the user
-        // just scrolled to.
-        let line = item.point.line.0 + content.display_offset as i32;
-        let column = item.point.column.0;
-        if line < 0 || line as usize >= screen_lines || column >= columns {
+fn refill_viewport_rows<L, I>(
+    cells: &mut [KeroCell],
+    cell_text: &mut Vec<u8>,
+    term: &Term<L>,
+    theme: &KeroTheme,
+    selection: Option<SelectionRange>,
+    colors: &Colors,
+    display_offset: usize,
+    columns: usize,
+    screen_lines: usize,
+    rows: I,
+) where
+    L: EventListener,
+    I: IntoIterator<Item = usize>,
+{
+    let grid = term.grid();
+    let offset = display_offset as i32;
+    for viewport_row in rows {
+        if viewport_row >= screen_lines {
             continue;
         }
-        let cell = item.cell;
-        let mut flags = 0u16;
-        let source = cell.flags;
-        if source.contains(Flags::INVERSE) {
-            flags |= KERO_CELL_INVERSE;
+        let grid_line = Line(viewport_row as i32 - offset);
+        let row = &grid[grid_line];
+        let cell_offset = viewport_row * columns;
+        for column in 0..columns {
+            let point = Point::new(grid_line, Column(column));
+            cells[cell_offset + column] = pack_kero_cell(
+                &row[Column(column)],
+                point,
+                selection,
+                colors,
+                theme,
+                cell_text,
+            );
         }
-        if source.contains(Flags::BOLD) {
-            flags |= KERO_CELL_BOLD;
-        }
-        if source.contains(Flags::ITALIC) {
-            flags |= KERO_CELL_ITALIC;
-        }
-        if source.intersects(Flags::ALL_UNDERLINES) {
-            flags |= KERO_CELL_UNDERLINE;
-        }
-        if source.contains(Flags::STRIKEOUT) {
-            flags |= KERO_CELL_STRIKEOUT;
-        }
-        if source.contains(Flags::DIM) {
-            flags |= KERO_CELL_DIM;
-        }
-        if source.contains(Flags::HIDDEN) {
-            flags |= KERO_CELL_HIDDEN;
-        }
-        if source.contains(Flags::WIDE_CHAR) {
-            flags |= KERO_CELL_WIDE;
-        }
-        if source.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
-            flags |= KERO_CELL_WIDE_SPACER;
-        }
-        if selection.is_some_and(|range| range.contains(item.point)) {
-            flags |= KERO_CELL_SELECTED;
-        }
-
-        let (text_offset, text_len) =
-            if let Some(marks) = cell.zerowidth().filter(|marks| !marks.is_empty()) {
-                let offset = terminal.cell_text.len();
-                let mut encoded = [0; 4];
-                terminal
-                    .cell_text
-                    .extend_from_slice(cell.c.encode_utf8(&mut encoded).as_bytes());
-                for mark in marks {
-                    terminal
-                        .cell_text
-                        .extend_from_slice(mark.encode_utf8(&mut encoded).as_bytes());
-                }
-                let len = terminal.cell_text.len() - offset;
-                if offset <= u32::MAX as usize && len <= u16::MAX as usize {
-                    (offset as u32, len as u16)
-                } else {
-                    terminal.cell_text.truncate(offset);
-                    (0, 0)
-                }
-            } else {
-                (0, 0)
-            };
-
-        terminal.cells[line as usize * columns + column] = KeroCell {
-            ch: u32::from(cell.c),
-            fg: resolve(cell.fg, colors, &theme),
-            bg: resolve(cell.bg, colors, &theme),
-            text_offset,
-            text_len,
-            flags,
-        };
     }
+}
 
+fn write_snapshot_out<L: EventListener>(
+    out: &mut KeroSnapshot,
+    cells: &[KeroCell],
+    cell_text: &[u8],
+    term: &Term<L>,
+    theme: &KeroTheme,
+    content: &RenderableContent<'_>,
+    columns: usize,
+    screen_lines: usize,
+    background: u32,
+) {
     let cursor = content.cursor;
     let hidden = !term.mode().contains(TermMode::SHOW_CURSOR)
         || matches!(cursor.shape, CursorShape::Hidden)
@@ -2580,7 +2791,7 @@ pub unsafe extern "C" fn kero_alacritty_snapshot(
     };
 
     *out = KeroSnapshot {
-        cells: terminal.cells.as_ptr(),
+        cells: cells.as_ptr(),
         columns,
         rows: screen_lines,
         cursor_line,
@@ -2592,20 +2803,159 @@ pub unsafe extern "C" fn kero_alacritty_snapshot(
             CursorShape::HollowBlock => 3,
             _ => 0,
         },
-        cursor_color: colors[NamedColor::Cursor as usize]
+        cursor_color: content.colors[NamedColor::Cursor as usize]
             .map(pack)
             .unwrap_or(theme.cursor),
         background,
         cursor_blinking: term.cursor_style().blinking,
-        text: terminal.cell_text.as_ptr(),
-        text_len: terminal.cell_text.len(),
+        text: cell_text.as_ptr(),
+        text_len: cell_text.len(),
         display_offset: content.display_offset,
         total_lines: term.total_lines(),
         screen_lines,
     };
 }
 
-/// Fills `out` with visible Kitty image placements. PNG pointers belong to the
+/// Packs the visible grid into `cells`.
+///
+/// `None` walks every row. `Some(&[])` is cursor-only: cells stay as they
+/// are. `Some(rows)` refills those viewport rows. An empty buffer, a size
+/// change, or a `display_offset` change still walks every visible row —
+/// cached cells are viewport-relative, so a scroll would otherwise leave
+/// the wrong lines on screen.
+fn fill_snapshot<L: EventListener>(
+    cells: &mut Vec<KeroCell>,
+    cell_text: &mut Vec<u8>,
+    last_display_offset: &mut Option<usize>,
+    theme: &KeroTheme,
+    term: &Term<L>,
+    dirty_rows: Option<&[usize]>,
+    out: &mut KeroSnapshot,
+) {
+    let columns = term.columns();
+    let screen_lines = term.screen_lines();
+    let background = term.colors()[NamedColor::Background as usize]
+        .map(pack)
+        .unwrap_or(theme.background);
+    let content = term.renderable_content();
+    let display_offset = content.display_offset;
+    let fill_all = dirty_rows.is_none()
+        || cells.is_empty()
+        || cells.len() != columns * screen_lines
+        || *last_display_offset != Some(display_offset);
+
+    if fill_all {
+        cell_text.clear();
+        cells.clear();
+        cells.resize(
+            columns * screen_lines,
+            KeroCell {
+                ch: u32::from(' '),
+                fg: theme.foreground,
+                bg: background,
+                text_offset: 0,
+                text_len: 0,
+                flags: 0,
+            },
+        );
+        refill_viewport_rows(
+            cells,
+            cell_text,
+            term,
+            theme,
+            content.selection,
+            content.colors,
+            display_offset,
+            columns,
+            screen_lines,
+            0..screen_lines,
+        );
+    } else if let Some(rows) = dirty_rows.filter(|rows| !rows.is_empty()) {
+        // Combining text for dirty rows is appended. Offsets on other rows
+        // stay valid; orphans are dropped on the next full refill.
+        refill_viewport_rows(
+            cells,
+            cell_text,
+            term,
+            theme,
+            content.selection,
+            content.colors,
+            display_offset,
+            columns,
+            screen_lines,
+            rows.iter().copied(),
+        );
+    }
+
+    *last_display_offset = Some(display_offset);
+    write_snapshot_out(
+        out,
+        cells,
+        cell_text,
+        term,
+        theme,
+        &content,
+        columns,
+        screen_lines,
+        background,
+    );
+}
+
+/// Fills `out` with the visible grid.
+///
+/// Always a full refill. The cell array belongs to the handle and stays
+/// valid only until the next call on it, which keeps a redraw from allocating.
+///
+/// # Safety
+/// `handle` must be live and `out` must be a valid `KeroSnapshot`.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_snapshot(
+    handle: *mut KeroTerminal,
+    out: *mut KeroSnapshot,
+) {
+    kero_alacritty_snapshot_rows(handle, out, std::ptr::null(), 0);
+}
+
+/// Like `kero_alacritty_snapshot`, but only walks the named viewport rows.
+///
+/// `dirty_rows` NULL: full refill. A non-NULL pointer with `dirty_rows_len`
+/// 0: cursor fields only; cells are left as they are. Non-empty: refill
+/// those rows. Resize, an empty cell buffer, or a display_offset change
+/// still refill the whole grid.
+///
+/// # Safety
+/// `handle` must be live, `out` a valid `KeroSnapshot`, and `dirty_rows`
+/// valid for `dirty_rows_len` entries when non-NULL.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_snapshot_rows(
+    handle: *mut KeroTerminal,
+    out: *mut KeroSnapshot,
+    dirty_rows: *const usize,
+    dirty_rows_len: usize,
+) {
+    if handle.is_null() || out.is_null() {
+        return;
+    }
+    let terminal = &mut *handle;
+    let request = if dirty_rows.is_null() {
+        None
+    } else {
+        Some(std::slice::from_raw_parts(dirty_rows, dirty_rows_len))
+    };
+    let theme = terminal.theme;
+    let term = terminal.term.lock();
+    fill_snapshot(
+        &mut terminal.cells,
+        &mut terminal.cell_text,
+        &mut terminal.last_display_offset,
+        &theme,
+        &term,
+        request,
+        &mut *out,
+    );
+}
+
+/// Fills `out` with visible Kitty image placements. Pixel pointers belong to the
 /// handle and remain valid until its next FFI call.
 ///
 /// # Safety
@@ -2651,8 +3001,8 @@ pub unsafe extern "C" fn kero_alacritty_kitty_snapshot(
     terminal.kitty_placements.reserve(placements.len());
     terminal.kitty_images.reserve(placements.len());
     for placement in placements {
-        terminal.kitty_images.push(placement.png);
-        let png = terminal
+        terminal.kitty_images.push(placement.rgba);
+        let pixels = terminal
             .kitty_images
             .last()
             .expect("image was retained for the placement");
@@ -2660,8 +3010,8 @@ pub unsafe extern "C" fn kero_alacritty_kitty_snapshot(
             placement_serial: placement.placement_serial,
             image_id: placement.image_id,
             placement_id: placement.placement_id,
-            png: png.as_ptr(),
-            png_len: png.len(),
+            pixels: pixels.as_ptr(),
+            pixels_len: pixels.len(),
             image_width: placement.image_width,
             image_height: placement.image_height,
             image_generation: placement.image_generation,

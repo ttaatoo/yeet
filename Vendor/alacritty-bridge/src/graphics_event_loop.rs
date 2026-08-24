@@ -6,8 +6,8 @@
 
 use crate::{
     kitty_graphics::{
-        KittyGraphicsInterceptor, KittyGraphicsItem, KittyGraphicsScreen, KittyGraphicsSize,
-        KittyGraphicsStore,
+        KittyGraphicsCommand, KittyGraphicsInterceptor, KittyGraphicsItem, KittyGraphicsScreen,
+        KittyGraphicsSize, KittyGraphicsStore,
     },
     kitty_graphics_tracking::{advance_cursor, advance_text, KittyGraphicsCursorTracker},
 };
@@ -108,8 +108,9 @@ where
         state: &mut GraphicsEventLoopState,
         terminal: &mut Term<U>,
         bytes: &[u8],
-    ) -> bool {
+    ) -> (bool, Vec<PendingKittyCommand>) {
         let mut graphics_changed = false;
+        let mut pending_kitty = Vec::new();
         for item in state.graphics_interceptor.process(bytes) {
             match item {
                 KittyGraphicsItem::Text(text) => {
@@ -147,40 +148,77 @@ where
                     let mut size = *self.graphics_size.lock();
                     size.columns = terminal.grid().columns();
                     size.rows = terminal.grid().screen_lines();
-                    let result = {
-                        let mut graphics = self.graphics.lock();
-                        let result = graphics.state.apply(
-                            command,
-                            cursor.column.0,
-                            cursor.line.0.max(0) as usize,
-                            terminal.grid().history_size(),
-                            size,
-                            screen,
-                        );
-                        if result.changed {
-                            graphics.mark_changed();
-                        }
-                        result
-                    };
-                    if let Some(response) = result.response {
-                        state.write_list.push_back(Cow::Owned(response));
-                    }
-                    graphics_changed |= result.changed;
-                    if result.cursor_advance_screen == Some(screen) {
-                        if let Some((columns, rows)) = result.cursor_advance {
-                            let untracked_scroll =
-                                advance_cursor(terminal, columns, rows, full_screen_scroll_region);
-                            if untracked_scroll > 0 {
-                                let mut graphics = self.graphics.lock();
-                                if graphics
-                                    .state
-                                    .scroll_up_without_history(untracked_scroll, screen)
-                                {
-                                    graphics.mark_changed();
-                                    graphics_changed = true;
-                                }
-                            }
-                        }
+                    pending_kitty.push(PendingKittyCommand {
+                        command,
+                        cursor_column: cursor.column.0,
+                        cursor_row: cursor.line.0.max(0) as usize,
+                        history_size: terminal.grid().history_size(),
+                        size,
+                        screen,
+                        full_screen_scroll_region,
+                    });
+                }
+            }
+        }
+        (graphics_changed, pending_kitty)
+    }
+
+    /// Decode and place Kitty images without the terminal mutex. PNG inflate
+    /// can take tens of milliseconds; holding `term` that long stalls the
+    /// host snapshot on the main thread.
+    fn apply_pending_kitty(
+        &self,
+        state: &mut GraphicsEventLoopState,
+        pending: Vec<PendingKittyCommand>,
+    ) -> bool {
+        if pending.is_empty() {
+            return false;
+        }
+        let mut graphics_changed = false;
+        let mut advances = Vec::new();
+        for command in pending {
+            let result = {
+                let mut graphics = self.graphics.lock();
+                let result = graphics.state.apply(
+                    command.command,
+                    command.cursor_column,
+                    command.cursor_row,
+                    command.history_size,
+                    command.size,
+                    command.screen,
+                );
+                if result.changed {
+                    graphics.mark_changed();
+                }
+                result
+            };
+            if let Some(response) = result.response {
+                state.write_list.push_back(Cow::Owned(response));
+            }
+            graphics_changed |= result.changed;
+            if result.cursor_advance_screen == Some(command.screen) {
+                if let Some(advance) = result.cursor_advance {
+                    advances.push((
+                        advance,
+                        command.screen,
+                        command.full_screen_scroll_region,
+                    ));
+                }
+            }
+        }
+        if !advances.is_empty() {
+            let mut terminal = self.terminal.lock();
+            for ((columns, rows), screen, full_screen_scroll_region) in advances {
+                let untracked_scroll =
+                    advance_cursor(&mut terminal, columns, rows, full_screen_scroll_region);
+                if untracked_scroll > 0 {
+                    let mut graphics = self.graphics.lock();
+                    if graphics
+                        .state
+                        .scroll_up_without_history(untracked_scroll, screen)
+                    {
+                        graphics.mark_changed();
+                        graphics_changed = true;
                     }
                 }
             }
@@ -197,14 +235,22 @@ where
         let mut processed = 0;
         let mut graphics_changed = false;
         let _terminal_lease = self.terminal.lease();
-        let mut terminal = None;
 
         loop {
-            match self.pty.reader().read(&mut buffer[unprocessed..]) {
+            if processed >= MAX_LOCKED_READ {
+                break;
+            }
+            let remaining = MAX_LOCKED_READ - processed;
+            let read_end = (unprocessed + remaining).min(buffer.len());
+            if read_end <= unprocessed {
+                break;
+            }
+            match self.pty.reader().read(&mut buffer[unprocessed..read_end]) {
                 Ok(0) if unprocessed == 0 => break,
                 Ok(count) => unprocessed += count,
                 Err(error) => match error.kind() {
-                    ErrorKind::Interrupted | ErrorKind::WouldBlock => {
+                    ErrorKind::Interrupted => continue,
+                    ErrorKind::WouldBlock => {
                         if unprocessed == 0 {
                             break;
                         }
@@ -212,23 +258,23 @@ where
                     _ => return Err(error),
                 },
             }
+            if unprocessed == 0 {
+                continue;
+            }
 
-            let terminal = match &mut terminal {
-                Some(terminal) => terminal,
-                None => terminal.insert(match self.terminal.try_lock_unfair() {
-                    None if unprocessed >= READ_BUFFER_SIZE => self.terminal.lock_unfair(),
-                    None => continue,
+            let pending_kitty = {
+                let mut terminal = match self.terminal.try_lock_unfair() {
                     Some(terminal) => terminal,
-                }),
+                    None => self.terminal.lock_unfair(),
+                };
+                let (changed, pending) =
+                    self.parse_output(state, &mut terminal, &buffer[..unprocessed]);
+                graphics_changed |= changed;
+                pending
             };
-
-            graphics_changed |= self.parse_output(state, &mut **terminal, &buffer[..unprocessed]);
+            graphics_changed |= self.apply_pending_kitty(state, pending_kitty);
             processed += unprocessed;
             unprocessed = 0;
-
-            if processed >= MAX_LOCKED_READ {
-                break;
-            }
         }
 
         if graphics_changed || (state.parser.sync_bytes_count() < processed && processed > 0) {
@@ -268,7 +314,7 @@ where
 
     pub(crate) fn spawn(mut self) -> JoinHandle<()> {
         std::thread::Builder::new()
-            .name("Kero Alacritty PTY".into())
+            .name("Yeet Alacritty PTY".into())
             .spawn(move || {
                 let mut state = GraphicsEventLoopState::default();
                 let mut buffer = [0u8; READ_BUFFER_SIZE];
@@ -354,7 +400,7 @@ where
                 }
                 let _ = self.pty.deregister(&self.poller);
             })
-            .expect("spawn Kero Alacritty PTY event loop")
+            .expect("spawn Yeet Alacritty PTY event loop")
     }
 }
 
@@ -414,6 +460,16 @@ impl OnResize for GraphicsNotifier {
     fn on_resize(&mut self, size: WindowSize) {
         let _ = self.0.send(GraphicsMsg::Resize(size));
     }
+}
+
+struct PendingKittyCommand {
+    command: KittyGraphicsCommand,
+    cursor_column: usize,
+    cursor_row: usize,
+    history_size: usize,
+    size: KittyGraphicsSize,
+    screen: KittyGraphicsScreen,
+    full_screen_scroll_region: bool,
 }
 
 #[derive(Default)]

@@ -8,9 +8,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use flate2::read::ZlibDecoder;
 use std::{
     collections::{HashMap, VecDeque},
-    fs::File,
-    io::{Cursor, Read, Seek, SeekFrom},
-    path::{Path, PathBuf},
+    io::{Cursor, Read},
     sync::Arc,
 };
 
@@ -224,7 +222,9 @@ impl KittyGraphicsInterceptor {
 
 #[derive(Clone, Debug)]
 struct StoredImage {
-    png: Arc<[u8]>,
+    /// 8-bit RGBA, unpacked once so the host does not decode PNG on the
+    /// frame path.
+    rgba: Arc<[u8]>,
     width: u32,
     height: u32,
     byte_len: usize,
@@ -290,7 +290,7 @@ pub(crate) struct KittyGraphicsRenderPlacement {
     pub(crate) placement_serial: u64,
     pub(crate) image_id: u32,
     pub(crate) placement_id: u32,
-    pub(crate) png: Arc<[u8]>,
+    pub(crate) rgba: Arc<[u8]>,
     pub(crate) image_width: u32,
     pub(crate) image_height: u32,
     pub(crate) image_generation: u64,
@@ -472,7 +472,7 @@ impl KittyGraphicsState {
                     placement_serial: placement.placement_serial,
                     image_id: placement.image_id,
                     placement_id: placement.placement_id,
-                    png: image.png.clone(),
+                    rgba: image.rgba.clone(),
                     image_width: image.width,
                     image_height: image.height,
                     image_generation: image.generation,
@@ -610,7 +610,7 @@ impl KittyGraphicsState {
             },
             Some(_) => return self.failure(&command, "EINVAL:unsupported compression"),
         };
-        let (png, width, height) = match normalize_image(&command, &data) {
+        let (rgba, width, height) = match normalize_image(&command, &data) {
             Ok(image) => image,
             Err(error) => return self.failure(&command, &error),
         };
@@ -626,12 +626,12 @@ impl KittyGraphicsState {
             requested_id
         };
         self.remove_image(image_id);
-        let byte_len = png.len();
+        let byte_len = rgba.len();
         self.next_generation = self.next_generation.wrapping_add(1).max(1);
         self.images.insert(
             image_id,
             StoredImage {
-                png: Arc::from(png),
+                rgba: Arc::from(rgba),
                 width,
                 height,
                 byte_len,
@@ -868,24 +868,9 @@ impl KittyGraphicsState {
     ) -> Result<Vec<u8>, String> {
         match command.char_value('t').unwrap_or('d') {
             'd' => Ok(decoded),
-            'f' | 't' => {
-                let temporary = command.char_value('t') == Some('t');
-                let path = PathBuf::from(
-                    std::str::from_utf8(&decoded).map_err(|_| "EINVAL:file path is not UTF-8")?,
-                );
-                let result = read_regular_file(
-                    &path,
-                    command.u32_value('O').unwrap_or(0) as u64,
-                    command
-                        .u32_value('S')
-                        .filter(|size| *size > 0)
-                        .map(u64::from),
-                );
-                if temporary && temporary_path_can_be_removed(&path) {
-                    let _ = std::fs::remove_file(&path);
-                }
-                result
-            }
+            // Paths arrive from the PTY guest. Opening them would let the
+            // terminal process read (and for `t`, delete) arbitrary host files.
+            'f' | 't' => Err("ENOTSUP:file transmission is not supported".into()),
             's' => Err("ENOTSUP:shared-memory transmission is not supported".into()),
             _ => Err("EINVAL:unsupported transmission medium".into()),
         }
@@ -1012,11 +997,13 @@ fn normalize_image(
 ) -> Result<(Vec<u8>, u32, u32), String> {
     match command.u32_value('f').unwrap_or(32) {
         100 => {
-            let decoder = png::Decoder::new(Cursor::new(data));
+            let mut decoder = png::Decoder::new(Cursor::new(data));
+            decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
             let mut reader = decoder
                 .read_info()
                 .map_err(|_| "EINVAL:invalid PNG image".to_owned())?;
             let (width, height) = (reader.info().width, reader.info().height);
+            let color = reader.info().color_type;
             validate_dimensions(width, height, 4)?;
             let decoded_len = reader
                 .output_buffer_size()
@@ -1027,7 +1014,8 @@ fn normalize_image(
                 .next_frame(&mut decoded)
                 .and_then(|_| reader.finish())
                 .map_err(|_| "EINVAL:invalid PNG image".to_owned())?;
-            Ok((data.to_vec(), width, height))
+            let rgba = expand_to_rgba(&decoded, color, width, height)?;
+            Ok((rgba, width, height))
         }
         format @ (24 | 32) => {
             let width = command.u32_value('s').unwrap_or(0);
@@ -1037,23 +1025,64 @@ fn normalize_image(
             if data.len() != expected {
                 return Err("EINVAL:pixel data length does not match dimensions".into());
             }
-            let mut png = Vec::new();
-            {
-                let mut encoder = png::Encoder::new(&mut png, width, height);
-                encoder.set_depth(png::BitDepth::Eight);
-                encoder.set_color(if channels == 3 {
-                    png::ColorType::Rgb
-                } else {
-                    png::ColorType::Rgba
-                });
-                encoder
-                    .write_header()
-                    .and_then(|mut writer| writer.write_image_data(data))
-                    .map_err(|_| "EINVAL:failed to encode pixel data".to_owned())?;
-            }
-            Ok((png, width, height))
+            let rgba = if channels == 4 {
+                data.to_vec()
+            } else {
+                expand_to_rgba(data, png::ColorType::Rgb, width, height)?
+            };
+            Ok((rgba, width, height))
         }
         _ => Err("EINVAL:unsupported image format".into()),
+    }
+}
+
+fn expand_to_rgba(
+    decoded: &[u8],
+    color: png::ColorType,
+    width: u32,
+    height: u32,
+) -> Result<Vec<u8>, String> {
+    let pixels = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or_else(|| "EFBIG:image dimensions exceed storage limit".to_owned())?;
+    match color {
+        png::ColorType::Rgba => {
+            if decoded.len() != pixels * 4 {
+                return Err("EINVAL:pixel data length does not match dimensions".into());
+            }
+            Ok(decoded.to_vec())
+        }
+        png::ColorType::Rgb => {
+            if decoded.len() != pixels * 3 {
+                return Err("EINVAL:pixel data length does not match dimensions".into());
+            }
+            let mut rgba = Vec::with_capacity(pixels * 4);
+            for chunk in decoded.chunks_exact(3) {
+                rgba.extend_from_slice(&[chunk[0], chunk[1], chunk[2], 255]);
+            }
+            Ok(rgba)
+        }
+        png::ColorType::Grayscale => {
+            if decoded.len() != pixels {
+                return Err("EINVAL:pixel data length does not match dimensions".into());
+            }
+            let mut rgba = Vec::with_capacity(pixels * 4);
+            for &value in decoded {
+                rgba.extend_from_slice(&[value, value, value, 255]);
+            }
+            Ok(rgba)
+        }
+        png::ColorType::GrayscaleAlpha => {
+            if decoded.len() != pixels * 2 {
+                return Err("EINVAL:pixel data length does not match dimensions".into());
+            }
+            let mut rgba = Vec::with_capacity(pixels * 4);
+            for chunk in decoded.chunks_exact(2) {
+                rgba.extend_from_slice(&[chunk[0], chunk[0], chunk[0], chunk[1]]);
+            }
+            Ok(rgba)
+        }
+        _ => Err("EINVAL:unsupported PNG color type".into()),
     }
 }
 
@@ -1081,49 +1110,6 @@ fn decompress_zlib(data: &[u8]) -> Result<Vec<u8>, String> {
         return Err("EFBIG:decompressed image exceeds storage limit".into());
     }
     Ok(output)
-}
-
-fn read_regular_file(path: &Path, offset: u64, size: Option<u64>) -> Result<Vec<u8>, String> {
-    let mut file = File::open(path).map_err(|_| "ENOENT:unable to open image file".to_owned())?;
-    let metadata = file
-        .metadata()
-        .map_err(|_| "EIO:unable to inspect image file".to_owned())?;
-    if !metadata.file_type().is_file() {
-        return Err("EINVAL:image path is not a regular file".into());
-    }
-    if offset > metadata.len() {
-        return Err("EINVAL:file offset is past end of file".into());
-    }
-    let available = metadata.len() - offset;
-    let length = size.unwrap_or(available).min(available);
-    if length > MAX_IMAGE_BYTES as u64 {
-        return Err("EFBIG:image file exceeds storage limit".into());
-    }
-    file.seek(SeekFrom::Start(offset))
-        .map_err(|_| "EIO:unable to seek image file".to_owned())?;
-    let mut data = Vec::with_capacity(length as usize);
-    file.take(length)
-        .read_to_end(&mut data)
-        .map_err(|_| "EIO:unable to read image file".to_owned())?;
-    Ok(data)
-}
-
-fn temporary_path_can_be_removed(path: &Path) -> bool {
-    if !path.to_string_lossy().contains("tty-graphics-protocol") {
-        return false;
-    }
-    let Ok(canonical) = path.canonicalize() else {
-        return false;
-    };
-    let roots = [
-        PathBuf::from("/tmp"),
-        PathBuf::from("/private/tmp"),
-        std::env::temp_dir(),
-    ];
-    roots.into_iter().any(|root| {
-        root.canonicalize()
-            .is_ok_and(|root| canonical.starts_with(root))
-    })
 }
 
 #[cfg(test)]
@@ -1172,7 +1158,7 @@ mod tests {
         assert_eq!(placements.len(), 1);
         assert_eq!(placements[0].column, 4);
         assert_eq!(placements[0].viewport_row, 5);
-        assert!(placements[0].png.starts_with(b"\x89PNG"));
+        assert_eq!(placements[0].rgba.as_ref(), &[1, 2, 3, 255]);
     }
 
     #[test]
@@ -1215,5 +1201,87 @@ mod tests {
             matches!(&items[0], KittyGraphicsItem::Text(text) if text == b"\x9f\x94\x8d Resolving")
         );
         assert!(matches!(&items[1], KittyGraphicsItem::Command(_)));
+    }
+
+    #[test]
+    fn refuses_file_transmission_medium() {
+        // Valid 1x1 RGBA: a regression that re-opens `t=f` paths would succeed.
+        let path = std::env::temp_dir().join(format!(
+            "kero-kitty-graphics-file-medium-{}.rgba",
+            std::process::id()
+        ));
+        std::fs::write(&path, [1, 2, 3, 255]).expect("write a readable probe file");
+        let payload = path.to_string_lossy().into_owned();
+        let mut graphics = KittyGraphicsState::default();
+        let result = graphics.apply(
+            command("a=T,f=32,s=1,v=1,i=9,t=f", payload.as_bytes()),
+            0,
+            0,
+            0,
+            size(),
+            KittyGraphicsScreen::Primary,
+        );
+        let unread = std::fs::read(&path).expect("probe file must remain present");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(unread, [1, 2, 3, 255]);
+        assert!(!result.changed);
+        assert_eq!(
+            result.response.as_deref(),
+            Some(b"\x1b_Gi=9;ENOTSUP:file transmission is not supported\x1b\\".as_slice())
+        );
+        assert!(graphics
+            .render_placements(0, 0, 24, 80, KittyGraphicsScreen::Primary)
+            .is_empty());
+    }
+
+    #[test]
+    fn refuses_temporary_file_transmission_medium() {
+        // Same readable probe as `t=f`; `t=t` must not open or delete it.
+        let path = std::env::temp_dir().join(format!(
+            "kero-kitty-graphics-temp-medium-{}.rgba",
+            std::process::id()
+        ));
+        std::fs::write(&path, [1, 2, 3, 255]).expect("write a readable probe file");
+        let payload = path.to_string_lossy().into_owned();
+        let mut graphics = KittyGraphicsState::default();
+        let result = graphics.apply(
+            command("a=T,f=32,s=1,v=1,i=10,t=t", payload.as_bytes()),
+            0,
+            0,
+            0,
+            size(),
+            KittyGraphicsScreen::Primary,
+        );
+        let unread = std::fs::read(&path).expect("probe file must remain present");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(unread, [1, 2, 3, 255]);
+        assert!(!result.changed);
+        assert_eq!(
+            result.response.as_deref(),
+            Some(b"\x1b_Gi=10;ENOTSUP:file transmission is not supported\x1b\\".as_slice())
+        );
+        assert!(graphics
+            .render_placements(0, 0, 24, 80, KittyGraphicsScreen::Primary)
+            .is_empty());
+    }
+
+    #[test]
+    fn uploads_direct_transmission_medium() {
+        let mut graphics = KittyGraphicsState::default();
+        let result = graphics.apply(
+            command("a=T,f=32,s=1,v=1,i=11,t=d,c=1,r=1", &[1, 2, 3, 255]),
+            0,
+            0,
+            0,
+            size(),
+            KittyGraphicsScreen::Primary,
+        );
+        assert!(result.changed);
+        assert_eq!(
+            graphics
+                .render_placements(0, 0, 24, 80, KittyGraphicsScreen::Primary)
+                .len(),
+            1
+        );
     }
 }
