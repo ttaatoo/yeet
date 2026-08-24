@@ -1,2 +1,3 @@
-// Per-developer signing settings live in the optional, gitignored file below.
+// Per-developer overrides live in the optional, gitignored file below.
+// Signing is ad-hoc on the yeet target; Local.xcconfig does not need a team ID.
 #include? "Local.xcconfig"

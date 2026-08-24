@@ -1,0 +1,115 @@
+//
+//  FinderService.swift
+//  kero
+//
+
+import AppKit
+
+/// Provides Kero's Finder service. The advertised menu item lives in
+/// Info.plist; AppKit forwards matching service requests to this object.
+@MainActor
+final class KeroApplicationDelegate: NSObject, NSApplicationDelegate {
+    static weak var shared: KeroApplicationDelegate?
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        Self.shared = self
+        // AppSettings is first initialized from SwiftUI's App.init(), where
+        // NSApp may not exist yet. Reapply the saved override once AppKit is
+        // ready, before SwiftUI creates the first window.
+        AppSettings.shared.applyAppearance()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.servicesProvider = self
+    }
+
+    /// Confirm dirty buffers in every window before Quit. Cancel must abort
+    /// terminate — `willTerminate` is too late to keep the windows open.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task { @MainActor in
+            if await TerminalManager.confirmQuit() {
+                NSApp.reply(toApplicationShouldTerminate: true)
+            } else {
+                NSApp.reply(toApplicationShouldTerminate: false)
+            }
+        }
+        return .terminateLater
+    }
+
+    /// Toggles Yeet: hide when a main workspace window is already key;
+    /// otherwise unhide, activate, and reveal a main window.
+    ///
+    /// Uses `TerminalManager.revealMainWindow()` rather than the private
+    /// `windowOpener` so hide → summon does not open a second `main` window
+    /// or land on Settings.
+    func toggleKeroWindow() {
+        if NSApp.isActive,
+           let keyWindow = NSApp.keyWindow,
+           keyWindow.identifier?.rawValue.hasPrefix("main") == true {
+            NSApp.hide(nil)
+            return
+        }
+
+        NSApp.unhide(nil)
+        NSApp.activate()
+        TerminalManager.revealMainWindow()
+    }
+
+    /// Opens every directory Finder placed on the service pasteboard as a
+    /// project in the active Kero window.
+    @objc func openInKero(
+        _ pasteboard: NSPasteboard,
+        userData: String?,
+        error: AutoreleasingUnsafeMutablePointer<NSString?>
+    ) {
+        let directories = Self.directories(from: pasteboard)
+        guard !directories.isEmpty else {
+            error.pointee = String(localized: "Select one or more folders to open in Yeet.") as NSString
+            return
+        }
+
+        NSApp.activate()
+        TerminalManager.openDirectories(directories)
+    }
+
+    private static func directories(from pasteboard: NSPasteboard) -> [String] {
+        let filenamesType = NSPasteboard.PasteboardType("NSFilenamesPboardType")
+        var candidates = pasteboard.propertyList(forType: filenamesType) as? [String] ?? []
+
+        if candidates.isEmpty,
+           let urls = pasteboard.readObjects(
+               forClasses: [NSURL.self],
+               options: [.urlReadingFileURLsOnly: true]
+           ) as? [URL] {
+            candidates = urls.map(\.path)
+        }
+
+        if candidates.isEmpty, let text = pasteboard.string(forType: .string) {
+            candidates = text.split(whereSeparator: \.isNewline).map(String.init)
+        }
+
+        let fileManager = FileManager.default
+        var seen = Set<String>()
+        return candidates.compactMap { candidate in
+            let path: String
+            if let url = URL(string: candidate), url.isFileURL {
+                path = url.path
+            } else {
+                path = (candidate as NSString).expandingTildeInPath
+            }
+
+            let standardized = URL(
+                fileURLWithPath: path,
+                isDirectory: true
+            ).standardizedFileURL.path
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(
+                atPath: standardized,
+                isDirectory: &isDirectory
+            ), isDirectory.boolValue, seen.insert(standardized).inserted else {
+                return nil
+            }
+            return standardized
+        }
+    }
+}

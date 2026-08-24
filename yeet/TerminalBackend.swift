@@ -1,0 +1,247 @@
+//
+//  TerminalBackend.swift
+//  kero
+//
+
+import AppKit
+
+/// Everything a backend needs to start one pane's shell. Kero resolves the
+/// login shell, the PID/replay shim, and the environment once, up front; how a
+/// backend spawns a PTY from there is its own business.
+struct TerminalLaunch {
+    /// Program to exec, and the arguments after argv[0] — for backends that
+    /// spawn the PTY themselves.
+    let program: String
+    let arguments: [String]
+    /// The same launch as one command line, for backends configured with a
+    /// shell string rather than an argv.
+    let commandLine: String
+    let workingDirectory: String
+    let environment: [String: String]
+}
+
+/// What Kero needs from a terminal surface, in Kero's vocabulary rather than
+/// any one emulator's.
+///
+/// A surface is an `NSView` because panes reparent the same instance as splits
+/// and tabs change (see `TerminalHostView`) — that is what keeps PTY state,
+/// selection, and scrollback alive across layout changes. Everything the
+/// terminal reports back travels the other way, through
+/// ``TerminalBackendEvents``.
+@MainActor
+protocol TerminalBackendSurface: NSView {
+    /// The session listening to this surface. Implementations hold it weakly:
+    /// the session owns the surface, not the reverse.
+    var events: (any TerminalBackendEvents)? { get set }
+
+    /// Fired whenever direct interaction makes this pane the active one.
+    var onBecomeFirstResponder: (() -> Void)? { get set }
+
+    /// Target for the pane-split items in the surface's context menu.
+    var splitTarget: SplitMenuTarget { get }
+
+    /// True only while Kero is active, its window is key, and this exact
+    /// surface owns the first responder.
+    var hasEffectiveTerminalFocus: Bool { get }
+
+    /// PID of the surface's foreground process group leader, when known.
+    var foregroundPid: pid_t? { get }
+
+    /// Whether anything is selected in the grid.
+    var hasSelection: Bool { get }
+
+    /// Whether this pane draws. Parked panes stay attached so PTY events keep
+    /// draining, but should release renderer memory while nothing composites
+    /// them.
+    func setSurfaceVisible(_ visible: Bool)
+
+    /// Re-reads `AppSettings` and `Theme`. Called whenever a live pane needs
+    /// to pick up a new font, color theme, or input setting in place.
+    func applyAppearance()
+
+    /// Releases the emulator and its child process bookkeeping. The view
+    /// itself outlives this call so teardown never pulls a pane out from
+    /// under the layout mid-frame.
+    func detach()
+
+    func sendText(_ text: String)
+
+    /// Sends line-oriented wheel input to the foreground terminal application.
+    /// Returns false when the current terminal mode would consume scrolling as
+    /// host scrollback instead. Automation uses this only to page a settled
+    /// full-screen agent transcript and restores the application to the bottom.
+    func sendApplicationScroll(lines: Int) -> Bool
+
+    /// Plain UTF-8 text for the current viewport. Implementations keep this
+    /// bounded and avoid walking full scrollback; use an in-memory snapshot
+    /// when the backend exposes one and a bounded screen export otherwise.
+    func readVisibleText(maxLines: Int, maxColumns: Int) -> String?
+
+    /// Clears the screen and scrollback, then repaints the shell's prompt at
+    /// the top.
+    func clearScreen()
+
+    /// Scrolls the viewport to `fraction` of the way through the scrollback,
+    /// 0 at the oldest row and 1 at the live prompt. This is the whole of what
+    /// the overlay scrollbar's drag needs, so row arithmetic stays with the
+    /// backend that knows its own buffer.
+    func scroll(toFraction fraction: Double)
+
+    /// Starts or replaces the find for `needle`. The backend highlights the
+    /// matches itself and counts them back through ``TerminalBackendEvents``.
+    ///
+    /// Named for Kero's UI (⌘F, `TerminalFind`) rather than for any backend's
+    /// own spelling of "search".
+    func beginFind(_ needle: String)
+
+    /// Ends the active find and clears its highlights.
+    func endFind()
+
+    /// Moves the selection to the next or previous match.
+    func stepFind(forward: Bool)
+
+    /// Starts a find for whatever is selected in the grid, resolving the
+    /// needle backend-side so Kero never has to read it out and re-escape it.
+    func findSelection()
+
+    /// Writes the screen and scrollback to a temporary file as a VT stream and
+    /// returns its path, for `TerminalHistorySerializer`.
+    ///
+    /// The file must be the only entry in a fresh subdirectory of the process
+    /// temporary directory: Kero validates that before reading, and deletes
+    /// both the file and its directory afterwards.
+    func exportScreenFile() -> String?
+
+    /// Same contract as ``exportScreenFile()``, for the scrollback above the
+    /// viewport alone. Nil when there is none — which is also how Kero tells a
+    /// scrolled shell from a full-screen TUI.
+    func exportScrollbackFile() -> String?
+}
+
+/// What a terminal surface reports back to the session that owns it. Each
+/// backend translates its own callbacks into these, so `TerminalSession` never
+/// names an emulator's types.
+///
+/// Delivery rule: invoke these only from a main-queue dispatch point (an event
+/// bounce, a timer, a Task) — never synchronously out of an `NSView` lifecycle
+/// callback such as `layout()` or `viewDidMoveToWindow()`. `TerminalSession`
+/// publishes most of this state, and a send from inside a SwiftUI view update
+/// logs "Publishing changes from within view updates" and can drop the
+/// invalidation.
+@MainActor
+protocol TerminalBackendEvents: AnyObject {
+    func terminalDidChangeTitle(_ title: String)
+    func terminalDidChangeWorkingDirectory(_ path: String)
+    func terminalDidChangeCellSize(_ size: CGSize)
+    func terminalDidRingBell()
+    func terminalDidReportShellIntegration(_ event: TerminalShellIntegrationEvent)
+
+    /// The child process is gone, or is about to be. `processAlive` is false
+    /// when the backend has already reaped it.
+    func terminalDidClose(processAlive: Bool)
+
+    func terminalDidRequestDesktopNotification(title: String, body: String)
+    func terminalDidRequestOpenURL(_ url: String)
+    func terminalLinkTarget(for value: String) -> TerminalLinkTarget?
+    func terminalDidScroll(_ position: TerminalScrollPosition)
+    func terminalDidRequestClipboardConfirmation(_ request: TerminalClipboardRequest)
+    /// OSC 52 copy. Untrusted output must not silently replace the clipboard.
+    func terminalDidRequestClipboardWrite(_ request: TerminalClipboardRequest)
+
+    /// The backend started a find of its own accord — Kero's ⌘E path resolves
+    /// the needle from the grid selection, so the bar learns it from here.
+    func terminalDidBeginFind(needle: String)
+    func terminalDidEndFind()
+    func terminalDidUpdateFindTotal(_ total: Int?)
+    func terminalDidUpdateFindSelected(_ selected: Int?)
+}
+
+/// A Command-clickable terminal value after the owning session has resolved
+/// it against the pane's live local working directory.
+enum TerminalLinkTarget {
+    case url(URL)
+    case file(URL)
+}
+
+/// Backend-neutral OSC 133 command lifecycle reports. Alacritty extracts all
+/// four semantic markers at the PTY boundary.
+enum TerminalShellIntegrationEvent: Equatable, Sendable {
+    case promptStart
+    case commandStart
+    case commandExecuting
+    case commandFinished(exitCode: Int?, durationNanos: UInt64?)
+}
+
+/// Semantic state retained per terminal session for command navigation,
+/// completion notifications, duration display, and other future features.
+struct TerminalCommandLifecycle: Equatable, Sendable {
+    enum Phase: Equatable, Sendable {
+        case idle
+        case prompt
+        case input
+        case executing
+    }
+
+    var phase: Phase = .idle
+    var lastExitCode: Int?
+    var lastDurationNanos: UInt64?
+    /// Monotonic signal for consumers that need to react to every completed
+    /// command, including consecutive commands with identical result metadata.
+    var completionSequence: UInt64 = 0
+}
+
+/// Where the viewport sits within a surface's total content. Kept as raw row
+/// counts rather than a fraction so the overlay scrollbar can both draw itself
+/// and map a drag back onto a row.
+struct TerminalScrollPosition: Equatable, Sendable {
+    /// Rows of content, viewport plus scrollback.
+    let totalRows: UInt64
+    /// Rows visible in the viewport.
+    let viewportRows: UInt64
+    /// The content row currently at the top of the viewport.
+    let topRow: UInt64
+
+    /// False when everything fits, so there is nothing to scroll.
+    var isScrollable: Bool {
+        totalRows > viewportRows && viewportRows > 0
+    }
+
+    /// Visible fraction of the content, 0…1 — the scrollbar knob's length.
+    var proportion: Double {
+        totalRows > 0 ? Double(viewportRows) / Double(totalRows) : 1
+    }
+
+    /// The knob's travel, 0 at the top of the scrollback and 1 at the live
+    /// prompt. Pinned to the bottom when there is nothing to scroll.
+    var position: Double {
+        guard isScrollable else { return 1 }
+        return Double(topRow) / Double(totalRows - viewportRows)
+    }
+
+    /// The top row a scrollbar drag to `fraction` of its travel lands on.
+    func row(atDragFraction fraction: Double) -> UInt64 {
+        let available = totalRows > viewportRows ? totalRows - viewportRows : 0
+        return UInt64((Double(available) * fraction).rounded())
+    }
+}
+
+/// A backend asking Kero to confirm a program's clipboard read (OSC 52)
+/// before it proceeds. Exactly one of ``approve()`` and ``deny()`` must
+/// be called. Never resolve without asking: any program whose output
+/// reaches the terminal, including a remote SSH host, would otherwise be
+/// able to exfiltrate the macOS clipboard through the PTY.
+@MainActor
+final class TerminalClipboardRequest {
+    /// The text the program would receive.
+    let contents: String
+
+    private let resolve: @MainActor (Bool) -> Void
+
+    init(contents: String, resolve: @escaping @MainActor (Bool) -> Void) {
+        self.contents = contents
+        self.resolve = resolve
+    }
+
+    func approve() { resolve(true) }
+    func deny() { resolve(false) }
+}

@@ -20,8 +20,8 @@ const upstreamCommit = '850c06c7fb7ea73d873a0ce2f966bbd20850946d';
 const upstreamRoot = resolve(process.argv[2] ?? '');
 const packagePath = join(upstreamRoot, 'package.json');
 const iconSourceDirectory = join(upstreamRoot, 'icons');
-const outputDirectory = resolve('kero/MaterialFileIcons');
-const swiftOutputPath = resolve('kero/MaterialFileIcon.swift');
+const outputDirectory = resolve('yeet/MaterialFileIcons');
+const swiftOutputPath = resolve('yeet/MaterialFileIcon.swift');
 const resourcePrefix = 'material-file-icon-';
 
 if (!existsSync(packagePath)) {

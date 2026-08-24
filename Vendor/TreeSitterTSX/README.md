@@ -1,7 +1,7 @@
 # TreeSitterTSX
 
 The tree-sitter **TSX** grammar — TypeScript *with* JSX — exposed as a local
-SwiftPM package so kero can link `tree_sitter_tsx()`.
+SwiftPM package so Yeet can link `tree_sitter_tsx()`.
 
 ## Why this is vendored
 
@@ -13,7 +13,7 @@ assertion and the grammar has to pick one. So parsing a `.tsx` file with the
 `typescript` grammar turns every element into a parse error and the whole JSX
 body of the file renders miscolored.
 
-kero's grammars otherwise come from `STTextView-Plugin-Neon`, which *does*
+Yeet's grammars otherwise come from `STTextView-Plugin-Neon`, which *does*
 carry a `TreeSitterTSX` target — but it's unreachable: the package's only
 product is `STTextView-Plugin-Neon`, `TreeSitterResource` doesn't depend on the
 TSX target, and `TreeSitterLanguage` has no `.tsx` case. Nothing in the graph
@@ -22,7 +22,7 @@ that isn't part of a product. Short of forking the plugin, vendoring the
 grammar is the way to get the symbol.
 
 Only the parser is vendored, not the queries: TSX's `highlights.scm` is
-byte-identical to TypeScript's, which kero already reaches through
+byte-identical to TypeScript's, which Yeet already reaches through
 `TreeSitterTypeScriptQueries`. The JSX captures come from JavaScript's
 `highlights-jsx.scm`; `SyntaxHighlighting.highlightsData(for:)` merges the
 three.
@@ -43,5 +43,5 @@ after bumping the plugin sources (see `Vendor/STTextView-Plugin-Neon/KERO.md`):
 ```sh
 # from a checkout of krzyzanowskim/STTextView-Plugin-Neon @ the new commit
 cp -R Sources/TreeSitterTSX/{include,src} \
-  /path/to/kero/Vendor/TreeSitterTSX/Sources/TreeSitterTSX/
+  /path/to/yeet/Vendor/TreeSitterTSX/Sources/TreeSitterTSX/
 ```

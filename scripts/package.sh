@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${1:-"$ROOT/dist"}"
 DERIVED="${ROOT}/.derived"
-PROJECT="$ROOT/kero.xcodeproj"
+PROJECT="$ROOT/yeet.xcodeproj"
 
 # rustup / Homebrew rust are often missing from a stripped PATH.
 for candidate in "${HOME}/.cargo/bin" /opt/homebrew/bin /usr/local/bin; do
@@ -25,13 +25,13 @@ need() {
   fi
 }
 
-need xcodebuild "Install Xcode (a version that can open project format 110) and retry."
+need xcodebuild "Install Xcode 26.5 or later and retry."
 need rustc "The Alacritty backend needs a Rust toolchain — install it from https://rustup.rs and retry."
 need cargo "The Alacritty backend needs a Rust toolchain — install it from https://rustup.rs and retry."
 need ditto "ditto is part of macOS."
 need codesign "codesign is part of macOS / Xcode."
 
-# MARKETING_VERSION is set on the kero target (Debug and Release match).
+# MARKETING_VERSION is set on the yeet target (Debug and Release match).
 # Read it for the log; do not override the project value.
 project_setting() {
   local key="$1"
@@ -81,7 +81,7 @@ HOST_ARCH="$(uname -m)"
 # abort-traps in IDESwiftPackageCore while registering dependency file
 # refs (NSMutableArray 12 vs 11) — Release #4, after the nested
 # Plugin-Neon Package.swift was already gone:
-# https://github.com/ttaatoo/kero/actions/runs/32492042501
+# https://github.com/ttaatoo/yeet/actions/runs/32492042501
 # Hypothesis: checkouts are already on disk after that abort, so a
 # second xcodebuild can compile with automatic resolution disabled.
 CLONED_PACKAGES="${DERIVED}/SourcePackages"
@@ -111,7 +111,7 @@ echo "Resolving Swift packages into ${CLONED_PACKAGES}…"
 set +e
 xcodebuild \
   -project "$PROJECT" \
-  -scheme kero \
+  -scheme yeet \
   -derivedDataPath "$DERIVED" \
   -clonedSourcePackagesDirPath "$CLONED_PACKAGES" \
   -resolvePackageDependencies
@@ -149,7 +149,7 @@ echo "Building with automatic package resolution disabled…"
 
 xcodebuild \
   -project "$PROJECT" \
-  -scheme kero \
+  -scheme yeet \
   -configuration Release \
   -destination "platform=macOS,arch=${HOST_ARCH}" \
   -derivedDataPath "$DERIVED" \
@@ -183,6 +183,11 @@ if [[ -f "$PLIST" ]]; then
   plutil -replace SUPublicEDKey -string "" "$PLIST"
   plutil -replace SUEnableAutomaticChecks -bool false "$PLIST"
 fi
+
+RESOURCES="$DEST/Yeet.app/Contents/Resources"
+mkdir -p "$RESOURCES"
+cp "$ROOT/LICENSE" "$RESOURCES/LICENSE"
+cp "$ROOT/NOTICE" "$RESOURCES/NOTICE"
 
 codesign --force --deep --sign - "$DEST/Yeet.app"
 ditto -c -k --keepParent "$DEST/Yeet.app" "$DEST/Yeet.zip"

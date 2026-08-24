@@ -14,10 +14,13 @@
 //   IDESwiftPackageCore (12 file refs vs 11 pins) when a nested
 //   manifest is present. A full-repo submodule of Plugin-Neon is the
 //   extra manifest that killed Release #3 after the identity fix.
-// - Exclude the stock NeonPlugin / Coordinator / SystemInterface sources
-//   (they are the only files that import STTextView). kero ships its own
-//   highlighter in SyntaxHighlightPlugin.swift and only needs Theme plus
-//   TreeSitterResource from this package.
+// - Do not copy the stock NeonPlugin / Coordinator / SystemInterface
+//   sources (they are the only files that import STTextView). kero ships
+//   its own highlighter in SyntaxHighlightPlugin.swift and only needs
+//   Theme plus TreeSitterResource from this package. Do not list those
+//   missing files in `exclude:` — Xcode warns "Invalid Exclude" when the
+//   path is not on disk. If they get re-copied, the build fails because
+//   this package has no STTextView dependency.
 
 import PackageDescription
 
@@ -49,11 +52,6 @@ let package = Package(
                 .target(name: "TreeSitterResource")
             ],
             path: "Sources/STPluginNeonAppKit",
-            exclude: [
-                "Coordinator.swift",
-                "NeonPlugin.swift",
-                "STTextViewSystemInterface.swift"
-            ],
             resources: [.process("Themes.xcassets")]
         ),
         .target(
@@ -63,11 +61,6 @@ let package = Package(
                 .target(name: "TreeSitterResource")
             ],
             path: "Sources/STPluginNeonUIKit",
-            exclude: [
-                "Coordinator.swift",
-                "NeonPlugin.swift",
-                "STTextViewSystemInterface.swift"
-            ],
             resources: [.process("Themes.xcassets")]
         ),
         .target(

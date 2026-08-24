@@ -32,7 +32,7 @@ if ! command -v cargo > /dev/null 2>&1; then
 fi
 
 if ! command -v cargo > /dev/null 2>&1; then
-  echo "error: cargo not found. Kero's Alacritty backend needs a Rust toolchain — install it from https://rustup.rs and build again." >&2
+  echo "error: cargo not found. Yeet's Alacritty backend needs a Rust toolchain — install it from https://rustup.rs and build again." >&2
   exit 1
 fi
 

@@ -1,2 +1,4 @@
-// Copy this file to Local.xcconfig and replace the value with your Apple team ID.
-DEVELOPMENT_TEAM = YOUR_TEAM_ID
+// Optional. Copy this file to Local.xcconfig only if you want Apple Development
+// signing. The yeet target signs ad-hoc by default (CODE_SIGN_IDENTITY = "-"),
+// so a team ID is not required to run from Xcode.
+// DEVELOPMENT_TEAM = YOUR_TEAM_ID

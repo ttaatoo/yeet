@@ -1,4 +1,0 @@
-interface:
-  display_name: "Yeet Automation"
-  short_description: "Coordinate agents across Yeet panes"
-  default_prompt: "Use $kero-automation to delegate this task or coordinate with another Yeet agent, then return the verified result."

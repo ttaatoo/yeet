@@ -1,0 +1,29 @@
+{
+  "configurations" : [
+    {
+      "id" : "AA810000-0000-0000-0000-0000000000B0",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:yeet.xcodeproj",
+      "identifier" : "FF3FDD72300B6A7400112486",
+      "name" : "yeet"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:yeet.xcodeproj",
+        "identifier" : "AA81000000000000000000A2",
+        "name" : "yeetTests"
+      }
+    }
+  ],
+  "version" : 1
+}

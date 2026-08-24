@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Build the dev (Debug) app icon set from a recolored master image.
 
-Do not run this for Yeet. It uses macOS `sips` and transplants the old Kero
-frog icon's rounded-rect alpha, which would nest a squircle inside macOS's
-mask. Yeet App Icons are full-bleed charcoal, resized with Pillow LANCZOS.
+Do not run this for Yeet. It transplants rounded-rect alpha, which makes
+macOS 26 inset the icon on a gray plate. Flatten and rebuild both
+.appiconset and the Icon Composer `.icon` fill with
+`scripts/flatten-app-icons.py`.
 
 
 The orange recolor itself is produced with the `gpt-image` CLI (see the command
@@ -14,7 +15,7 @@ alpha channel — which defines the exact rounded-rect silhouette and its paddin
 
     # 1. recolor with gpt-image (OAuth via Codex login or OPENAI_API_KEY):
     bunx gpt-image edit "recolor green -> orange, keep everything else identical" \
-        -i kero/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png \
+        -i yeet/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png \
         -o /tmp/dev-master.png --size 1024x1024 --quality high
 
     # 2. assemble AppIcon-Dev.appiconset from that master:

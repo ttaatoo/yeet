@@ -1,6 +1,6 @@
 # Why kero vendors STTextView
 
-This directory is a **verbatim copy of upstream [STTextView](https://github.com/krzyzanowskim/STTextView) tag `2.3.11`**, with exactly **twelve** local source patches. It is wired into the app as a local Swift package (`XCLocalSwiftPackageReference "Vendor/STTextView"` in `kero.xcodeproj`), not as a remote SPM dependency.
+This directory is a **verbatim copy of upstream [STTextView](https://github.com/krzyzanowskim/STTextView) tag `2.3.11`**, with exactly **twelve** local source patches. It is wired into the app as a local Swift package (`XCLocalSwiftPackageReference "Vendor/STTextView"` in `yeet.xcodeproj`), not as a remote SPM dependency.
 
 We vendor it for one reason: **to carry source-level fixes that aren't in any upstream release.** SPM has no patch/overlay mechanism for a remote package — the only way to ship changes to a dependency's own source is to check that source into the repo and point the project at the local copy. Once the patches below land upstream, we can delete this directory and go back to a pinned remote dependency (see [Exit path](#exit-path)).
 
@@ -174,7 +174,7 @@ The patched files are `STTextView.swift`, `STTextView+Gutter.swift`, `STTextView
 
 ## What is NOT a patch here
 
-Don't re-add these to the package — they live on the app side, in [`kero/SourceTextEditor.swift`](../../kero/SourceTextEditor.swift), and are configuration of a stock STTextView, not modifications to it:
+Don't re-add these to the package — they live on the app side, in [`yeet/SourceTextEditor.swift`](../../yeet/SourceTextEditor.swift), and are configuration of a stock STTextView, not modifications to it:
 
 - `scrollView.clipsToBounds = true` — the gutter is a document-height floating subview; since macOS 14 NSViews don't clip subviews, so scrolled-away numbers would otherwise draw over the header.
 - `automaticallyAdjustsContentInsets = false` — the full-size-content-view window would otherwise add a titlebar-height top inset that misaligns the gutter by one line.
@@ -182,7 +182,7 @@ Don't re-add these to the package — they live on the app side, in [`kero/Sourc
 
 ## Exit path
 
-These twelve patches are the only things keeping this vendored. Upstream them, and once all ship in a release, delete `Vendor/STTextView`, remove the `XCLocalSwiftPackageReference` from `kero.xcodeproj`, and add STTextView back as a normal remote package dependency pinned to that release. (The empty-range guard could alternatively move upstream into the Neon plugin's `applyStyle`; either home retires the patch.)
+These twelve patches are the only things keeping this vendored. Upstream them, and once all ship in a release, delete `Vendor/STTextView`, remove the `XCLocalSwiftPackageReference` from `yeet.xcodeproj`, and add STTextView back as a normal remote package dependency pinned to that release. (The empty-range guard could alternatively move upstream into the Neon plugin's `applyStyle`; either home retires the patch.)
 
 Until that happens, Plugin-Neon cannot stay a remote package: its
 `https://github.com/krzyzanowskim/STTextView` dependency is the same SwiftPM

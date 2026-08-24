@@ -2,7 +2,7 @@
 
 This directory is a **local Swift package** that wraps upstream
 [STTextView-Plugin-Neon](https://github.com/krzyzanowskim/STTextView-Plugin-Neon)
-commit `5a30db4` (the revision `kero.xcodeproj` used to pin as a remote
+commit `5a30db4` (the revision `yeet.xcodeproj` used to pin as a remote
 package). `Sources/` is a copy of the modules kero actually imports.
 `Package.swift` is ours. There is no git submodule and no second
 `Package.swift` in this tree.
@@ -63,8 +63,11 @@ So this wrapper:
    identity).
 2. Omits `Coordinator.swift`, `NeonPlugin.swift`, and
    `STTextViewSystemInterface.swift` — the only sources that `import STTextView`.
-   `Package.swift` also lists them under `exclude` so a re-copy of those
-   files cannot pull STTextView back in.
+   Do **not** list the omitted files in `Package.swift` `exclude:`. SwiftPM
+   `exclude` is for files that exist on disk; Xcode warns `Invalid Exclude`
+   (`File not found`) when the path is missing. If a re-copy puts those
+   files back, the build fails because this package has no STTextView
+   dependency.
 3. Keeps Neon + SwiftTreeSitter as remote dependencies, at the same pins
    upstream used.
 4. Declares only the grammar targets `TreeSitterResource` actually links.
@@ -89,7 +92,8 @@ The tree is commit `5a30db4ce7908a5414e7b499e2379bdc49991cd1` of
    `Package.swift`, `DemoApp`, or unused grammar directories.
 3. Delete `Coordinator.swift`, `NeonPlugin.swift`, and
    `STTextViewSystemInterface.swift` from `STPluginNeonAppKit` and
-   `STPluginNeonUIKit` (keep the `exclude` list in our `Package.swift`).
+   `STPluginNeonUIKit`. Do not add them to `exclude:` in our
+   `Package.swift` (Xcode `Invalid Exclude` if the files are gone).
 4. Re-read upstream `Package.swift`. Keep the "no remote STTextView" /
    no nested manifest rules above. Add any new `TreeSitterResource`
    grammar targets with `path: "Sources/<name>"`.
@@ -99,7 +103,7 @@ The tree is commit `5a30db4ce7908a5414e7b499e2379bdc49991cd1` of
 
 ## Exit path
 
-Delete this directory and point `kero.xcodeproj` at a remote Plugin-Neon
+Delete this directory and point `yeet.xcodeproj` at a remote Plugin-Neon
 **only after** one of these is true:
 
 - Upstream Plugin-Neon no longer depends on STTextView (kero does not need
