@@ -2,9 +2,8 @@ import { Link } from '@tanstack/react-router'
 import { DocsLink, HomeLink } from '@/components/site-links'
 import { homeCopy } from '@/lib/home-copy'
 import { DEFAULT_LANGUAGE, i18n } from '@/lib/i18n'
-import { GITHUB_URL, X_URL } from '@/lib/release'
+import { GITHUB_URL, KERO_URL } from '@/lib/release'
 
-const AUTHOR = '@localhost_4173'
 const LINK = 'text-foreground transition-colors hover:text-brand'
 
 export function SiteFooter({ lang = DEFAULT_LANGUAGE }: { lang?: string }) {
@@ -13,11 +12,11 @@ export function SiteFooter({ lang = DEFAULT_LANGUAGE }: { lang?: string }) {
 
   return (
     <footer className="text-[13px] text-muted-foreground">
-      {copy.footerBuiltBy.before}
-      <a href={X_URL} target="_blank" rel="noreferrer" className={LINK}>
-        {AUTHOR}
+      {copy.footerCreditBefore}
+      <a href={KERO_URL} target="_blank" rel="noreferrer" className={LINK}>
+        Kero
       </a>
-      {copy.footerBuiltBy.after} ·{' '}
+      {copy.footerCreditAfter} ·{' '}
       <a href={GITHUB_URL} target="_blank" rel="noreferrer" className={LINK}>
         GitHub
       </a>{' '}

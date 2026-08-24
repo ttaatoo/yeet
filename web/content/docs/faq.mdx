@@ -1,11 +1,11 @@
 ---
 title: FAQ
-description: Common questions about cost, privacy, and how Kero relates to your shell.
+description: Common questions about cost, privacy, and how Yeet relates to your shell.
 ---
 
 <Accordions>
 
-<Accordion title="Is Kero free?">
+<Accordion title="Is Yeet free?">
 
 Yes. Free to download, open source under GPLv3, no account and no subscription.
 
@@ -13,7 +13,7 @@ Yes. Free to download, open source under GPLv3, no account and no subscription.
 
 <Accordion title="Does it replace my shell?">
 
-No. Kero hosts the shell you already run — it starts `$SHELL -l` and leaves your
+No. Yeet hosts the shell you already run — it starts `$SHELL -l` and leaves your
 prompt, aliases, functions, and dotfiles alone. The terminal pane uses
 Alacritty as its backend.
 
@@ -21,18 +21,19 @@ Alacritty as its backend.
 
 <Accordion title="Does it collect any data?">
 
-No telemetry and no analytics. Packaged Yeet has no Sparkle feed and does not
-check for updates on its own. Use Homebrew or a GitHub Release zip.
+No telemetry and no analytics — not the app, not this site. Packaged Yeet has
+no Sparkle feed and does not check for updates on its own. Build from source,
+or use Homebrew / a GitHub Release zip when that asset exists.
 
 Pages you open in a [browser pane](/docs/browser) and agent CLIs you run make
-their own user-directed requests, just as they would outside Kero.
+their own user-directed requests, just as they would outside Yeet.
 
 </Accordion>
 
 <Accordion title="Does it read my Ghostty or Alacritty config?">
 
-No. Backend, fonts, colors, and input behavior come from Kero's own
-[settings](/docs/configuration). Kero does not load either terminal app's
+No. Backend, fonts, colors, and input behavior come from Yeet's own
+[settings](/docs/configuration). Yeet does not load either terminal app's
 config file.
 
 </Accordion>
@@ -60,7 +61,7 @@ terminal without switching apps — not to become a place you work in.
 <Accordion title="Why did a dialog ask before a program could read my clipboard?">
 
 Because a program asked. The `OSC 52` escape sequence lets a terminal program
-read the system clipboard, including one running on a remote host over SSH. Kero
+read the system clipboard, including one running on a remote host over SSH. Yeet
 confirms with you first instead of handing it over silently — the same default
 Ghostty uses.
 
@@ -70,8 +71,8 @@ Ghostty uses.
 
 That's much of what it is built for. Enable AI once, then ask a supported agent
 in plain language to run something in a background pane or delegate a bounded
-task. Agents in separate Kero panes can also exchange questions, findings, and
-follow-ups instead of making you copy context between them. Kero keeps their
+task. Agents in separate Yeet panes can also exchange questions, findings, and
+follow-ups instead of making you copy context between them. Yeet keeps their
 provider-reported working/blocked/completed state visible without guessing from
 terminal text, while you retain control of approvals and the final diff. See
 [Working with AI agents](/docs/automation).
@@ -83,9 +84,11 @@ the [Git panel](/docs/git), read files beside it, and stage only what you want.
 
 <Accordion title="Where do I report a bug?">
 
-This repository does not have Issues enabled. File a pull request on
-[ttaatoo/yeet](https://github.com/ttaatoo/yeet) instead. The macOS
-version and what you were doing when it happened are usually enough to go on.
+GitHub Issues are enabled. Open an
+[issue](https://github.com/ttaatoo/yeet/issues) first for anything larger than
+a fix — see [CONTRIBUTING.md](https://github.com/ttaatoo/yeet/blob/main/CONTRIBUTING.md).
+The macOS version and what you were doing when it happened are usually enough
+to go on.
 
 </Accordion>
 

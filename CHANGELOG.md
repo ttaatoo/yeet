@@ -15,10 +15,22 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Agents that were running when Yeet quit — Claude Code, Codex, Grok, OpenCode, Gemini — relaunch with their previous conversation. Turn on AI support so the integration hooks can report each agent's session; panes without a captured session restore as regular terminals. "Resume agents on relaunch" in Settings controls the behavior.
+- Coding-agent CLIs such as Claude and Grok no longer stall the window while they stream. The terminal follows a ProMotion display up to 120 Hz.
+- `yeet +pane read` returns the live prompt on a fresh terminal, not empty lines from the bottom of the grid.
+- The Dock and Finder app icon fills the macOS squircle instead of sitting inset on a gray plate.
 - Large files in the editor, including markdown with code fences, open and scroll without dropped frames.
-- Rebrand this repository as Yeet (`Yeet.app`, bundle id `sh.yeet`, settings in `~/.config/yeet`). Leftover `~/.config/kerox` (then older `~/.config/kero`) is copied into `~/.config/yeet` when Yeet has no config yet. The same leftover-then-copy applies to Application Support history.
+- Rebrand this repository as Yeet (`Yeet.app`, bundle id `sh.yeet`, settings in `~/.config/yeet`). Leftover `~/.config/kerox` (then older `~/.config/kero`) is copied into `~/.config/yeet` when Yeet has no config yet. The same leftover-then-copy applies to Application Support history. The bundled CLI is `yeet`. Terminals export `YEET_*` variables. The automation skill is `yeet-automation`. Terminal notifications use the Yeet name.
 - Drop the project-sidebar Send Feedback button (it opened official Kero Issues).
-- Website and install docs describe Yeet: `brew tap ttaatoo/yeet https://github.com/ttaatoo/yeet` then `brew install --cask ttaatoo/yeet/yeet`, `Yeet.zip` from GitHub Releases, no Sparkle, Alacritty only. Upgrade docs pull the in-repo tap first; the FAQ no longer links a disabled Issues page.
+- Website and docs describe Yeet (not Kero). The app and site send no telemetry or analytics. Changelog Latest is the newest released version.
+- GitHub Issues are enabled. Open an issue first for anything larger than a fix.
+- Install from source, or use the Homebrew cask / `Yeet.zip` when a GitHub Release includes that asset. Builds are ad-hoc signed; if macOS blocks the app, use System Settings → Privacy & Security → Open Anyway. No Sparkle.
+- Closing a project, closing a window, or quitting asks to save or discard unsaved file and diff buffers; Cancel keeps everything open.
+- Terminal programs can no longer silently replace the clipboard; clipboard writes ask first, same as clipboard reads.
+- The in-app browser and command-clicked terminal links only follow ordinary web addresses (`http`/`https`). Other URL schemes are ignored.
+- Kitty graphics no longer load images from files on disk.
+- Git branch names that start with `-` are rejected. Switching or creating a branch, syncing, popping a stash, or moving files to Trash asks for confirmation when that would be destructive or the worktree is dirty.
+- The Files tree no longer freezes the window while reading the disk, and hiding the inspector no longer resets which folders were expanded.
 
 ## [0.1.50]
 

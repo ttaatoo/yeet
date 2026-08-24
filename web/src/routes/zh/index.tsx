@@ -13,7 +13,7 @@ const LANG = 'zh'
  */
 export const Route = createFileRoute('/zh/')({
   component: Home,
-  // Fetched per request (SSR) so the page always advertises the newest release.
+  // Fetched per request (SSR). A download is shown only when GitHub has Yeet.zip.
   loader: () => fetchLatestRelease(),
   staleTime: 5 * 60 * 1000,
   head: () => {

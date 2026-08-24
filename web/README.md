@@ -32,14 +32,14 @@ bun run deploy        # vite build → wrangler deploy
 picks it up. `bun run preview` serves the built Worker locally.
 
 Config lives in [`wrangler.jsonc`](wrangler.jsonc) (worker name, compatibility
-flags). To serve from `kero.sh`, uncomment the `routes` entry there once the zone
-is on Cloudflare. Run `bun run cf-typegen` after adding any bindings.
+flags). Run `bun run cf-typegen` after adding any bindings.
 
 ## Languages
 
 English is the default and stays unprefixed (`/`, `/docs/git`); every other
 language sits under its own prefix (`/zh`, `/zh/docs/git`). The supported list
-is [`src/lib/i18n.ts`](src/lib/i18n.ts).
+is [`src/lib/i18n.ts`](src/lib/i18n.ts) (`en`, `zh`). Japanese is maintained in
+the macOS app String Catalogs, not this site.
 
 **Landing page.** One [`HomePage`](src/components/home-page.tsx) rendered from
 per-language strings in [`src/lib/home-copy.ts`](src/lib/home-copy.ts), with a
@@ -69,16 +69,16 @@ since they read the current version from GitHub Releases.
 ## Notes
 
 - The theme lives in [`src/styles/app.css`](src/styles/app.css) — a GitHub-dark
-  palette that mirrors the macOS app (`kero/Theme.swift`). Fumadocs reads the
+  palette that mirrors the macOS app (`yeet/Theme.swift`). Fumadocs reads the
   same variables through `fumadocs-ui/css/shadcn.css`, so the docs inherit it.
 - Add more components with `bunx shadcn@latest add <name>` — the project is
   already configured for Base UI (`components.json` → `"style": "base-nova"`).
 - Landing pages read the newest GitHub Release through
-  [`src/lib/release.ts`](src/lib/release.ts). Keep its fallback release current
-  so downloads still work if GitHub is temporarily unavailable. Do not point
-  this file at `releases.kero.sh` — that feed is official Kero.
+  [`src/lib/release.ts`](src/lib/release.ts). A Download button appears only
+  when that release includes `Yeet.zip`. Do not invent a fallback zip URL, and
+  do not point this file at `releases.kero.sh` — that feed is official Kero.
 - The product mark is [`public/yeet-icon.png`](public/yeet-icon.png) (coral
   mascot on a pre-rounded dark squircle). Favicon and apple-touch use a
   256×256 resize of that mark. The hero product shot is
-  [`public/kero-screenshot.png`](public/kero-screenshot.png) (a real app
+  [`public/yeet-screenshot.png`](public/yeet-screenshot.png) (a real app
   screenshot with transparent padding + shadow) — swap the file to update it.

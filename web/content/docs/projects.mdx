@@ -1,6 +1,6 @@
 ---
 title: Projects and sessions
-description: How Kero groups your work — projects in the sidebar, sessions as tabs, and what survives a relaunch.
+description: How Yeet groups your work — projects in the sidebar, sessions as tabs, and what survives a relaunch.
 ---
 
 ## Projects
@@ -10,7 +10,7 @@ terminals, tabs, and panel state.
 
 <kbd>Cmd</kbd>+<kbd>N</kbd> creates one with a single terminal in it. The
 terminal starts in the current session's directory, or your home directory if
-there isn't one, so the usual next step is to `cd` where you're going. Kero
+there isn't one, so the usual next step is to `cd` where you're going. Yeet
 takes it from there: the file tree and git panel anchor themselves to the
 repository containing that directory.
 
@@ -18,7 +18,7 @@ To skip the `cd`, right-click a folder in Finder and choose **Services → New
 Yeet Project Here** — it opens as a project with its terminal already started
 inside.
 
-Projects are the unit Kero switches on:
+Projects are the unit Yeet switches on:
 
 | Action | Shortcut |
 | --- | --- |
@@ -36,7 +36,7 @@ disk.
 ### The project directory
 
 Two panels need to know which folder they're showing: the file tree and the git
-panel. By default Kero works it out — it takes the terminal's current directory
+panel. By default Yeet works it out — it takes the terminal's current directory
 and walks up to the **nearest enclosing git repository**.
 
 That's why `cd`-ing around inside a repo doesn't make the file tree jump: the
@@ -96,14 +96,14 @@ restored separately.
 
 ## What survives a relaunch
 
-Kero snapshots your layout as you work, so quitting and reopening gives you back:
+Yeet snapshots your layout as you work, so quitting and reopening gives you back:
 
 - every project, in order
 - every tab, including custom names and pinned directories
 - the pane layout inside each tab
 - which sidebars were open and which right panel was selected
 
-Terminals come back as **fresh shells** in their old directories. Kero doesn't
+Terminals come back as **fresh shells** in their old directories. Yeet doesn't
 keep processes alive in the background — if a build was running when you quit, it
 stopped when you quit.
 

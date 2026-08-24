@@ -1,6 +1,6 @@
 ---
 title: 终端本身
-description: Kero 的终端后端、shell 环境、链接处理、通知与安全功能。
+description: Yeet 的终端后端、shell 环境、链接处理、通知与安全功能。
 ---
 
 每个终端窗格都运行你真正的登录 shell，并使用原生 GPU 加速的 Alacritty 后端。窗格焦点、搜索、通知、链接、历史、主题和粘贴安全由 Yeet 统一管理。
@@ -14,9 +14,9 @@ Yeet 额外设置了能力与身份变量：
 | --- | --- |
 | `TERM_PROGRAM` | `Yeet` |
 | `TERM_PROGRAM_VERSION` | Yeet 的营销版本号 |
-| `KERO_TERM` | `alacritty` |
+| `YEET_TERM` | `alacritty` |
 
-`TERM_PROGRAM` 表示本应用。官方 Kero 0.1.24 曾把它设为 `ghostty`，好让支持图片的 CLI 走 Ghostty 分支；Yeet 没有 Ghostty。Alacritty 表面实现了 Kitty 图形协议（可通过 APC `Gi` 查询）。`KERO_TERM` 标明模拟器。`TERM` 仍是 `xterm-256color`，`COLORTERM` 仍是 `truecolor`。
+`TERM_PROGRAM` 表示本应用。官方 Kero 0.1.24 曾把它设为 `ghostty`，好让支持图片的 CLI 走 Ghostty 分支；Yeet 没有 Ghostty。Alacritty 表面实现了 Kitty 图形协议（可通过 APC `Gi` 查询）。`YEET_TERM` 标明模拟器。`TERM` 仍是 `xterm-256color`，`COLORTERM` 仍是 `truecolor`。
 
 <Callout type="info">
 Yeet 不读取外部 Alacritty 配置。字体、颜色和输入行为都在 Yeet
@@ -37,7 +37,7 @@ Yeet 不读取外部 Alacritty 配置。字体、颜色和输入行为都在 Yee
 
 ## 路径与 URL
 
-Kero 能识别终端程序打印出来的网页 URL 和确实存在的本地路径。本地链接可以是绝对路径、以
+Yeet 能识别终端程序打印出来的网页 URL 和确实存在的本地路径。本地链接可以是绝对路径、以
 `~/` 开头、以 `./` 或 `../` 开头，也可以相对窗格的实时工作目录。诊断信息末尾的 `:42` 或
 `:42:7` 不会妨碍找到背后的文件。
 
@@ -50,12 +50,12 @@ Kero 能识别终端程序打印出来的网页 URL 和确实存在的本地路�
 
 ## 通知
 
-Kero 会把两类终端事件转给通知中心：
+Yeet 会把两类终端事件转给通知中心：
 
 - 未聚焦会话里的铃声；
 - 构建工具或编码 agent 发出的 `OSC 777;notify` 请求。
 
-通知可以播放系统提示音。点通知会激活 Kero，并跳到发出它的确切会话。macOS 只在某个终端第一次真的要通知时申请权限，不会在 Kero 启动时就弹框。
+通知可以播放系统提示音。点通知会激活 Yeet，并跳到发出它的确切会话。macOS 只在某个终端第一次真的要通知时申请权限，不会在 Yeet 启动时就弹框。
 
 ## 进度显示
 
@@ -63,7 +63,7 @@ Kero 会把两类终端事件转给通知中心：
 
 ## 剪贴板、拖放与粘贴安全
 
-- **读剪贴板要确认。** `OSC 52` 可以申请读取 macOS 剪贴板，包括通过 SSH 跑在远端的程序。Kero 会先问你。
+- **读剪贴板要确认。** `OSC 52` 可以申请读取 macOS 剪贴板，包括通过 SSH 跑在远端的程序。Yeet 会先问你。
 - **有风险的粘贴会提示。** 多行或看起来会立即执行命令的文本，会先停在确认步骤。
 - **文件会变成 shell 安全路径。** 从 Finder 复制或拖进来的文件，会作为经过引用的绝对路径插入。剪贴板图片仍会交给支持图片的 TUI。
 
@@ -72,23 +72,23 @@ Kero 会把两类终端事件转给通知中心：
 默认情况下，Option 交给当前 macOS 输入源，因此 Polish Pro 之类的布局可以输入组合字符。如果终端程序需要把 Option 组合键当成 Meta 快捷键，打开设置里的 **Use Option as Alt/Meta**。对应配置键是
 [`terminal.macos-option-as-alt`](/zh/docs/configuration#terminalmacos-option-as-alt)。
 
-## `kero` 命令
+## `yeet` 命令
 
-每个 Kero 终端都带一套了解项目上下文的 CLI：
+每个 Yeet 终端都带一套了解项目上下文的 CLI：
 
 ```sh
-kero                         # 以当前目录新建项目
-kero vim ~/src/app.swift     # 新建项目，并让第一个终端直接运行这组 argv
-kero +themes                 # 交互式浏览和预览主题
-kero +themes --list --dark   # 不打开浏览器，直接列出主题名
-kero +help                   # 查看全部命令组
+yeet                         # 以当前目录新建项目
+yeet vim ~/src/app.swift     # 新建项目，并让第一个终端直接运行这组 argv
+yeet +themes                 # 交互式浏览和预览主题
+yeet +themes --list --dark   # 不打开浏览器，直接列出主题名
+yeet +help                   # 查看全部命令组
 ```
 
 主题浏览器会把当前选项实时预览到整个应用；Return 保存，Escape 恢复之前的主题。
 
 ## 字体
 
-Kero 内置 JetBrains Mono 和 Nerd Font 符号，也可以换成任意已安装的等宽字体。见
+Yeet 内置 JetBrains Mono 和 Nerd Font 符号，也可以换成任意已安装的等宽字体。见
 [`font-family`](/zh/docs/configuration#font-family)、
 [`font-size`](/zh/docs/configuration#font-size) 和
 [`terminal.font-thicken`](/zh/docs/configuration#terminalfont-thicken)。

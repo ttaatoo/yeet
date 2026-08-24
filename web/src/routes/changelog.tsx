@@ -10,7 +10,7 @@ async function getContributorCount() {
   try {
     const headers: Record<string, string> = {
       Accept: 'application/vnd.github+json',
-      'User-Agent': 'kero.sh',
+      'User-Agent': 'yeet',
     }
     const token = process.env.GITHUB_TOKEN
     if (token) headers.Authorization = `Bearer ${token}`
@@ -68,11 +68,22 @@ const RELEASE_LIMIT = 15
  * CHANGELOG.md is the product changelog. Reading that file at build time keeps
  * the website honest without introducing a second release log.
  */
+
+/** Keep-a-Changelog reserved name; never treat it as a shipped version. */
+function isUnreleased(name: string): boolean {
+  return name.trim().toLowerCase() === 'unreleased'
+}
+
+/** Prefix `v` only on version-like headings (`0.1.50`, `1.1`). */
+function versionLabel(version: string): string {
+  return /^\d+\.\d+/.test(version) ? `v${version}` : version
+}
+
 function parseReleases(markdown: string): Release[] {
   const headings = Array.from(markdown.matchAll(/^## \[([^\]]+)\]\s*$/gm))
 
   return headings
-    .filter((heading) => heading[1] !== 'unreleased')
+    .filter((heading) => !isUnreleased(heading[1] ?? ''))
     .map((heading, index, releasedHeadings) => {
       const bodyStart = (heading.index ?? 0) + heading[0].length
       const bodyEnd = releasedHeadings[index + 1]?.index ?? markdown.length
@@ -110,7 +121,7 @@ function Changelog() {
             Changelog
           </h2>
           <p className="max-w-[540px] text-muted-foreground">
-            What changed in each kero release: new features, improvements, and fixes.
+            What changed in each Yeet release: new features, improvements, and fixes.
           </p>
         </div>
         <dl className="mt-3 grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-card/70">
@@ -119,7 +130,10 @@ function Changelog() {
             label="releases"
           />
           <Stat value={String(contributorCount)} label="contributors" />
-          <Stat value={`v${latest?.version ?? '—'}`} label="latest" />
+          <Stat
+            value={latest ? versionLabel(latest.version) : '—'}
+            label="latest"
+          />
         </dl>
       </section>
 
@@ -132,7 +146,7 @@ function Changelog() {
 
           return (
             <article
-              id={`v${release.version}`}
+              id={versionLabel(release.version)}
               key={release.version}
               className="group relative scroll-mt-8 pb-8 last:pb-0"
             >
@@ -151,10 +165,10 @@ function Changelog() {
               >
                 <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
                   <a
-                    href={`#v${release.version}`}
+                    href={`#${versionLabel(release.version)}`}
                     className="text-[19px] font-semibold tracking-[-0.02em] text-foreground transition-colors hover:text-brand"
                   >
-                    v{release.version}
+                    {versionLabel(release.version)}
                   </a>
                   <div className="flex items-center gap-2 text-[11px] tracking-[0.06em] uppercase">
                     {isLatest && (

@@ -1,25 +1,26 @@
-export type Release = { version: string; minSystem: string; zip: string }
+export type Release = {
+  minSystem: string
+  version?: string
+  zip?: string
+}
 
 const REPO = 'ttaatoo/yeet'
 const GITHUB_API_LATEST = `https://api.github.com/repos/${REPO}/releases/latest`
 const ZIP_ASSET = 'Yeet.zip'
-/** Matches MACOSX_DEPLOYMENT_TARGET on the kero target in kero.xcodeproj. */
+/** Matches MACOSX_DEPLOYMENT_TARGET on the yeet target in yeet.xcodeproj. */
 const MIN_SYSTEM = '15.6'
 
 export const GITHUB_URL = `https://github.com/${REPO}`
-export const X_URL = 'https://x.com/localhost_4173'
+export const KERO_URL = 'https://github.com/egoist/kero'
+export const CONTRIBUTING_URL = `${GITHUB_URL}/blob/main/CONTRIBUTING.md`
 
 // The tap is this repo (`Casks/yeet.rb`), not `ttaatoo/homebrew-kero`, so the
 // tap URL has to be named. `--cask` is required: the same tap also has a formula.
 export const BREW_COMMAND =
   'brew tap ttaatoo/yeet https://github.com/ttaatoo/yeet && brew install --cask ttaatoo/yeet/yeet'
 
-// Shown only if GitHub Releases can't be reached; kept current so downloads still work.
-const FALLBACK: Release = {
-  version: '0.1.50',
-  minSystem: MIN_SYSTEM,
-  zip: `${GITHUB_URL}/releases/download/v0.1.50/${ZIP_ASSET}`,
-}
+/** Shown when GitHub has no Yeet.zip — never invent a download URL. */
+export const NO_RELEASE: Release = { minSystem: MIN_SYSTEM }
 
 type GitHubRelease = {
   tag_name?: string
@@ -29,6 +30,8 @@ type GitHubRelease = {
 /**
  * Read the newest GitHub Release that ships Yeet.zip. Packaged Yeet has no
  * Sparkle feed; the site must not read releases.kero.sh (that is official Kero).
+ * Returns null unless that exact asset exists — a tag without Yeet.zip is
+ * not a public download.
  */
 export function parseGitHubRelease(data: GitHubRelease): Release | null {
   const tag = data.tag_name?.trim() ?? ''
@@ -54,11 +57,11 @@ export async function fetchLatestRelease(): Promise<Release> {
       // part of the DOM RequestInit type, hence the cast.
       cf: { cacheTtl: 300, cacheEverything: true },
     } as RequestInit & { cf: { cacheTtl: number; cacheEverything: boolean } })
-    if (!res.ok) return FALLBACK
+    if (!res.ok) return NO_RELEASE
     const parsed: unknown = await res.json()
-    if (parsed === null || typeof parsed !== 'object') return FALLBACK
-    return parseGitHubRelease(parsed) ?? FALLBACK
+    if (parsed === null || typeof parsed !== 'object') return NO_RELEASE
+    return parseGitHubRelease(parsed) ?? NO_RELEASE
   } catch {
-    return FALLBACK
+    return NO_RELEASE
   }
 }

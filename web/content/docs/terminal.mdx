@@ -1,10 +1,10 @@
 ---
 title: The terminal
-description: Kero's terminal backend, shell environment, link handling, notifications, and safety features.
+description: Yeet's terminal backend, shell environment, link handling, notifications, and safety features.
 ---
 
 Every terminal pane runs your real login shell using a native, GPU-accelerated
-Alacritty terminal backend. Kero owns the surrounding behavior—pane focus,
+Alacritty terminal backend. Yeet owns the surrounding behavior—pane focus,
 search, notifications, links, history, themes, and paste safety.
 
 ## Your shell, unchanged
@@ -17,17 +17,17 @@ and identity variables:
 || --- | --- |
 || `TERM_PROGRAM` | `Yeet` |
 || `TERM_PROGRAM_VERSION` | Yeet's marketing version |
-|| `KERO_TERM` | `alacritty` |
+|| `YEET_TERM` | `alacritty` |
 
 `TERM_PROGRAM` is this app. Official Kero 0.1.24 set it to `ghostty` so
 image-aware CLIs would take Ghostty's branch; Yeet has no Ghostty. The
 Alacritty surface implements the Kitty graphics protocol (queryable via APC
-`Gi`). `KERO_TERM` names the emulator. `TERM` stays `xterm-256color` and
+`Gi`). `YEET_TERM` names the emulator. `TERM` stays `xterm-256color` and
 `COLORTERM` stays `truecolor`.
 
 <Callout type="info">
-Kero does not read an external Alacritty config. Fonts, colors, and input
-behavior are configured in Kero's own [settings](/docs/configuration).
+Yeet does not read an external Alacritty config. Fonts, colors, and input
+behavior are configured in Yeet's own [settings](/docs/configuration).
 </Callout>
 
 ## Search
@@ -45,7 +45,7 @@ search field owns keyboard focus.
 
 ## Paths and URLs
 
-Kero recognizes web URLs and existing local paths printed by terminal
+Yeet recognizes web URLs and existing local paths printed by terminal
 programs. Local links can be absolute, `~/`-relative, `./` or `../` relative,
 or relative to the pane's live working directory. A diagnostic suffix such as
 `:42` or `:42:7` does not stop the underlying file from being found.
@@ -60,15 +60,15 @@ same project. Browser behavior is covered in [Browser panes](/docs/browser).
 
 ## Notifications
 
-Kero forwards two terminal events to Notification Center:
+Yeet forwards two terminal events to Notification Center:
 
 - a bell from a session that is not focused;
 - an `OSC 777;notify` request from a program such as a long-running build or
   coding agent.
 
-Notifications can play the system sound. Clicking one activates Kero and jumps
+Notifications can play the system sound. Clicking one activates Yeet and jumps
 to the exact session that emitted it. macOS asks for permission only when a
-terminal first tries to notify you, not when Kero launches.
+terminal first tries to notify you, not when Yeet launches.
 
 ## Progress reports
 
@@ -79,7 +79,7 @@ program reports progress, the pane shows it.
 ## Clipboard, drops, and paste safety
 
 - **Clipboard reads are confirmed.** `OSC 52` can ask for the macOS clipboard,
-  including from a remote host over SSH. Kero asks before returning it.
+  including from a remote host over SSH. Yeet asks before returning it.
 - **Risky pastes are flagged.** Multi-line or command-like text is held behind
   a confirmation instead of being submitted immediately.
 - **Files become shell-safe paths.** Finder-copied or dragged files are inserted
@@ -93,16 +93,16 @@ Settings when a terminal program should receive Option-key chords as Meta
 shortcuts instead. See
 [`terminal.macos-option-as-alt`](/docs/configuration#terminalmacos-option-as-alt).
 
-## The `kero` command
+## The `yeet` command
 
-Every Kero terminal includes a project-aware CLI:
+Every Yeet terminal includes a project-aware CLI:
 
 ```sh
-kero                         # create a project at the current directory
-kero vim ~/src/app.swift     # create it and run this argv in the first terminal
-kero +themes                 # browse and preview themes interactively
-kero +themes --list --dark   # print theme names without the browser
-kero +help                   # show all command groups
+yeet                         # create a project at the current directory
+yeet vim ~/src/app.swift     # create it and run this argv in the first terminal
+yeet +themes                 # browse and preview themes interactively
+yeet +themes --list --dark   # print theme names without the browser
+yeet +help                   # show all command groups
 ```
 
 The theme browser previews each selection across the whole app; Return saves
@@ -110,7 +110,7 @@ it and Escape restores the previous theme.
 
 ## Fonts
 
-Kero bundles JetBrains Mono plus Nerd Font symbols. Any installed monospace
+Yeet bundles JetBrains Mono plus Nerd Font symbols. Any installed monospace
 family can replace it. See [`font-family`](/docs/configuration#font-family),
 [`font-size`](/docs/configuration#font-size), and
 [`terminal.font-thicken`](/docs/configuration#terminalfont-thicken).

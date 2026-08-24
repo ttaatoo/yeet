@@ -12,9 +12,12 @@ development language. The currently maintained localizations are:
 | Chinese (Simplified) | `zh-Hans` |
 | Japanese | `ja` |
 
+The website (`web/`) is English and Simplified Chinese only (`en`, `zh`).
+Japanese is maintained in the app String Catalogs, not the docs site.
+
 ## Translate existing text
 
-Open `kero.xcodeproj` in Xcode, select `Localizable.xcstrings`, choose a
+Open `yeet.xcodeproj` in Xcode, select `Localizable.xcstrings`, choose a
 language, and edit its translation. Xcode keeps placeholders, plural variants,
 and translation state visible. The other catalogs cover macOS-owned UI:
 
@@ -36,7 +39,7 @@ the source code.
 2. Add that language to all three String Catalogs.
 3. Translate every entry, including plural variants and the privacy prompt.
 4. Run the app in that language and check menus, settings, the sidebars,
-   dialogs, and `kero +themes`.
+   dialogs, and `yeet +themes`.
 5. Add the language and identifier to the table above.
 
 ## Add localizable text in Swift

@@ -2,7 +2,12 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { SiteLayout } from '@/components/site-layout'
 import { DocsLink } from '@/components/site-links'
 import { homeCopy, type Row } from '@/lib/home-copy'
-import { BREW_COMMAND, GITHUB_URL, type Release } from '@/lib/release'
+import {
+  BREW_COMMAND,
+  CONTRIBUTING_URL,
+  GITHUB_URL,
+  type Release,
+} from '@/lib/release'
 import { cn } from '@/lib/utils'
 
 const BUTTON =
@@ -36,10 +41,22 @@ export function HomePage({ lang, release }: { lang: string; release: Release }) 
     >
       <section className="flex flex-col gap-3.5">
         <div className="flex flex-wrap items-center gap-2.5">
-          <a href={release.zip} download className={BUTTON}>
-            <span className="i-mingcute-apple-fill size-4 shrink-0" />
-            {copy.download}
-          </a>
+          {release.zip ? (
+            <a href={release.zip} download className={BUTTON}>
+              <span className="i-mingcute-apple-fill size-4 shrink-0" />
+              {copy.download}
+            </a>
+          ) : (
+            <a
+              href={CONTRIBUTING_URL}
+              target="_blank"
+              rel="noreferrer"
+              className={BUTTON}
+            >
+              <span className="i-mingcute-terminal-fill size-4 shrink-0" />
+              {copy.buildFromSource}
+            </a>
+          )}
           <DocsLink lang={lang} className={BUTTON}>
             <span className="i-mingcute-book-2-fill size-4 shrink-0" />
             {copy.docs}
@@ -49,14 +66,16 @@ export function HomePage({ lang, release }: { lang: string; release: Release }) 
             GitHub
           </a>
         </div>
-        <CopyCommand
-          command={BREW_COMMAND}
-          label={copy.copy}
-          copiedLabel={copy.copied}
-          aria={copy.copyAria(BREW_COMMAND)}
-        />
+        {release.zip && (
+          <CopyCommand
+            command={BREW_COMMAND}
+            label={copy.copy}
+            copiedLabel={copy.copied}
+            aria={copy.copyAria(BREW_COMMAND)}
+          />
+        )}
         <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
-          <Pill>v{release.version}</Pill>
+          {release.version && <Pill>v{release.version}</Pill>}
           <Pill>macOS {release.minSystem}+</Pill>
           <Pill>{copy.pillFree}</Pill>
         </div>
@@ -64,10 +83,10 @@ export function HomePage({ lang, release }: { lang: string; release: Release }) 
 
       <figure className="m-0 flex flex-col gap-2">
         <img
-          src="/kero-screenshot.png"
+          src="/yeet-screenshot.png"
           alt={copy.screenshotAlt}
-          width={2286}
-          height={1568}
+          width={1920}
+          height={1342}
           className="block w-full rounded-lg border border-border bg-card"
         />
         <figcaption className="text-[13px] text-muted-foreground">

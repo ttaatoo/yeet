@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: Every persistent Kero option, what it does, and where it is stored.
+description: Every persistent Yeet option, what it does, and where it is stored.
 ---
 
 Most persistent Yeet settings live in one file:
@@ -20,10 +20,10 @@ listed at the end of this page.
 
 Worth knowing before you hand-edit:
 
-- **It's read at launch.** Editing the file while Kero is running changes
+- **It's read at launch.** Editing the file while Yeet is running changes
   nothing until you relaunch. Changes made in Settings apply immediately,
   except where the control says otherwise.
-- **Kero rewrites it whenever a file-backed setting changes.** The file is
+- **Yeet rewrites it whenever a file-backed setting changes.** The file is
   regenerated from scratch, so your comments and unknown keys are lost the
   next time you use one of those controls. Pick one editor for the file, or
   keep an authoritative copy in your dotfiles.
@@ -33,7 +33,7 @@ Worth knowing before you hand-edit:
   `[table]` headers, `#` comments, and string/number/boolean values. It does not
   support arrays, inline tables, or multi-line strings.
 - **Bad values fall back safely.** An out-of-range size, unknown theme, or
-  misspelled theme does not stop Kero from launching.
+  misspelled theme does not stop Yeet from launching.
 
 ## Appearance
 
@@ -41,7 +41,7 @@ Worth knowing before you hand-edit:
 
 `"system"` · `"light"` · `"dark"` — default `"system"`
 
-Chooses the app appearance. `"system"` follows macOS; the other two pin Kero
+Chooses the app appearance. `"system"` follows macOS; the other two pin Yeet
 to one appearance.
 
 ### `theme-dark` and `theme-light`
@@ -54,7 +54,7 @@ is a solid Codex Dark panel so the two sidebars match after a swap. Light
 chrome stays a solid panel from the selected light theme.
 
 Settings lists the curated theme catalog. A hand-written name must match one
-of those display names exactly, including case, or Kero falls back to the
+of those display names exactly, including case, or Yeet falls back to the
 corresponding default.
 
 ### `toolbar.visibility`
@@ -90,7 +90,7 @@ The terminal, editor, and diff viewer share this family. Give a family name,
 not a face: `"IBM Plex Mono"`, not `"IBM Plex Mono Regular"`. Unknown or
 non-monospace families fall back to the bundled default.
 
-Kero also attaches Symbols Nerd Font as a fallback, so Powerline separators
+Yeet also attaches Symbols Nerd Font as a fallback, so Powerline separators
 and icon glyphs work even when the chosen family is not a patched Nerd Font.
 
 ### `font-size`
@@ -98,7 +98,7 @@ and icon glyphs work even when the chosen family is not a patched Nerd Font.
 number, 8–32 — default `13`
 
 The shared terminal, editor, and diff font size in points. This is the one key
-Kero writes even when it has the default value.
+Yeet writes even when it has the default value.
 
 ### `sidebar.font-size`
 
@@ -170,8 +170,8 @@ restored either way.
 
 boolean — default `false`
 
-Lets supported coding agents coordinate background Kero panes when you ask in
-plain language, and shows provider-reported lifecycle status in the UI. Kero
+Lets supported coding agents coordinate background Yeet panes when you ask in
+plain language, and shows provider-reported lifecycle status in the UI. Yeet
 does not infer status from terminal text. The Settings toggle is the recommended
 way to change it because errors are shown inline and conflicting existing setups
 are left untouched.
@@ -205,10 +205,11 @@ Every key is optional. Delete a key to return that setting to its default.
 
 - **Language.** Settings offers System Default, English, Simplified Chinese,
   and Japanese. The choice uses macOS's per-app language preference and needs a
-  relaunch, so it lives in Kero's preferences rather than TOML.
+  relaunch, so it lives in Yeet's preferences rather than TOML.
 - **Automatic update checks.** Packaged Yeet has no Sparkle feed, so Settings
-  does not show update controls. Use Homebrew or a GitHub Release zip.
+  does not show update controls. Rebuild from source, or use Homebrew / a
+  GitHub Release zip when that asset exists.
 - **Window and layout state.** Window size, sidebar widths, selected panels,
   projects, tabs, panes, browser URLs, and diff control preferences live in
-  Kero's macOS preferences and session snapshot.
+  Yeet's macOS preferences and session snapshot.
 - **Keybindings.** The [shortcuts](/docs/shortcuts) are fixed for now.

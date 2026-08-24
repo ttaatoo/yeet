@@ -1,69 +1,35 @@
+<p align="center">
+  <img src="web/public/yeet-icon.png" alt="Yeet" width="128" height="128">
+</p>
+
 # Yeet
 
-A native terminal workspace for macOS, based on [Kero](https://github.com/egoist/kero) by [EGOIST](https://github.com/egoist). Licensed under GPLv3. Thanks to the Kero project and its contributors.
+A native terminal workspace for macOS. Based on [Kero](https://github.com/egoist/kero) by [EGOIST](https://github.com/egoist). GPLv3.
 
-![preview](https://kero.sh/kero-screenshot.png)
+![preview](web/public/yeet-screenshot.png)
 
 ## Install
 
-Builds are **ad-hoc signed** (no Apple Developer Program / Developer ID). That is **not** the notarized upstream app.
+Build from source — [CONTRIBUTING.md](CONTRIBUTING.md). You need Xcode 26.5 or later and a Rust toolchain.
+
+When a GitHub Release includes `Yeet.zip`, you can also install the cask or the zip:
 
 ```bash
 brew tap ttaatoo/yeet https://github.com/ttaatoo/yeet
 brew install --cask ttaatoo/yeet/yeet
 ```
 
-Upgrade (pull the in-repo tap first):
+Upgrade:
 
 ```bash
 git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet
 ```
 
-Do **not** use `brew install egoist/tap/kero` if you want Yeet. That command installs official [egoist/kero](https://github.com/egoist/kero) (Developer ID, Sparkle from `https://releases.kero.sh`) as `Kero.app` / `sh.kero`. Yeet installs `Yeet.app` / `sh.yeet` and keeps settings in `~/.config/yeet` (Debug: `~/.config/yeet-dev`).
+Or download `Yeet.zip` from [Releases](https://github.com/ttaatoo/yeet/releases) when that asset is attached.
 
-If `~/.config/yeet` is missing, Yeet copies leftover `~/.config/kerox` when that directory exists, otherwise older `~/.config/kero`. The same leftover-then-copy applies to Application Support history.
+Builds are **ad-hoc signed** (no Apple Developer ID). The cask does not strip Gatekeeper quarantine. If macOS blocks the app: **System Settings → Privacy & Security → Open Anyway**.
 
-The cask downloads `Yeet.zip` from this repo's GitHub Releases. After install, the cask strips Gatekeeper quarantine so the ad-hoc app can launch.
-
-If macOS still blocks the app: **System Settings → Privacy & Security → Open Anyway**.
-
-Packaged Yeet builds do not Sparkle-update from `releases.kero.sh` — that feed would overwrite this app with official egoist Kero. There is no official Yeet Sparkle feed. Use the Homebrew upgrade above (or reinstall the cask). There is no in-app updater on packaged builds.
-
-Ad-hoc zip without Homebrew: `./scripts/package.sh` writes `dist/Yeet.app` and `dist/Yeet.zip`. Pushing a `v*` tag (or running the Release workflow) uploads that zip. GitHub-hosted macOS runners may fail if their Xcode is older than the project format; in that case build on a Mac and attach the zip to the release.
-
-Compiling from source (`brew install --formula --HEAD ttaatoo/yeet/yeet`) needs a **new-enough Xcode** (this project uses format `110` / LastUpgradeCheck `2700` and has already failed on Xcode 26.5) plus a [Rust toolchain](https://rustup.rs) for `Vendor/alacritty-bridge`. The cask is the supported install path.
-
-## Official download
-
-The notarized upstream Kero build is at https://kero.sh or `brew install egoist/tap/kero`.
-
-## Clone remotes
-
-```bash
-git clone https://github.com/ttaatoo/yeet.git
-cd yeet
-git remote add upstream https://github.com/egoist/kero.git
-```
-
-- `origin` — [ttaatoo/yeet](https://github.com/ttaatoo/yeet)
-- `upstream` — [egoist/kero](https://github.com/egoist/kero)
-
-## Differences from Kero
-
-| | Official Kero | Yeet |
-| --- | --- | --- |
-| App | `Kero.app` | `Yeet.app` (Debug: `Yeet Debug.app`) |
-| Bundle id | `sh.kero` | `sh.yeet` / `sh.yeet.dev` |
-| Config | `~/.config/kero` | `~/.config/yeet` (Debug: `yeet-dev`) |
-| Homebrew | `egoist/tap/kero` | `brew tap ttaatoo/yeet https://github.com/ttaatoo/yeet` then `brew install --cask ttaatoo/yeet/yeet` |
-| Zip | notarized `.dmg` | `Yeet.zip` |
-| Sparkle | `https://releases.kero.sh` | none (empty feed; do not use the official Kero feed) |
-| Signing | Developer ID | ad-hoc |
-| Repository | [egoist/kero](https://github.com/egoist/kero) | [ttaatoo/yeet](https://github.com/ttaatoo/yeet) |
-
-Internal names stay `kero` on purpose: `kero.xcodeproj`, the `kero` scheme, `PRODUCT_NAME = kero` (bundled CLI still `kero`), `kero_alacritty`, `KeroTerminal`, `KeroCell`, `KeroAutomation*`, skill id `kero-automation`, and env/build names `KERO_TERM` / `KERO_DISPLAY_NAME` / `KERO_SU_*`.
-
-Leftover Kerox (`~/.config/kerox`) and older Kero config are copied into Yeet paths only when Yeet has none yet.
+This is not official [Kero](https://kero.sh). `brew install egoist/tap/kero` installs `Kero.app`. Yeet is `Yeet.app` / `sh.yeet`, with settings in `~/.config/yeet`. Packaged builds have no in-app updater — use Homebrew, a new zip, or rebuild from source.
 
 ## Features
 
@@ -74,10 +40,26 @@ Leftover Kerox (`~/.config/kerox`) and older Kero config are copied into Yeet pa
 - Command palette, project-wide file search, and local path links
 - AI agents can delegate background work and coordinate across Yeet panes, with provider-reported status and human-controlled approvals
 
+## Differences from Kero
+
+| | Official Kero | Yeet |
+| --- | --- | --- |
+| App | `Kero.app` | `Yeet.app` |
+| Bundle id | `sh.kero` | `sh.yeet` |
+| Config | `~/.config/kero` | `~/.config/yeet` |
+| CLI | `kero` | `yeet` |
+| Signing | Developer ID | ad-hoc |
+| Updates | Sparkle (`releases.kero.sh`) | Homebrew, zip, or rebuild (no Sparkle) |
+
+If `~/.config/yeet` is missing, Yeet copies leftover `~/.config/kerox`, otherwise older `~/.config/kero`.
+
 ## Contributing
 
-[CONTRIBUTING.md](CONTRIBUTING.md)
+Open an [issue](https://github.com/ttaatoo/yeet/issues) first for anything
+larger than a fix. See [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[code of conduct](CODE_OF_CONDUCT.md). Security reports:
+[SECURITY.md](SECURITY.md).
 
 ## License
 
-GPLv3. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Existing Kero / EGOIST copyrights are preserved; Yeet modifications add a copyright line in NOTICE.
+GPL-3.0-only. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

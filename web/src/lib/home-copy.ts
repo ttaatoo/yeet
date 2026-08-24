@@ -14,6 +14,7 @@ export type HomeCopy = {
   intro: string
   introFree: string
   download: string
+  buildFromSource: string
   docs: string
   copy: string
   copied: string
@@ -33,8 +34,8 @@ export type HomeCopy = {
    */
   shortcuts: Row[]
   faq: { q: string; a: string }[]
-  /** The author's name is a link, so the credit is split around it. */
-  footerBuiltBy: { before: string; after: string }
+  footerCreditBefore: string
+  footerCreditAfter: string
   footerDocs: string
   footerChangelog: string
 }
@@ -49,8 +50,9 @@ const en: HomeCopy = {
   taglineAfter: ' around it.',
   intro:
     'A native macOS workspace built around the terminal — projects, persistent sessions, files, and git in one window.',
-  introFree: 'Free, no telemetry, no subscription.',
+  introFree: 'Free, no telemetry, no analytics, no subscription.',
   download: 'Download',
+  buildFromSource: 'Build from source',
   docs: 'Docs',
   copy: 'Copy',
   copied: 'Copied',
@@ -160,9 +162,9 @@ const en: HomeCopy = {
             'ships with JetBrains Mono and Nerd Font symbols; swap in any monospace family and size',
         },
         {
-          name: 'Homebrew updates',
+          name: 'Updates',
           detail:
-            'packaged builds have no Sparkle feed; upgrade with git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet or a new GitHub Release zip',
+            'packaged builds have no Sparkle feed; rebuild from source, or upgrade with Homebrew / a GitHub Release zip when that asset exists',
         },
       ],
     },
@@ -199,7 +201,7 @@ const en: HomeCopy = {
     },
     {
       q: 'Does it collect any data?',
-      a: 'No telemetry, no analytics. Packaged builds do not check for updates on their own; browser pages and agent CLIs make only the requests you ask them to.',
+      a: 'No telemetry and no analytics — not the app, not this site. Packaged builds do not check for updates on their own; browser pages and agent CLIs make only the requests you ask them to.',
     },
     {
       q: 'What happens to my sessions when I quit?',
@@ -210,7 +212,8 @@ const en: HomeCopy = {
       a: 'No — the terminal stays the center of gravity. The git and files panels exist so you can review and ship what happens in the terminal without switching to an editor.',
     },
   ],
-  footerBuiltBy: { before: 'Built by ', after: '' },
+  footerCreditBefore: 'Based on ',
+  footerCreditAfter: ' by EGOIST',
   footerDocs: 'Docs',
   footerChangelog: 'Changelog',
 }
@@ -225,8 +228,9 @@ const zh: HomeCopy = {
   taglineAfter: '都在身边。',
   intro:
     '以终端为中心的原生 macOS 工作区——项目、可恢复的会话、文件和 git，都在同一个窗口里。',
-  introFree: '免费，无遥测，无订阅。',
+  introFree: '免费，无遥测，无分析统计，无订阅。',
   download: '下载',
+  buildFromSource: '从源码构建',
   docs: '文档',
   copy: '复制',
   copied: '已复制',
@@ -327,9 +331,9 @@ const zh: HomeCopy = {
           detail: '内置 JetBrains Mono 和 Nerd Font 符号；也可以换成任何等宽字体和字号',
         },
         {
-          name: '用 Homebrew 更新',
+          name: '更新',
           detail:
-            '打包构建没有 Sparkle 订阅源；用 git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet 或新的 GitHub Release zip 升级',
+            '打包构建没有 Sparkle 订阅源；从源码重新构建，或在 GitHub Release 带有 Yeet.zip 时用 Homebrew / zip 升级',
         },
       ],
     },
@@ -366,7 +370,7 @@ const zh: HomeCopy = {
     },
     {
       q: '它会收集数据吗？',
-      a: '没有遥测，也没有分析统计。打包构建不会自己检查更新；浏览器页面和 agent CLI 只会发送你要求的请求。',
+      a: '没有遥测，也没有分析统计——应用和本站都没有。打包构建不会自己检查更新；浏览器页面和 agent CLI 只会发送你要求的请求。',
     },
     {
       q: '退出之后我的会话会怎样？',
@@ -377,7 +381,8 @@ const zh: HomeCopy = {
       a: '不是——终端始终是核心。git 和文件面板是为了让你不用切到编辑器，也能审阅并提交终端里完成的工作。',
     },
   ],
-  footerBuiltBy: { before: '由 ', after: ' 打造' },
+  footerCreditBefore: '基于 ',
+  footerCreditAfter: '（EGOIST）',
   footerDocs: '文档',
   footerChangelog: '更新日志',
 }

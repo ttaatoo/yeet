@@ -7,7 +7,7 @@ import { fetchLatestRelease } from '@/lib/release'
 /** English landing page. Other languages live at `/$lang`. */
 export const Route = createFileRoute('/')({
   component: Home,
-  // Fetched per request (SSR) so the page always advertises the newest release.
+  // Fetched per request (SSR). A download is shown only when GitHub has Yeet.zip.
   loader: () => fetchLatestRelease(),
   staleTime: 5 * 60 * 1000,
   head: () => {
