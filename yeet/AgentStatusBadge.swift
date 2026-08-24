@@ -279,26 +279,29 @@ final class AgentStatusBadgeView: NSView {
                 ringLayer.isHidden = false
                 ringLayer.lineDashPattern = nil
                 ringLayer.lineWidth = Metrics.ringWidth
-                ringLayer.strokeColor = NSColor.systemBlue
+                let progress = Theme.chromeProgress
+                ringLayer.strokeColor = progress
                     .withAlphaComponent(isDark ? 0.32 : 0.25).cgColor
                 arcLayer.isHidden = false
-                arcLayer.strokeColor = NSColor.systemBlue.cgColor
-                countLabel.textColor = .systemBlue
+                arcLayer.strokeColor = progress.cgColor
+                countLabel.textColor = progress
             case .blocked:
                 capsuleLayer.isHidden = false
-                capsuleLayer.backgroundColor = NSColor.systemOrange
+                let accent = Theme.chromeAccent
+                capsuleLayer.backgroundColor = accent
                     .withAlphaComponent(isDark ? 0.27 : 0.17).cgColor
                 showSymbol(
                     "exclamationmark.triangle.fill",
-                    pointSize: 10, weight: .semibold, tint: .systemOrange
+                    pointSize: 10, weight: .semibold, tint: accent
                 )
-                countLabel.textColor = .systemOrange
+                countLabel.textColor = accent
             case .done:
                 capsuleLayer.isHidden = false
-                capsuleLayer.backgroundColor = NSColor.systemGreen
+                let progress = Theme.chromeProgress
+                capsuleLayer.backgroundColor = progress
                     .withAlphaComponent(isDark ? 0.24 : 0.17).cgColor
-                showSymbol("checkmark", pointSize: 9, weight: .bold, tint: .systemGreen)
-                countLabel.textColor = .systemGreen
+                showSymbol("checkmark", pointSize: 9, weight: .bold, tint: progress)
+                countLabel.textColor = progress
             case .idle:
                 ringLayer.isHidden = false
                 ringLayer.lineDashPattern = nil

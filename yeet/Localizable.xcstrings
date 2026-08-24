@@ -1539,6 +1539,74 @@
         }
       }
     },
+    "Open a repository." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リポジトリを開く。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开一个仓库。"
+          }
+        }
+      }
+    },
+    "Pending Review" : {
+      "comment" : "Command palette section title for pending agent diffs.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未レビュー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待审阅"
+          }
+        }
+      }
+    },
+    "%lld files to review" : {
+      "comment" : "Count of uncommitted files after an agent finished. The placeholder is the file count.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld file to review"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld files to review"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未レビューのファイル%lld件"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个文件待审阅"
+          }
+        }
+      }
+    },
     "Commit %lld Staged Files" : {
       "comment" : "Commit button title. The placeholder is the number of staged files.",
       "localizations" : {
@@ -4373,7 +4441,20 @@
       }
     },
     "Next Agent Needing Attention" : {
-
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "対応が必要な次のエージェント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一个需要注意的 Agent"
+          }
+        }
+      }
     },
     "Next match" : {
       "localizations" : {

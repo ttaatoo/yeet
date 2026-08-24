@@ -45,11 +45,11 @@ const en: HomeCopy = {
   title: 'Yeet — A native terminal workspace for macOS',
   description:
     'Yeet is a fast, keyboard-first terminal workspace for macOS. Projects, sessions, browser panes, git diffs, and coding agents — all in one native window.',
-  taglineBefore: 'Your terminal, with the ',
-  taglineHighlight: 'whole project',
-  taglineAfter: ' around it.',
+  taglineBefore: 'The terminal stays first. Review ',
+  taglineHighlight: 'agent changes',
+  taglineAfter: ' before you trust them.',
   intro:
-    'A native macOS workspace built around the terminal — projects, persistent sessions, files, and git in one window.',
+    'A native macOS workspace built around the terminal — projects, persistent sessions, files, git, and a review path for agent diffs in one window.',
   introFree: 'Free, no telemetry, no analytics, no subscription.',
   download: 'Download',
   buildFromSource: 'Build from source',
@@ -58,8 +58,8 @@ const en: HomeCopy = {
   copied: 'Copied',
   copyAria: (command) => `Copy "${command}" to the clipboard`,
   pillFree: 'free & open-source',
-  screenshotAlt: "Yeet showing a project's terminal session with the git panel open",
-  screenshotCaption: 'Projects, tabs, the info panel open beside it',
+  screenshotAlt: "Yeet showing a project's terminal session with the inspector open",
+  screenshotCaption: 'Projects, tabs, the inspector open beside it',
   featuresHeading: 'Features',
   shortcutsHeading: 'Shortcuts',
   faqHeading: 'FAQ',
@@ -144,7 +144,7 @@ const en: HomeCopy = {
         {
           name: 'Agent-aware',
           detail:
-            'let coding agents delegate work and coordinate across Yeet panes while you follow status, notifications, and approvals',
+            'when an agent finishes with uncommitted files, the project shows a count; Shift-Cmd-A opens Git so you can review, stage, or discard',
         },
         {
           name: 'Desktop notifications',
@@ -223,11 +223,11 @@ const zh: HomeCopy = {
   title: 'Yeet — 原生 macOS 终端工作区',
   description:
     'Yeet 是面向 macOS 的原生终端工作区：快速、键盘优先。项目、会话、浏览器窗格、git diff 和编码 agent，都在同一个窗口里。',
-  taglineBefore: '你的终端，',
-  taglineHighlight: '整个项目',
-  taglineAfter: '都在身边。',
+  taglineBefore: '终端仍是主界面。先审阅 ',
+  taglineHighlight: 'agent 的改动',
+  taglineAfter: '，再信任。',
   intro:
-    '以终端为中心的原生 macOS 工作区——项目、可恢复的会话、文件和 git，都在同一个窗口里。',
+    '以终端为中心的原生 macOS 工作区——项目、可恢复的会话、文件、git，以及 agent diff 的审阅路径，都在同一个窗口里。',
   introFree: '免费，无遥测，无分析统计，无订阅。',
   download: '下载',
   buildFromSource: '从源码构建',
@@ -236,8 +236,8 @@ const zh: HomeCopy = {
   copied: '已复制',
   copyAria: (command) => `将「${command}」复制到剪贴板`,
   pillFree: '免费开源',
-  screenshotAlt: 'Yeet 窗口：项目的终端会话，旁边开着 git 面板',
-  screenshotCaption: '项目、标签页，旁边开着信息面板',
+  screenshotAlt: 'Yeet 窗口：项目的终端会话，旁边开着检查器',
+  screenshotCaption: '项目、标签页，旁边开着检查器',
   featuresHeading: '功能',
   shortcutsHeading: '快捷键',
   faqHeading: '常见问题',
@@ -314,7 +314,8 @@ const zh: HomeCopy = {
         },
         {
           name: '与 AI Agent 协作',
-          detail: '让编码 agent 在 Yeet 窗格间分派和协调工作，你通过状态、通知和批准掌握进度',
+          detail:
+            'agent 结束后若还有未提交文件，项目行会显示数量；Shift-Cmd-A 打开 Git，供你审阅、暂存或丢弃',
         },
         {
           name: '桌面通知',

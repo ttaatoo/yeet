@@ -11,12 +11,14 @@ import SwiftUI
 /// Groups palette rows under a header — built-in actions, project files, and
 /// open sessions.
 enum PaletteSection: Hashable {
+    case review
     case command
     case file
     case session
 
     var title: String {
         switch self {
+        case .review: return String(localized: "Pending Review", comment: "Command palette section title for pending agent diffs.")
         case .command: return String(localized: "Commands", comment: "Command palette section title.")
         case .file: return String(localized: "Files", comment: "Command palette section title.")
         case .session: return String(localized: "Sessions", comment: "Command palette section title.")
@@ -269,6 +271,14 @@ struct CommandPaletteView: View {
                 manager.togglePanel(.info)
             },
             PaletteCommand(
+                id: "next-agent-attention",
+                title: "Next Agent Needing Attention",
+                systemImage: "bell.badge",
+                shortcut: "⇧⌘A"
+            ) {
+                manager.focusNextAgentAttention()
+            },
+            PaletteCommand(
                 id: "toggle-fps-counter",
                 title: manager.isFPSCounterVisible ? "Hide FPS Counter" : "Show FPS Counter",
                 systemImage: "gauge.with.needle"
@@ -382,13 +392,39 @@ struct CommandPaletteView: View {
 
     private var filtered: [PaletteCommand] {
         let pattern = query.trimmingCharacters(in: .whitespaces)
-        guard !pattern.isEmpty else { return commands + sessionCommands }
+        guard !pattern.isEmpty else { return reviewCommands + commands + sessionCommands }
         let fuzzyQuery = Self.fuzzyMatcher.prepare(pattern)
         var buffer = Self.fuzzyMatcher.makeBuffer()
-        var items = matching(commands, fuzzyQuery, buffer: &buffer)
+        var items = matching(reviewCommands, fuzzyQuery, buffer: &buffer)
+        items.append(contentsOf: matching(commands, fuzzyQuery, buffer: &buffer))
         items.append(contentsOf: matchingFiles(fuzzyQuery, buffer: &buffer))
         items.append(contentsOf: matching(sessionCommands, fuzzyQuery, buffer: &buffer))
         return items
+    }
+
+    /// Projects whose last agent turn left uncommitted files. Placed above
+    /// Commands so ⇧⌘A and ⌘P share the same review path.
+    private var reviewCommands: [PaletteCommand] {
+        manager.projects.compactMap { project in
+            guard let review = project.pendingReview, review.fileCount > 0 else {
+                return nil
+            }
+            let count = review.fileCount
+            return PaletteCommand(
+                id: "review-\(project.id.uuidString)",
+                verbatimTitle: project.name,
+                systemImage: "plus.forwardslash.minus",
+                subtitle: String(
+                    localized: "\(count) files to review",
+                    comment: "Count of uncommitted files after an agent finished. The placeholder is the file count."
+                ),
+                shortcut: "⇧⌘A",
+                section: .review,
+                searchText: "review \(project.name)"
+            ) {
+                manager.revealPendingReview(project)
+            }
+        }
     }
 
     /// Rank matches within one section. Concatenating the independently ranked
@@ -670,6 +706,14 @@ struct CommandPaletteView: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(isSelected ? Color.primary.opacity(0.09) : .clear)
         )
+        .overlay(alignment: .leading) {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color(nsColor: Theme.chromeAccent))
+                    .frame(width: 2)
+                    .padding(.vertical, 6)
+            }
+        }
         .background(
             PaletteRowPointerView(
                 onEntered: {

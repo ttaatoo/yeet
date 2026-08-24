@@ -3,6 +3,7 @@
 //  kero
 //
 
+import AppKit
 import Combine
 import SwiftUI
 
@@ -301,6 +302,25 @@ struct ContentView: View {
         .onChange(of: colorScheme) {
             afterViewUpdate { manager.refreshAppearance() }
         }
+        .onChange(of: git.uniqueDirtyPathCount) {
+            syncPendingReviewFromGit()
+        }
+    }
+
+    /// Apply the live Git snapshot to the selected project's review queue
+    /// only when that snapshot is for the same repository the project is
+    /// showing. Switching projects must not copy the previous repo's count.
+    private func syncPendingReviewFromGit() {
+        guard let project = manager.selectedProject,
+              project.pendingReview != nil,
+              let session = project.selectedSession else { return }
+        let (root, _) = project.panelRoot(
+            followingSessionAt: session.currentDirectoryPath,
+            foregroundAt: session.foregroundDirectoryPath
+        )
+        let gitRoot = git.repoRoot
+        guard !gitRoot.isEmpty, gitRoot == root else { return }
+        project.updatePendingReviewFileCount(git.uniqueDirtyPathCount)
     }
 
     @ViewBuilder
@@ -372,31 +392,54 @@ struct ContentView: View {
         if manager.selectedProject == nil {
             emptyStatePrompt(
                 title: "No open projects",
+                detail: "Open a repository.",
                 buttonTitle: "New Project  ⌘N",
-                action: { manager.newProject() }
+                action: { manager.newProject() },
+                showsMascot: true
             )
         } else {
             // A project whose tabs were all closed stays open; offer to reopen
             // a session rather than showing the no-projects prompt.
             emptyStatePrompt(
                 title: "No open sessions",
+                detail: nil,
                 buttonTitle: "New Session  ⌘T",
-                action: { manager.newSession() }
+                action: { manager.newSession() },
+                showsMascot: false
             )
         }
     }
 
     private func emptyStatePrompt(
         title: LocalizedStringKey,
+        detail: LocalizedStringKey?,
         buttonTitle: LocalizedStringKey,
-        action: @escaping () -> Void
+        action: @escaping () -> Void,
+        showsMascot: Bool
     ) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "terminal")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(.tertiary)
+        VStack(spacing: 14) {
+            if showsMascot, let mascot = NSImage(named: "Mascot") {
+                // The asset is square so the Dock icon can fill the macOS
+                // squircle. In-window it needs the same rounded plate, or
+                // the charcoal fill reads as a hard square.
+                Image(nsImage: mascot)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 96, height: 96)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: "terminal")
+                    .font(.system(size: 36, weight: .light))
+                    .foregroundStyle(.tertiary)
+            }
             Text(title)
                 .foregroundStyle(.secondary)
+            if let detail {
+                Text(detail)
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
             Button(buttonTitle, action: action)
         }
     }

@@ -581,7 +581,7 @@ private struct ThemeOption: View {
     }
 }
 
-/// A miniature kero window painted in one appearance's real colors. `system`
+/// A miniature Yeet window painted in one appearance's real colors. `system`
 /// splits down the middle — light on the left, dark on the right — the same
 /// way System Settings previews "Auto".
 private struct ThemePreview: View {
@@ -615,7 +615,7 @@ private struct ThemePreview: View {
 }
 
 /// Sidebar, traffic lights, a tab, and a few lines of terminal output —
-/// enough of kero's layout to read at thumbnail size.
+/// enough of Yeet's layout to read at thumbnail size.
 private struct MiniWindow: View {
     let dark: Bool
 

@@ -39,32 +39,68 @@ enum AppTheme: String, CaseIterable, Identifiable {
 /// `Theme` colors repaint without waiting for an appearance flip.
 final class ThemeChanges: nonisolated ObservableObject {}
 
-/// App colors, sourced from the ghostty themes the user selected in Settings
-/// (one per appearance; GitHub Dark/Light Default out of the box). Terminal
+/// App colors, sourced from the catalog themes the user selected in Settings
+/// (one per appearance; Yeet Dark / Yeet Light out of the box). Terminal
 /// sessions consume the definitions directly via `terminal(dark:)`. The
 /// editor, diffs, and pane surfaces follow that palette. Dark sidebar chrome
-/// is a hard-coded Codex Dark panel so the project list and Files/Git
-/// inspector match after a sidebar swap; light sidebar chrome keeps the
-/// selected light theme's solid fill.
+/// is a hard-coded warm near-black frame one step above the Yeet Dark canvas,
+/// with the mascot orange accent, so the project list and Files/Git inspector
+/// match after a sidebar swap; light sidebar chrome keeps the selected
+/// light theme's solid fill.
 enum Theme {
-    nonisolated static let defaultDarkThemeName = "Default Dark"
-    nonisolated static let defaultLightThemeName = "Default Light"
+    nonisolated static let defaultDarkThemeName = "Yeet Dark"
+    nonisolated static let defaultLightThemeName = "Yeet Light"
+    /// Names written by earlier builds. `definition(named:)` and
+    /// `isCommonTheme` still accept them so an old `config.toml` keeps its
+    /// built-in theme instead of falling through to a catalog row.
+    nonisolated static let legacyDefaultDarkThemeName = "Default Dark"
+    nonisolated static let legacyDefaultLightThemeName = "Default Light"
+
+    /// Mascot body; selected rows, focus, and blocked-agent chrome.
+    nonisolated static let accentHex = "FF4D2E"
+    /// Mascot prompt; cursor, in-progress / finished chrome, review counts.
+    nonisolated static let progressHex = "7DFFB3"
+    /// Deeper mint for light chrome, where `#7DFFB3` fails contrast.
+    nonisolated static let progressLightHex = "0F8A5B"
 
     @MainActor static let changes = ThemeChanges()
 
-    /// Kero's built-in themes: the GitHub Default palettes under kero's own
-    /// names. Dark sidebar chrome is always the solid Codex Dark panel
-    /// (see `sidebar`); it no longer follows the selected terminal theme
-    /// or the old translucent sidebar material.
-    nonisolated static let defaultDarkDefinition = keroDefault(
-        named: defaultDarkThemeName, from: "GitHub Dark Default", dark: true
+    /// Built-in Yeet Dark. GitHub Dark Default for reds, greens, yellows,
+    /// blues, cyans, and magenta; a warm near-black canvas; mint cursor;
+    /// orange selection.
+    nonisolated static let defaultDarkDefinition = TerminalThemeDefinition(
+        name: defaultDarkThemeName,
+        isDark: true,
+        background: "0B0A09",
+        foreground: "E8E2DC",
+        cursorColor: progressHex,
+        selectionBackground: "5C2418",
+        palette: [
+            "484f58", "ff7b72", "3fb950", "d29922",
+            "58a6ff", "bc8cff", "39c5cf", "b1bac4",
+            "6e7681", "ffa198", "56d364", "e3b341",
+            "79c0ff", "d2a8ff", "56d4dd", "e6edf3",
+        ] + Array(repeating: nil, count: 240)
     )
-    nonisolated static let defaultLightDefinition = keroDefault(
-        named: defaultLightThemeName, from: "GitHub Light Default", dark: false
+
+    /// Built-in Yeet Light: warm paper canvas, orange accent, deep mint cursor.
+    nonisolated static let defaultLightDefinition = TerminalThemeDefinition(
+        name: defaultLightThemeName,
+        isDark: false,
+        background: "F7F1EA",
+        foreground: "1F1A16",
+        cursorColor: progressLightHex,
+        selectionBackground: "F0C2B0",
+        palette: [
+            "24292f", "cf222e", "116329", "4d2d00",
+            "0969da", "8250df", "1b7c83", "6e7781",
+            "57606a", "a40e26", "1a7f37", "633c01",
+            "0550ae", "6639ba", "1b7c83", "1f2328",
+        ] + Array(repeating: nil, count: 240)
     )
 
     /// Popular themes from the catalog. Each appearance has 29 catalog themes
-    /// plus Kero's default, keeping either Settings picker capped at 30 choices.
+    /// plus Yeet's default, keeping either Settings picker capped at 30 choices.
     private nonisolated static let commonDarkCatalogThemeNames: Set<String> = [
         "Adwaita Dark",
         "Afterglow",
@@ -129,8 +165,10 @@ enum Theme {
         "Tomorrow",
     ]
 
-    /// Kero's Default comes first; the duplicate GitHub Default catalog rows
-    /// are intentionally omitted because the built-ins use those palettes.
+    /// Yeet's default comes first. GitHub Light Default is omitted so the
+    /// picker stays at 30 (Yeet Light is no longer a copy of that palette).
+    /// GitHub Dark Default is omitted so the picker stays at 30; GitHub Dark
+    /// is the same catalog row.
     nonisolated static let commonDarkThemes: [TerminalThemeDefinition] =
         [defaultDarkDefinition] + TerminalThemeCatalog.allThemes.filter {
             $0.isDark && commonDarkCatalogThemeNames.contains($0.name)
@@ -142,8 +180,18 @@ enum Theme {
         }
 
     nonisolated static func isCommonTheme(named name: String, dark: Bool) -> Bool {
+        if dark, isDefaultDarkName(name) { return true }
+        if !dark, isDefaultLightName(name) { return true }
         let themes = dark ? commonDarkThemes : commonLightThemes
         return themes.contains { $0.name == name }
+    }
+
+    nonisolated static func isDefaultDarkName(_ name: String) -> Bool {
+        name == defaultDarkThemeName || name == legacyDefaultDarkThemeName
+    }
+
+    nonisolated static func isDefaultLightName(_ name: String) -> Bool {
+        name == defaultLightThemeName || name == legacyDefaultLightThemeName
     }
 
     /// The selected definitions, mirrored out of `AppSettings` because the
@@ -152,10 +200,10 @@ enum Theme {
         initialState: (light: defaultLightDefinition, dark: defaultDarkDefinition)
     )
 
-    /// A kero built-in or catalog theme by name.
+    /// A Yeet built-in or catalog theme by name.
     nonisolated static func definition(named name: String) -> TerminalThemeDefinition? {
-        if name == defaultLightThemeName { return defaultLightDefinition }
-        if name == defaultDarkThemeName { return defaultDarkDefinition }
+        if isDefaultLightName(name) { return defaultLightDefinition }
+        if isDefaultDarkName(name) { return defaultDarkDefinition }
         return TerminalThemeCatalog.theme(named: name)
     }
 
@@ -198,44 +246,27 @@ enum Theme {
         selection.withLock { dark ? $0.dark : $0.light }
     }
 
-    /// A copy of a catalog theme under a kero-owned name.
-    private nonisolated static func keroDefault(
-        named name: String, from catalogName: String, dark: Bool
-    ) -> TerminalThemeDefinition {
-        let base = fallback(named: catalogName, dark: dark)
-        return TerminalThemeDefinition(
-            name: name,
-            isDark: dark,
-            background: base.background,
-            foreground: base.foreground,
-            cursorColor: base.cursorColor,
-            cursorText: base.cursorText,
-            selectionBackground: base.selectionBackground,
-            selectionForeground: base.selectionForeground,
-            palette: base.palette
-        )
-    }
-
     static var background: NSColor { dynamic { $0.backgroundNSColor } }
-    /// Project list and Files/Git inspector fill. Dark is Codex Dark so the
-    /// two columns match after Swap sidebars; light stays the selected
-    /// theme's solid sidebar shade.
+    /// Project list and Files/Git inspector fill. Dark is one step above
+    /// the Yeet Dark canvas so the two columns match after Swap
+    /// sidebars; light stays the selected theme's solid sidebar shade.
     static var sidebar: NSColor { appearanceDynamic { chromePanel(dark: $0) } }
     static var accent: NSColor { dynamic { $0.accentNSColor } }
 
     /// Title-bar-ish strip at the top of a chrome column. Dark uses the
-    /// Codex header; light stays the same fill as the rest of the panel.
+    /// same lifted fill as the panel; light stays the same fill as the
+    /// rest of the panel.
     static var chromeHeader: NSColor {
         appearanceDynamic { isDark in
-            isDark ? hexColor(CodexDarkChrome.header) : chromePanel(dark: false)
+            isDark ? hexColor(YeetDarkChrome.header) : chromePanel(dark: false)
         }
     }
 
     /// Hairline between chrome columns and the pane stack. Dark is the
-    /// Codex divider; light keeps the existing theme hairline.
+    /// near-black divider; light keeps the existing theme hairline.
     static var chromeDivider: NSColor {
         appearanceDynamic { isDark in
-            if isDark { return hexColor(CodexDarkChrome.divider) }
+            if isDark { return hexColor(YeetDarkChrome.divider) }
             return lightChromeDivider
         }
     }
@@ -243,7 +274,7 @@ enum Theme {
     static var chromeHover: NSColor {
         appearanceDynamic { isDark in
             isDark
-                ? hexColor(CodexDarkChrome.hover)
+                ? hexColor(YeetDarkChrome.hover)
                 : NSColor.labelColor.withAlphaComponent(0.04)
         }
     }
@@ -251,30 +282,39 @@ enum Theme {
     static var chromeSelected: NSColor {
         appearanceDynamic { isDark in
             isDark
-                ? hexColor(CodexDarkChrome.selected)
+                ? hexColor(YeetDarkChrome.selected)
                 : NSColor.labelColor.withAlphaComponent(0.09)
         }
     }
 
     static var chromePrimaryText: NSColor {
         appearanceDynamic { isDark in
-            isDark ? hexColor(CodexDarkChrome.primaryText) : NSColor.labelColor
+            isDark ? hexColor(YeetDarkChrome.primaryText) : NSColor.labelColor
         }
     }
 
     static var chromeMutedText: NSColor {
         appearanceDynamic { isDark in
             isDark
-                ? hexColor(CodexDarkChrome.mutedText)
+                ? hexColor(YeetDarkChrome.mutedText)
                 : NSColor.secondaryLabelColor
         }
     }
 
-    /// Amber on dark chrome, where the project row already tints the
+    /// Mascot orange on dark chrome, where the project row already tints the
     /// selected folder. Light keeps the selected terminal theme's accent.
     static var chromeAccent: NSColor {
         appearanceDynamic { isDark in
-            isDark ? hexColor(CodexDarkChrome.accent) : terminal(dark: false).accentNSColor
+            isDark ? hexColor(YeetDarkChrome.accent) : terminal(dark: false).accentNSColor
+        }
+    }
+
+    /// Mint on dark chrome; deeper mint on light. Used for in-progress and
+    /// finished agent chrome, the cursor's sibling in the window, and the
+    /// pending-review file count.
+    static var chromeProgress: NSColor {
+        appearanceDynamic { isDark in
+            isDark ? hexColor(progressHex) : hexColor(progressLightHex)
         }
     }
 
@@ -282,7 +322,7 @@ enum Theme {
     /// browser, diffs). Those surfaces still follow the terminal theme.
     static var divider: NSColor {
         dynamic { theme in
-            theme.isKeroDefault
+            theme.isBuiltInDefault
                 ? NSColor.labelColor.withAlphaComponent(0.06)
                 : theme.surfaceNSColor(elevation: 0.08)
         }
@@ -295,15 +335,16 @@ enum Theme {
         chromePanel(dark: dark)
     }
 
-    /// Solid Codex Dark in dark appearance; the selected light theme's
-    /// sidebar shade otherwise. Shared by `sidebar` and `sidebarFill`.
+    /// Lifted near-black frame in dark appearance; the selected light
+    /// theme's sidebar shade otherwise. Shared by `sidebar` and
+    /// `sidebarFill`.
     private nonisolated static func chromePanel(dark: Bool) -> NSColor {
-        dark ? hexColor(CodexDarkChrome.panel) : terminal(dark: false).sidebarNSColor
+        dark ? hexColor(YeetDarkChrome.panel) : terminal(dark: false).sidebarNSColor
     }
 
     private nonisolated static var lightChromeDivider: NSColor {
         let theme = terminal(dark: false)
-        return theme.isKeroDefault
+        return theme.isBuiltInDefault
             ? NSColor.labelColor.withAlphaComponent(0.06)
             : theme.surfaceNSColor(elevation: 0.08)
     }
@@ -320,8 +361,8 @@ enum Theme {
         }
     }
 
-    /// Dynamic color that keys only on appearance. Dark chrome is Codex Dark
-    /// regardless of the selected terminal theme.
+    /// Dynamic color that keys only on appearance. Dark chrome is the
+    /// lifted near-black frame regardless of the selected terminal theme.
     private nonisolated static func appearanceDynamic(
         _ resolve: @escaping @Sendable (Bool) -> NSColor
     ) -> NSColor {
@@ -344,38 +385,32 @@ enum Theme {
         )
     }
 
-    /// Last-resort definition should a default name ever leave the catalog.
-    private nonisolated static func fallback(named name: String, dark: Bool) -> TerminalThemeDefinition {
-        TerminalThemeCatalog.theme(named: name) ?? TerminalThemeDefinition(
-            name: name,
-            isDark: dark,
-            background: dark ? "0d1117" : "ffffff",
-            foreground: dark ? "e6edf3" : "1f2328"
-        )
-    }
 }
 
-/// Hard-coded Codex Dark chrome. Not a Settings theme; the terminal,
-/// session tabs, and Alacritty palette do not use these values.
-private enum CodexDarkChrome {
-    static let panel = "1E1E1E"
-    static let header = "141414"
-    static let primaryText = "EFEFEF"
-    static let mutedText = "888888"
-    static let divider = "3D3D3D"
-    static let hover = "2E2E2E"
-    static let selected = "333333"
-    static let accent = "F59E0C"
+/// Hard-coded dark chrome. One step lighter than Yeet Dark's terminal
+/// canvas so the project list and inspector read as a frame. Both chrome
+/// columns share these values so they match after a sidebar swap. Not a
+/// Settings theme; the terminal, session tabs, and Alacritty palette do
+/// not use these values.
+private enum YeetDarkChrome {
+    static let panel = "161412"
+    static let header = "161412"
+    static let primaryText = "E8E2DC"
+    static let mutedText = "8A8580"
+    static let divider = "2C2926"
+    static let hover = "1E1C1A"
+    static let selected = "2A2420"
+    static let accent = Theme.accentHex
 }
 
 /// UI-facing colors for a terminal theme definition. The definition stores
 /// terminal colors as hex strings; window chrome derives its palette here.
 /// Nonisolated so the dynamic color providers can resolve on any thread.
 nonisolated extension TerminalThemeDefinition {
-    /// Whether this is one of kero's built-in Default themes, which keep
+    /// Whether this is one of Yeet's built-in default themes, which keep
     /// label-based hairlines on non-chrome surfaces (session tab bar, diffs).
-    var isKeroDefault: Bool {
-        name == Theme.defaultDarkThemeName || name == Theme.defaultLightThemeName
+    var isBuiltInDefault: Bool {
+        Theme.isDefaultDarkName(name) || Theme.isDefaultLightName(name)
     }
 
     var backgroundNSColor: NSColor { Self.nsColor(background) }
@@ -385,19 +420,22 @@ nonisolated extension TerminalThemeDefinition {
         cursorColor.map(Self.nsColor) ?? accentNSColor
     }
 
-    /// Accent for selection highlights, focus rings, and active icons: ANSI
-    /// blue reads as a theme's "link" color, with the cursor color, then the
-    /// foreground, as fallbacks for palettes that don't define one.
+    /// Accent for selection highlights, focus rings, and active icons. Yeet
+    /// Dark and Yeet Light use mascot orange; every other theme uses ANSI
+    /// blue as the "link" color, then the cursor, then the foreground.
     var accentNSColor: NSColor {
-        (palette[4] ?? cursorColor).map(Self.nsColor) ?? foregroundNSColor
+        if Theme.isDefaultDarkName(name) || Theme.isDefaultLightName(name) {
+            return Self.nsColor(Theme.accentHex)
+        }
+        return (palette[4] ?? cursorColor).map(Self.nsColor) ?? foregroundNSColor
     }
 
     /// Light sidebar fill when that appearance is active. Dark chrome no
-    /// longer reads this — `Theme.sidebar` uses Codex Dark instead. Built-in
-    /// Default Light keeps the GitHub canvas-inset shade; other light
+    /// longer reads this — `Theme.sidebar` uses the lifted near-black
+    /// frame instead. Built-in Yeet Light uses warm paper; other light
     /// themes use their own background.
     var sidebarNSColor: NSColor {
-        if name == Theme.defaultLightThemeName { return Self.nsColor("f6f8fa") }
+        if Theme.isDefaultLightName(name) { return Self.nsColor("F3EBE3") }
         return backgroundNSColor
     }
 

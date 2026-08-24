@@ -605,6 +605,43 @@ private struct PaneView: View {
     }
 }
 
+/// 1pt strip for agent lifecycle only. Focus already has the rounded
+/// pane stroke; drawing a second top edge on every focused pane stacks
+/// two borders on the same side.
+private struct PaneActivityBar: View {
+    let content: PaneContent
+
+    var body: some View {
+        if case .session(let session) = content {
+            SessionPaneActivityBar(session: session)
+        }
+    }
+}
+
+private struct SessionPaneActivityBar: View {
+    @ObservedObject var session: TerminalSession
+    @ObservedObject private var themeChanges = Theme.changes
+
+    var body: some View {
+        if let color = activityColor {
+            Rectangle()
+                .fill(color)
+                .frame(height: 1)
+        }
+    }
+
+    private var activityColor: Color? {
+        switch session.agentStatus?.phase {
+        case .working, .created, .done:
+            return Color(nsColor: Theme.chromeProgress)
+        case .blocked:
+            return Color(nsColor: Theme.chromeAccent)
+        default:
+            return nil
+        }
+    }
+}
+
 /// Compact chrome for a pane in a split tab. The title region is the pane-move
 /// handle; the trailing buttons keep the common split directions within the
 /// pane they act on.
@@ -641,7 +678,12 @@ private struct PaneHeaderView: View {
         .padding(.leading, 9)
         .padding(.trailing, 5)
         .frame(height: 30)
-        .background(Color(nsColor: Theme.background))
+        .background(
+            Color(nsColor: isFocused ? Theme.chromeSelected : Theme.background)
+        )
+        .overlay(alignment: .top) {
+            PaneActivityBar(content: content)
+        }
     }
 
     @ViewBuilder

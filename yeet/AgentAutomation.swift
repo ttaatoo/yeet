@@ -557,6 +557,11 @@ extension TerminalSession {
             processID: processID,
             unseen: presentedPhase == .done
         )
+        // Focus quiets the done badge. Pending review still needs the
+        // worktree snapshot so ⇧⌘A can open Git.
+        if completedTurn, phase == .idle || phase == .done {
+            TerminalManager.noteAgentFinished(self)
+        }
         return true
     }
 
