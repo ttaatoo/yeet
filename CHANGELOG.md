@@ -15,6 +15,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+## [0.1.51]
+
 - Agents that were running when Yeet quit — Claude Code, Codex, Grok, OpenCode, Gemini — relaunch with their previous conversation. Turn on AI support so the integration hooks can report each agent's session; panes without a captured session restore as regular terminals. "Resume agents on relaunch" in Settings controls the behavior.
 - Coding-agent CLIs such as Claude and Grok no longer stall the window while they stream. The terminal follows a ProMotion display up to 120 Hz.
 - `yeet +pane read` returns the live prompt on a fresh terminal, not empty lines from the bottom of the grid.
