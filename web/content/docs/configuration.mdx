@@ -144,6 +144,24 @@ terminal or diff.
 
 ## Terminal
 
+### `clipboard-write`
+
+`"ask"` · `"allow"` · `"deny"` — default `"allow"`
+
+What happens when a terminal program copies text with `OSC 52` (vim, tmux,
+coding agents). `"allow"` writes the macOS clipboard immediately. `"ask"` shows
+the confirmation dialog. `"deny"` ignores the copy. The dialog's **Always
+Allow** button stores `"allow"`.
+
+### `clipboard-read`
+
+`"ask"` · `"allow"` · `"deny"` — default `"ask"`
+
+What happens when a terminal program requests the macOS clipboard with
+`OSC 52`, including over SSH. `"ask"` confirms first so a remote host cannot
+read the clipboard silently. `"allow"` returns it immediately. `"deny"`
+returns nothing.
+
 ### `terminal.macos-option-as-alt`
 
 boolean — default `false`

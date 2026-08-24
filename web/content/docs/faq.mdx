@@ -63,7 +63,16 @@ terminal without switching apps — not to become a place you work in.
 Because a program asked. The `OSC 52` escape sequence lets a terminal program
 read the system clipboard, including one running on a remote host over SSH. Yeet
 confirms with you first instead of handing it over silently — the same default
-Ghostty uses.
+Ghostty uses. Change **Clipboard read** in Settings if you want to always allow
+or always deny.
+
+</Accordion>
+
+<Accordion title="Why did a dialog ask before a program could replace my clipboard?">
+
+Because a program copied with `OSC 52` while **Clipboard write** was set to
+Ask. The default is Allow, so vim, tmux, and coding agents can copy without a
+prompt. Use **Always Allow** on the dialog, or set Clipboard write in Settings.
 
 </Accordion>
 

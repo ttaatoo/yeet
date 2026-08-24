@@ -1000,8 +1000,8 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             if let handle { kero_alacritty_mark_exited(handle) }
             events?.terminalDidClose(processAlive: false)
         case KERO_EVENT_CLIPBOARD_STORE:
-            // OSC 52 copy. Untrusted output must not replace the clipboard
-            // until the same confirmation sheet as a clipboard read.
+            // OSC 52 copy. AppSettings.clipboardWrite decides whether this
+            // replaces the clipboard, asks first, or is ignored.
             let text = String(decoding: payload, as: UTF8.self)
             guard !text.isEmpty else { return }
             events?.terminalDidRequestClipboardWrite(

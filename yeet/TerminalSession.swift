@@ -584,25 +584,46 @@ extension TerminalSession: TerminalBackendEvents {
     }
 
     func terminalDidRequestClipboardConfirmation(_ request: TerminalClipboardRequest) {
-        presentClipboardConfirmation(
+        handleClipboardRequest(
             request,
+            policy: AppSettings.shared.clipboardRead,
             title: String(localized: "Authorize Clipboard Access"),
-            message: String(localized: "A program is attempting to read from the clipboard. The current clipboard contents are shown below.")
+            message: String(localized: "A program is attempting to read from the clipboard. The current clipboard contents are shown below."),
+            rememberAllow: { AppSettings.shared.clipboardRead = .allow }
         )
     }
 
     func terminalDidRequestClipboardWrite(_ request: TerminalClipboardRequest) {
+        handleClipboardRequest(
+            request,
+            policy: AppSettings.shared.clipboardWrite,
+            title: String(localized: "Authorize Clipboard Write"),
+            message: String(localized: "A program is attempting to replace the clipboard. The text it wants to write is shown below."),
+            rememberAllow: { AppSettings.shared.clipboardWrite = .allow }
+        )
+    }
+
+    private func handleClipboardRequest(
+        _ request: TerminalClipboardRequest,
+        policy: ClipboardAccessPolicy,
+        title: String,
+        message: String,
+        rememberAllow: @escaping @MainActor () -> Void
+    ) {
+        guard policy.needsConfirmation(for: request) else { return }
         presentClipboardConfirmation(
             request,
-            title: String(localized: "Authorize Clipboard Write"),
-            message: String(localized: "A program is attempting to replace the clipboard. The text it wants to write is shown below.")
+            title: title,
+            message: message,
+            rememberAllow: rememberAllow
         )
     }
 
     private func presentClipboardConfirmation(
         _ request: TerminalClipboardRequest,
         title: String,
-        message: String
+        message: String,
+        rememberAllow: @escaping @MainActor () -> Void
     ) {
         guard let window = surface.window else {
             request.deny()
@@ -615,14 +636,19 @@ extension TerminalSession: TerminalBackendEvents {
         alert.informativeText = message
         alert.accessoryView = Self.clipboardPreview(request.contents)
         alert.addButton(withTitle: String(localized: "Allow"))
+        alert.addButton(withTitle: String(localized: "Always Allow"))
         let cancel = alert.addButton(withTitle: String(localized: "Deny"))
         cancel.keyEquivalent = "\u{1b}"
 
         Task { @MainActor in
             let response = await alert.beginSheetModal(for: window)
-            if response == .alertFirstButtonReturn {
+            switch response {
+            case .alertFirstButtonReturn:
                 request.approve()
-            } else {
+            case .alertSecondButtonReturn:
+                rememberAllow()
+                request.approve()
+            default:
                 request.deny()
             }
         }

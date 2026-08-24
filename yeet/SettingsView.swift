@@ -258,6 +258,30 @@ struct SettingsView: View {
                     )
                     .labelsHidden()
                 }
+
+                DescribedSettingsRow(
+                    "Clipboard write",
+                    description: "When a terminal program copies text with OSC 52 (vim, tmux, coding agents). Allow writes immediately. Ask shows a confirmation. Deny ignores the copy."
+                ) {
+                    Picker("Clipboard write", selection: $settings.clipboardWrite) {
+                        ForEach(ClipboardAccessPolicy.allCases) { policy in
+                            Text(policy.title).tag(policy)
+                        }
+                    }
+                    .labelsHidden()
+                }
+
+                DescribedSettingsRow(
+                    "Clipboard read",
+                    description: "When a terminal program requests the macOS clipboard with OSC 52, including over SSH. Ask confirms first. Allow returns it immediately. Deny returns nothing."
+                ) {
+                    Picker("Clipboard read", selection: $settings.clipboardRead) {
+                        ForEach(ClipboardAccessPolicy.allCases) { policy in
+                            Text(policy.title).tag(policy)
+                        }
+                    }
+                    .labelsHidden()
+                }
             }
 
             Section("Text Editing") {
@@ -310,6 +334,8 @@ struct SettingsView: View {
                         && !settings.wrapLines
                         && !settings.restoreTerminalHistory
                         && settings.autoResumeAgents
+                        && settings.clipboardWrite == AppSettings.defaultClipboardWrite
+                        && settings.clipboardRead == AppSettings.defaultClipboardRead
                         && !settings.aiEnabled
                         && settings.globalHotkey == KeyCombo.default)
                 }

@@ -9,6 +9,7 @@
     }
   ],
   "defaultOptions" : {
+    "codeCoverage" : false,
     "targetForVariableExpansion" : {
       "containerPath" : "container:yeet.xcodeproj",
       "identifier" : "FF3FDD72300B6A7400112486",

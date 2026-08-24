@@ -147,6 +147,9 @@ fi
 
 echo "Building with automatic package resolution disabled…"
 
+# Xcode 26.5 turns coverage on for scheme builds even when the test plan
+# does not ask for it. An instrumented `yeet` then writes default.profraw
+# into every project directory when `yeet +agent _integration` exits.
 xcodebuild \
   -project "$PROJECT" \
   -scheme yeet \
@@ -161,6 +164,9 @@ xcodebuild \
   CODE_SIGN_IDENTITY="-" \
   CODE_SIGNING_ALLOWED=YES \
   CODE_SIGNING_REQUIRED=NO \
+  CLANG_COVERAGE_MAPPING=NO \
+  CLANG_ENABLE_CODE_COVERAGE=NO \
+  ENABLE_CODE_COVERAGE=NO \
   KERO_SU_FEED_URL="" \
   build
 

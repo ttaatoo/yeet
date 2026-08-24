@@ -280,6 +280,22 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
+    /// OSC 52 clipboard write from a terminal program. Default `.allow`
+    /// matches Ghostty so vim, tmux, and agents can copy without a sheet.
+    @Published var clipboardWrite: ClipboardAccessPolicy {
+        didSet { save() }
+    }
+
+    /// OSC 52 clipboard read from a terminal program, including over SSH.
+    /// Default `.ask` matches Ghostty so a remote host cannot exfiltrate
+    /// the macOS clipboard silently.
+    @Published var clipboardRead: ClipboardAccessPolicy {
+        didSet { save() }
+    }
+
+    static let defaultClipboardWrite: ClipboardAccessPolicy = .allow
+    static let defaultClipboardRead: ClipboardAccessPolicy = .ask
+
     /// Link Kero's shared coordination skill plus the native lifecycle
     /// integrations whose provider APIs provide semantic turn events. Other
     /// agents retain process recognition without inferred progress state.
@@ -346,6 +362,12 @@ final class AppSettings: nonisolated ObservableObject {
         wrapLines = toml["editor.wrap-lines"]?.bool ?? false
         restoreTerminalHistory = toml["terminal.restore-history"]?.bool ?? false
         autoResumeAgents = toml["terminal.auto-resume-agents"]?.bool ?? true
+        clipboardWrite = ClipboardAccessPolicy(
+            rawValue: toml["clipboard-write"]?.string ?? ""
+        ) ?? Self.defaultClipboardWrite
+        clipboardRead = ClipboardAccessPolicy(
+            rawValue: toml["clipboard-read"]?.string ?? ""
+        ) ?? Self.defaultClipboardRead
         aiEnabled = toml["ai.enabled"]?.bool ?? false
         globalHotkey = Self.parseGlobalHotkey(toml)
         applyAppearance()
@@ -403,6 +425,8 @@ final class AppSettings: nonisolated ObservableObject {
         wrapLines = false
         restoreTerminalHistory = false
         autoResumeAgents = true
+        clipboardWrite = Self.defaultClipboardWrite
+        clipboardRead = Self.defaultClipboardRead
         globalHotkey = KeyCombo.default
         if aiEnabled {
             do {
@@ -502,6 +526,12 @@ final class AppSettings: nonisolated ObservableObject {
         }
         if !autoResumeAgents {
             lines.append("terminal.auto-resume-agents = false")
+        }
+        if clipboardWrite != Self.defaultClipboardWrite {
+            lines.append("clipboard-write = \(TOML.quote(clipboardWrite.rawValue))")
+        }
+        if clipboardRead != Self.defaultClipboardRead {
+            lines.append("clipboard-read = \(TOML.quote(clipboardRead.rawValue))")
         }
         if aiEnabled {
             lines.append("ai.enabled = true")

@@ -60,4 +60,7 @@ jobs:
             -skipMacroValidation \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=NO
+            CODE_SIGNING_REQUIRED=NO \
+            CLANG_COVERAGE_MAPPING=NO \
+            CLANG_ENABLE_CODE_COVERAGE=NO \
+            ENABLE_CODE_COVERAGE=NO

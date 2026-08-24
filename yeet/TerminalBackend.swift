@@ -145,7 +145,7 @@ protocol TerminalBackendEvents: AnyObject {
     func terminalLinkTarget(for value: String) -> TerminalLinkTarget?
     func terminalDidScroll(_ position: TerminalScrollPosition)
     func terminalDidRequestClipboardConfirmation(_ request: TerminalClipboardRequest)
-    /// OSC 52 copy. Untrusted output must not silently replace the clipboard.
+    /// OSC 52 copy. The session applies `clipboard-write` (ask / allow / deny).
     func terminalDidRequestClipboardWrite(_ request: TerminalClipboardRequest)
 
     /// The backend started a find of its own accord — Kero's ⌘E path resolves
@@ -225,11 +225,10 @@ struct TerminalScrollPosition: Equatable, Sendable {
     }
 }
 
-/// A backend asking Kero to confirm a program's clipboard read (OSC 52)
-/// before it proceeds. Exactly one of ``approve()`` and ``deny()`` must
-/// be called. Never resolve without asking: any program whose output
-/// reaches the terminal, including a remote SSH host, would otherwise be
-/// able to exfiltrate the macOS clipboard through the PTY.
+/// A backend asking Kero to apply clipboard-read or clipboard-write policy
+/// to an OSC 52 request. Exactly one of ``approve()`` and ``deny()`` must
+/// be called. The session may resolve this without a sheet when the policy
+/// is allow or deny.
 @MainActor
 final class TerminalClipboardRequest {
     /// The text the program would receive.

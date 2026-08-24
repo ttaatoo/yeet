@@ -506,7 +506,20 @@
       }
     },
     "A program is attempting to replace the clipboard. The text it wants to write is shown below." : {
-
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プログラムがクリップボードを置き換えようとしています。書き込まれるテキストは以下のとおりです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有程序正在尝试替换剪贴板。它要写入的文本如下。"
+          }
+        }
+      }
     },
     "About %@" : {
       "localizations" : {
@@ -596,6 +609,22 @@
         }
       }
     },
+    "Always Allow" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "常に許可"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "始终允许"
+          }
+        }
+      }
+    },
     "Always Show" : {
       "localizations" : {
         "ja" : {
@@ -676,6 +705,22 @@
         }
       }
     },
+    "Ask" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認する"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "询问"
+          }
+        }
+      }
+    },
     "Authorize Clipboard Access" : {
       "localizations" : {
         "ja" : {
@@ -693,7 +738,20 @@
       }
     },
     "Authorize Clipboard Write" : {
-
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クリップボードへの書き込みを許可"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许写入剪贴板"
+          }
+        }
+      }
     },
     "Auto" : {
       "localizations" : {
@@ -1201,6 +1259,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清屏"
+          }
+        }
+      }
+    },
+    "Clipboard read" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クリップボードの読み取り"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "程序读取剪贴板"
+          }
+        }
+      }
+    },
+    "Clipboard write" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クリップボードへの書き込み"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "程序写入剪贴板"
           }
         }
       }
@@ -7809,6 +7899,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用所选内容查找"
+          }
+        }
+      }
+    },
+    "When a terminal program copies text with OSC 52 (vim, tmux, coding agents). Allow writes immediately. Ask shows a confirmation. Deny ignores the copy." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ターミナルプログラムが OSC 52 でテキストをコピーするとき（vim、tmux、コーディングエージェント）。「許可」はすぐに書き込みます。「確認する」は確認します。「拒否」はコピーを無視します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "终端程序用 OSC 52 复制文本时（vim、tmux、编码 agent）。「允许」立刻写入。「询问」先确认。「拒绝」忽略这次复制。"
+          }
+        }
+      }
+    },
+    "When a terminal program requests the macOS clipboard with OSC 52, including over SSH. Ask confirms first. Allow returns it immediately. Deny returns nothing." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ターミナルプログラムが OSC 52 で macOS のクリップボードを要求するとき（SSH 経由を含む）。「確認する」は先に確認します。「許可」はすぐに返します。「拒否」は何も返しません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "终端程序用 OSC 52 读取 macOS 剪贴板时，包括经 SSH 的远端。「询问」先确认。「允许」立刻返回内容。「拒绝」不返回任何内容。"
           }
         }
       }

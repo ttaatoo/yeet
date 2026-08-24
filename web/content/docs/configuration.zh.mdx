@@ -111,6 +111,22 @@ Powerline 分隔符和图标字形也能正常显示。
 
 环境变量与兼容约定见[终端](/zh/docs/terminal)。
 
+### `clipboard-write`
+
+`"ask"` · `"allow"` · `"deny"`——默认 `"allow"`
+
+终端程序用 `OSC 52` 复制文本时怎么处理（vim、tmux、编码 agent）。`"allow"`
+立刻写入 macOS 剪贴板。`"ask"` 弹出确认框。`"deny"` 忽略这次复制。确认框上的
+**始终允许** 会把该项写成 `"allow"`。
+
+### `clipboard-read`
+
+`"ask"` · `"allow"` · `"deny"`——默认 `"ask"`
+
+终端程序用 `OSC 52` 读取 macOS 剪贴板时怎么处理，包括经 SSH 的远端程序。
+`"ask"` 先确认，避免远端静默读走剪贴板。`"allow"` 立刻返回内容。`"deny"`
+不返回任何内容。
+
 ### `terminal.macos-option-as-alt`
 
 布尔值——默认 `false`

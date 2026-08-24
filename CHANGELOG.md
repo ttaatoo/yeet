@@ -15,6 +15,9 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Opening a project no longer creates a `default.profraw` file in that folder.
+- Terminal programs can copy with OSC 52 without a confirmation. Settings → Terminal → Clipboard write is Ask, Allow, or Deny (default Allow). Clipboard read still asks first. The confirmation dialog has Always Allow.
+
 ## [0.1.51]
 
 - Agents that were running when Yeet quit — Claude Code, Codex, Grok, OpenCode, Gemini — relaunch with their previous conversation. Turn on AI support so the integration hooks can report each agent's session; panes without a captured session restore as regular terminals. "Resume agents on relaunch" in Settings controls the behavior.
