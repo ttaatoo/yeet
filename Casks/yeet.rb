@@ -2,9 +2,9 @@
 
 cask "yeet" do
   version "0.1.50"
-  # sha256 of Yeet.zip for this version. Leave :no_check until a Yeet.zip
-  # GitHub Release exists — do not invent or reuse a Kerox.zip digest.
-  sha256 :no_check
+  # Digest of Yeet.zip for this version. Pin a new sha256 on every release.
+  # Do not use :no_check — that would accept a swapped zip.
+  sha256 "3f61abf25d456cd34a912dd090dd0a2b8ea9216ee7e804f6dd854dd82fb1675a"
 
   url "https://github.com/ttaatoo/yeet/releases/download/v#{version}/Yeet.zip"
   name "Yeet"
@@ -16,17 +16,10 @@ cask "yeet" do
     strategy :github_latest
   end
 
-  # MACOSX_DEPLOYMENT_TARGET on the kero target is 15.6 (Sequoia).
+  # MACOSX_DEPLOYMENT_TARGET on the yeet target is 15.6 (Sequoia).
   depends_on macos: :sequoia
 
   app "Yeet.app"
-
-  # Homebrew 5+ removed --no-quarantine. Strip Gatekeeper's attribute so
-  # this ad-hoc-signed fork can launch after a normal cask install.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/Yeet.app"]
-  end
 
   zap trash: [
     "~/.config/yeet",
@@ -53,8 +46,9 @@ cask "yeet" do
 
       git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet
 
-    If macOS still blocks the app: System Settings → Privacy & Security
-    → Open Anyway.
+    Builds are ad-hoc signed. This cask does not strip Gatekeeper
+    quarantine. If macOS blocks the app: System Settings → Privacy &
+    Security → Open Anyway.
 
     Packaged fork builds do not Sparkle-update from releases.kero.sh
     (that feed would replace this fork with official egoist Kero).
