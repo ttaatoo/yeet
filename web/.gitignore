@@ -8,9 +8,6 @@ node_modules
 .vinxi
 dist
 
-# generated route tree
-src/routeTree.gen.ts
-
 # fumadocs-mdx collections
 .source
 
