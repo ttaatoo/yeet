@@ -89,6 +89,63 @@ struct AlacrittyFindRefreshState: Equatable {
     }
 }
 
+/// A Find action that the nonblocking bridge has not accepted yet. Retaining
+/// the intent lets a transient worker wake failure recover without throwing
+/// away the query and its visible count.
+enum AlacrittyFindRequest: Equatable {
+    case begin(needle: String)
+    case step(forward: Bool)
+}
+
+/// One bounded, main-queue retry timer for a rejected Find action. Each retry
+/// receives a fresh token so cancelling, replacing, or successfully delivering
+/// an action makes already queued callbacks harmless.
+struct AlacrittyFindRetryState {
+    private static let initialDelayMilliseconds = 10
+    private static let maximumDelayMilliseconds = 250
+
+    private(set) var request: AlacrittyFindRequest?
+    private(set) var nextDelayMilliseconds = Self.initialDelayMilliseconds
+    private var token: UInt64 = 0
+
+    mutating func schedule(_ request: AlacrittyFindRequest) -> (
+        token: UInt64,
+        delayMilliseconds: Int
+    ) {
+        self.request = request
+        advanceToken()
+        let delayMilliseconds = nextDelayMilliseconds
+        nextDelayMilliseconds = min(
+            nextDelayMilliseconds * 2,
+            Self.maximumDelayMilliseconds
+        )
+        return (token, delayMilliseconds)
+    }
+
+    mutating func beginRetry(token: UInt64) -> AlacrittyFindRequest? {
+        guard token == self.token else { return nil }
+        defer { request = nil }
+        return request
+    }
+
+    mutating func accepted() {
+        request = nil
+        nextDelayMilliseconds = Self.initialDelayMilliseconds
+        advanceToken()
+    }
+
+    mutating func cancel() {
+        request = nil
+        nextDelayMilliseconds = Self.initialDelayMilliseconds
+        advanceToken()
+    }
+
+    private mutating func advanceToken() {
+        token &+= 1
+        if token == 0 { token = 1 }
+    }
+}
+
 /// Drives find-in-terminal for the Alacritty backend.
 ///
 /// The bridge collects matches and moves the selection on the PTY owner. This
@@ -98,15 +155,19 @@ final class AlacrittyFind {
     private static let invalidationRefreshDelayMilliseconds = 75
 
     private var total = 0
+    private var hasReportedTotal = false
     private var nextGeneration: UInt64 = 0
     private var activeNeedle: String?
     private var activeHandle: OpaquePointer?
     private var activeEvents: (any TerminalBackendEvents)?
     private var activeGeneration: UInt64 = 0
+    private var resultsInvalidated = false
     private var polling = AlacrittyFindPollState()
     private var pollWorkItem: DispatchWorkItem?
     private var refreshWorkItem: DispatchWorkItem?
     private var refreshState = AlacrittyFindRefreshState()
+    private var retryWorkItem: DispatchWorkItem?
+    private var retryState = AlacrittyFindRetryState()
 
     private func makeGeneration() -> UInt64 {
         nextGeneration &+= 1
@@ -163,6 +224,8 @@ final class AlacrittyFind {
         switch result.kind {
         case KERO_FIND_RESULT_BEGIN:
             total = Int(result.total)
+            hasReportedTotal = true
+            resultsInvalidated = false
             events?.terminalDidUpdateFindTotal(total)
             events?.terminalDidUpdateFindSelected(nil)
         case KERO_FIND_RESULT_STEP:
@@ -171,10 +234,16 @@ final class AlacrittyFind {
             )
         case KERO_FIND_RESULT_END:
             total = 0
+            hasReportedTotal = false
+            resultsInvalidated = false
         case KERO_FIND_RESULT_INVALIDATED:
-            total = 0
-            events?.terminalDidUpdateFindTotal(nil)
-            events?.terminalDidUpdateFindSelected(nil)
+            resultsInvalidated = true
+            events?.terminalDidInvalidateFindResults(
+                lastReportedTotal: hasReportedTotal ? total : nil
+            )
+            // A retrying step targets coordinates the terminal has just
+            // invalidated. Refreshing the query is the only valid recovery.
+            cancelRetry()
             scheduleInvalidationRefresh(generation: result.generation)
         default:
             break
@@ -195,10 +264,11 @@ final class AlacrittyFind {
                   self.activeHandle == handle
             else { return }
             self.refreshWorkItem = nil
-            self.begin(
+            self.startBegin(
                 needle: needle,
                 handle: handle,
-                events: self.activeEvents
+                events: self.activeEvents,
+                preservingReportedTotal: true
             )
         }
         refreshWorkItem = workItem
@@ -221,6 +291,92 @@ final class AlacrittyFind {
         refreshState.cancel()
     }
 
+    private func completeRetry() {
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        retryState.accepted()
+    }
+
+    private func cancelRetry() {
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        retryState.cancel()
+    }
+
+    private func scheduleRetry(_ request: AlacrittyFindRequest) {
+        retryWorkItem?.cancel()
+        let retry = retryState.schedule(request)
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self,
+                  let request = self.retryState.beginRetry(token: retry.token)
+            else { return }
+            self.retryWorkItem = nil
+            self.submit(request)
+        }
+        retryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + .milliseconds(retry.delayMilliseconds),
+            execute: workItem
+        )
+    }
+
+    /// Makes one FFI submission. A false return may occur after the bridge
+    /// accepted the message but could not wake the worker, so every attempted
+    /// submission owns a fresh generation. The active generation changes only
+    /// after acceptance: a rejected Step must still receive invalidations for
+    /// the last confirmed search while it waits to retry.
+    private func submit(_ request: AlacrittyFindRequest) {
+        guard let handle = activeHandle else {
+            cancel()
+            return
+        }
+
+        let generation = makeGeneration()
+        let accepted: Bool
+        switch request {
+        case .begin(let needle):
+            accepted = needle.withCString {
+                kero_alacritty_find_begin_async(handle, $0, generation)
+            }
+        case .step(let forward):
+            accepted = kero_alacritty_find_step_async(handle, forward, generation)
+        }
+
+        guard accepted else {
+            scheduleRetry(request)
+            return
+        }
+
+        activeGeneration = generation
+        refreshState.activate(generation: generation)
+        completeRetry()
+        polling.replacePending(generation: generation)
+        schedulePoll()
+    }
+
+    private func startBegin(
+        needle: String,
+        handle: OpaquePointer,
+        events: (any TerminalBackendEvents)?,
+        preservingReportedTotal: Bool
+    ) {
+        cancelPendingPoll()
+        cancelRefresh()
+        cancelRetry()
+        if !preservingReportedTotal {
+            total = 0
+            hasReportedTotal = false
+            resultsInvalidated = false
+        }
+        activeNeedle = needle
+        activeHandle = handle
+        activeEvents = events
+        // Results for a replaced needle must never repaint the new query
+        // while its first nonblocking submission is waiting to retry.
+        activeGeneration = 0
+        submit(.begin(needle: needle))
+    }
+
     /// A PTY wake is a cheap chance to consume an invalidation result without
     /// waiting for the next timer. It cancels the queued poll token first, so
     /// the wake and timer cannot both consume the slot.
@@ -241,12 +397,15 @@ final class AlacrittyFind {
     /// this token check before it can read the handle or call the bridge.
     func cancel() {
         total = 0
+        hasReportedTotal = false
         cancelPendingPoll()
         cancelRefresh()
+        cancelRetry()
         activeNeedle = nil
         activeHandle = nil
         activeEvents = nil
         activeGeneration = 0
+        resultsInvalidated = false
     }
 
     deinit {
@@ -269,24 +428,12 @@ final class AlacrittyFind {
             return
         }
 
-        cancelPendingPoll()
-        cancelRefresh()
-        total = 0
-        let generation = makeGeneration()
-        let accepted = needle.withCString {
-            kero_alacritty_find_begin_async(handle, $0, generation)
-        }
-        guard accepted else {
-            cancel()
-            return
-        }
-        activeNeedle = needle
-        activeHandle = handle
-        activeEvents = events
-        activeGeneration = generation
-        refreshState.activate(generation: generation)
-        polling.replacePending(generation: generation)
-        schedulePoll()
+        startBegin(
+            needle: needle,
+            handle: handle,
+            events: events,
+            preservingReportedTotal: false
+        )
     }
 
     func step(
@@ -298,20 +445,13 @@ final class AlacrittyFind {
             cancel()
             return
         }
-        guard total > 0 else { return }
+        guard total > 0, !resultsInvalidated else { return }
         cancelPendingPoll()
         cancelRefresh()
-        let generation = makeGeneration()
-        guard kero_alacritty_find_step_async(handle, forward, generation) else {
-            cancel()
-            return
-        }
+        cancelRetry()
         activeHandle = handle
         activeEvents = events
-        activeGeneration = generation
-        refreshState.activate(generation: generation)
-        polling.replacePending(generation: generation)
-        schedulePoll()
+        submit(.step(forward: forward))
     }
 
     func end(handle: OpaquePointer?) {

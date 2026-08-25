@@ -17,6 +17,7 @@ the original feature bullet instead of adding separate entries for them.
 
 - Agent and project status is clearer: starting agents use a short arc, finished or interrupted Grok turns stop the spinner, project metadata stays aligned, and split-pane status bars remain inside the focus ring.
 - Terminal selection uses the theme selection color and clears on a click or keystroke, including when a mouse-aware TUI such as Grok is active.
+- Terminal panes stay responsive during heavy output: typing reaches terminal programs promptly, and Find keeps its query and last count while output refreshes results.
 
 ## [0.1.53]
 

@@ -10,7 +10,9 @@ use crate::{
         KittyGraphicsItem, KittyGraphicsReady, KittyGraphicsScreen, KittyGraphicsSize,
         KittyGraphicsStage, KittyGraphicsStore, PlacementContext,
     },
-    kitty_graphics_tracking::{advance_cursor, advance_text, KittyGraphicsCursorTracker},
+    kitty_graphics_tracking::{
+        advance_cursor, advance_text_with_mode_snapshot, KittyGraphicsCursorTracker,
+    },
 };
 use alacritty_terminal::{
     event::{Event, EventListener, Notify, OnResize, WindowSize},
@@ -1329,11 +1331,12 @@ where
         text: &[u8],
     ) -> bool {
         let track_scrolls = self.graphics.lock().state.has_placements();
-        let effects = advance_text(
+        let effects = advance_text_with_mode_snapshot(
             &mut state.graphics_cursor_tracker,
             &mut state.parser,
             terminal,
             text,
+            &self.mode_snapshot,
             track_scrolls,
         );
         let mut graphics = self.graphics.lock();

@@ -70,6 +70,9 @@ final class TerminalFind: nonisolated ObservableObject {
     @Published private(set) var total: Int?
     /// Zero-based index of the highlighted match, nil when none is.
     @Published private(set) var selected: Int?
+    /// The displayed count belongs to the current needle, but the backend is
+    /// replacing its match coordinates after terminal output changed.
+    @Published private(set) var isRefreshing = false
 
     /// Bumped whenever the bar should take (or retake) keyboard focus, so ⌘F
     /// on an already-open bar re-selects the term the way the system find bar
@@ -153,7 +156,7 @@ final class TerminalFind: nonisolated ObservableObject {
     }
 
     func navigate(forward: Bool) {
-        guard !query.isEmpty else { return }
+        guard !query.isEmpty, !isRefreshing else { return }
         // ⌘G with the bar closed resumes the last search rather than doing
         // nothing, matching how Find Next behaves elsewhere on macOS.
         guard isPresented else {
@@ -209,11 +212,23 @@ final class TerminalFind: nonisolated ObservableObject {
 
     func update(total: Int?) {
         self.total = total
+        isRefreshing = false
         revealFirstMatchIfNeeded()
     }
 
     func update(selected: Int?) {
         self.selected = selected
+    }
+
+    /// A completed tally remains useful while the backend scans the updated
+    /// terminal. Clear only the coordinate-based selection; navigating it
+    /// could point at rows that output has already moved.
+    func invalidateResults(lastReportedTotal: Int? = nil) {
+        if let lastReportedTotal {
+            total = lastReportedTotal
+        }
+        selected = nil
+        isRefreshing = true
     }
 
     /// A backend tallies matches but selects none until asked, so the first
@@ -226,7 +241,11 @@ final class TerminalFind: nonisolated ObservableObject {
         hasRevealedMatch = true
         let generation = searchGeneration
         DispatchQueue.main.async { [weak self] in
-            guard let self, isPresented, searchGeneration == generation else { return }
+            guard let self,
+                  isPresented,
+                  !isRefreshing,
+                  searchGeneration == generation
+            else { return }
             surface.stepFind(forward: true)
         }
     }
@@ -249,5 +268,6 @@ final class TerminalFind: nonisolated ObservableObject {
     private func clearCounts() {
         total = nil
         selected = nil
+        isRefreshing = false
     }
 }

@@ -137,10 +137,20 @@ struct TrackingHandler<'a, T> {
     term: &'a mut Term<T>,
     tracker: &'a mut KittyGraphicsCursorTracker,
     effects: &'a mut KittyGraphicsTextEffects,
+    mode_snapshot: Option<&'a crate::ModeSnapshot>,
     track_scrolls: bool,
 }
 
 impl<T: EventListener> TrackingHandler<'_, T> {
+    /// The input path reads this snapshot without taking the terminal lock.
+    /// Publish as soon as a parser control sequence changes a tracked mode,
+    /// rather than waiting for the rest of a large PTY read to finish.
+    fn publish_mode(&self) {
+        if let Some(mode_snapshot) = self.mode_snapshot {
+            mode_snapshot.store_term_mode(*self.term.mode());
+        }
+    }
+
     fn linefeed_scroll_lines(&self) -> usize {
         let screen_lines = self.term.grid().screen_lines();
         let (_, bottom) = self.tracker.region.bounds(screen_lines);
@@ -298,6 +308,7 @@ impl<T: EventListener> Handler for TrackingHandler<'_, T> {
         self.tracker.reset_scroll_region();
         self.effects.push(TextEffect::TerminalReset);
         Handler::reset_state(&mut *self.term);
+        self.publish_mode();
     }
 
     fn set_private_mode(&mut self, mode: PrivateMode) {
@@ -310,6 +321,7 @@ impl<T: EventListener> Handler for TrackingHandler<'_, T> {
             self.effects.push(TextEffect::EnteredAlternateScreen);
         }
         Handler::set_private_mode(&mut *self.term, mode);
+        self.publish_mode();
     }
 
     fn unset_private_mode(&mut self, mode: PrivateMode) {
@@ -317,6 +329,17 @@ impl<T: EventListener> Handler for TrackingHandler<'_, T> {
             self.tracker.reset_scroll_region();
         }
         Handler::unset_private_mode(&mut *self.term, mode);
+        self.publish_mode();
+    }
+
+    fn set_keypad_application_mode(&mut self) {
+        Handler::set_keypad_application_mode(&mut *self.term);
+        self.publish_mode();
+    }
+
+    fn unset_keypad_application_mode(&mut self) {
+        Handler::unset_keypad_application_mode(&mut *self.term);
+        self.publish_mode();
     }
 
     fn set_scrolling_region(&mut self, top: usize, bottom: Option<usize>) {
@@ -384,8 +407,6 @@ impl<T: EventListener> Handler for TrackingHandler<'_, T> {
         fn unset_mode(mode: ansi::Mode);
         fn report_mode(mode: ansi::Mode);
         fn report_private_mode(mode: ansi::PrivateMode);
-        fn set_keypad_application_mode();
-        fn unset_keypad_application_mode();
         fn set_active_charset(index: ansi::CharsetIndex);
         fn configure_charset(index: ansi::CharsetIndex, charset: ansi::StandardCharset);
         fn set_color(index: usize, color: ansi::Rgb);
@@ -417,12 +438,46 @@ pub(crate) fn advance_text<T: EventListener>(
     bytes: &[u8],
     track_scrolls: bool,
 ) -> KittyGraphicsTextEffects {
+    advance_text_with_optional_mode_snapshot(tracker, parser, term, bytes, None, track_scrolls)
+}
+
+/// Parses text while publishing input-relevant modes at their control-sequence
+/// boundaries. The PTY worker still publishes once at the end of its batch as
+/// a final catch-all, but this avoids a stale application cursor or keypad
+/// mapping during a long parser burst.
+pub(crate) fn advance_text_with_mode_snapshot<T: EventListener>(
+    tracker: &mut KittyGraphicsCursorTracker,
+    parser: &mut ansi::Processor,
+    term: &mut Term<T>,
+    bytes: &[u8],
+    mode_snapshot: &crate::ModeSnapshot,
+    track_scrolls: bool,
+) -> KittyGraphicsTextEffects {
+    advance_text_with_optional_mode_snapshot(
+        tracker,
+        parser,
+        term,
+        bytes,
+        Some(mode_snapshot),
+        track_scrolls,
+    )
+}
+
+fn advance_text_with_optional_mode_snapshot<T: EventListener>(
+    tracker: &mut KittyGraphicsCursorTracker,
+    parser: &mut ansi::Processor,
+    term: &mut Term<T>,
+    bytes: &[u8],
+    mode_snapshot: Option<&crate::ModeSnapshot>,
+    track_scrolls: bool,
+) -> KittyGraphicsTextEffects {
     let mut effects = KittyGraphicsTextEffects::default();
     {
         let mut handler = TrackingHandler {
             term,
             tracker,
             effects: &mut effects,
+            mode_snapshot,
             track_scrolls,
         };
         parser.advance(&mut handler, bytes);
@@ -491,5 +546,50 @@ mod tests {
 
         assert_eq!(term.grid().cursor.point.line.0, 9);
         assert_eq!(term.grid().cursor.point.column.0, 4);
+    }
+
+    #[test]
+    fn mode_snapshot_updates_at_private_and_keypad_mode_boundaries() {
+        let size = crate::TermSize {
+            columns: 80,
+            screen_lines: 24,
+        };
+        let mut term = Term::new(Config::default(), &size, VoidListener);
+        let mut parser = ansi::Processor::new();
+        let mut tracker = KittyGraphicsCursorTracker::default();
+        let snapshot = crate::ModeSnapshot::new();
+
+        advance_text_with_mode_snapshot(
+            &mut tracker,
+            &mut parser,
+            &mut term,
+            b"\x1b[?1h",
+            &snapshot,
+            false,
+        );
+        assert_ne!(snapshot.load() & crate::MODE_APP_CURSOR, 0);
+
+        advance_text_with_mode_snapshot(
+            &mut tracker,
+            &mut parser,
+            &mut term,
+            b"\x1b=",
+            &snapshot,
+            false,
+        );
+        assert_ne!(snapshot.load() & crate::MODE_APP_KEYPAD, 0);
+
+        advance_text_with_mode_snapshot(
+            &mut tracker,
+            &mut parser,
+            &mut term,
+            b"\x1b[?1l\x1b>",
+            &snapshot,
+            false,
+        );
+        assert_eq!(
+            snapshot.load() & (crate::MODE_APP_CURSOR | crate::MODE_APP_KEYPAD),
+            0
+        );
     }
 }

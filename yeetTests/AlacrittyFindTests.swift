@@ -78,4 +78,32 @@ final class AlacrittyFindTests: XCTestCase {
         state.cancel()
         XCTAssertFalse(state.schedule(generation: 11))
     }
+
+    func testRetryRetainsTheRejectedFindIntentUntilItsCallbackRuns() {
+        var retry = AlacrittyFindRetryState()
+
+        let first = retry.schedule(.begin(needle: "needle"))
+
+        XCTAssertEqual(first.delayMilliseconds, 10)
+        XCTAssertEqual(retry.request, .begin(needle: "needle"))
+        XCTAssertEqual(retry.beginRetry(token: first.token), .begin(needle: "needle"))
+        XCTAssertNil(retry.request)
+
+        let second = retry.schedule(.step(forward: true))
+        XCTAssertEqual(second.delayMilliseconds, 20)
+        retry.accepted()
+
+        XCTAssertNil(retry.request)
+        XCTAssertEqual(retry.nextDelayMilliseconds, 10)
+    }
+
+    func testCancelInvalidatesAQueuedFindRetry() {
+        var retry = AlacrittyFindRetryState()
+        let retryToken = retry.schedule(.step(forward: false)).token
+
+        retry.cancel()
+
+        XCTAssertNil(retry.beginRetry(token: retryToken))
+        XCTAssertNil(retry.request)
+    }
 }
