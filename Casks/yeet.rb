@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 cask "yeet" do
-  version "0.1.53"
+  version "0.1.54"
   # Digest of Yeet.zip for this version. Pin a new sha256 on every release.
   # Do not use :no_check — that would accept a swapped zip.
-  sha256 "4f54e7df8178ad2b909457d4543deb68d8743f0bc1edaf742af79060f8c2af37"
+  sha256 "75487cf261acf9caba9fd471547b600ac31440fba128a002284d8200496825fc"
 
   url "https://github.com/ttaatoo/yeet/releases/download/v#{version}/Yeet.zip"
   name "Yeet"
