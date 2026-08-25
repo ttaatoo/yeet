@@ -42,3 +42,4 @@ playground.xcworkspace
 .claude/worktrees
 .grok
 tmp
+/.playwright-mcp/

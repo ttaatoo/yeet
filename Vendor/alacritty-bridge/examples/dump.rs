@@ -1,4 +1,4 @@
-//! Headless harness: drives the bridge exactly as Kero does and prints the
+//! Headless driver: drives the bridge exactly as Kero does and prints the
 //! grid as text plus per-cell flags.
 //!
 //! This exists to tell an emulator bug from a renderer bug without AppKit in
@@ -106,6 +106,8 @@ fn main() {
         display_offset: 0,
         total_lines: 0,
         screen_lines: 0,
+        row_ids: std::ptr::null(),
+        row_generation: 0,
     };
     unsafe { kero_alacritty_snapshot(handle, &mut snapshot) };
 

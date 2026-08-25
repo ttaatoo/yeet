@@ -154,6 +154,10 @@ protocol TerminalBackendEvents: AnyObject {
     func terminalDidEndFind()
     func terminalDidUpdateFindTotal(_ total: Int?)
     func terminalDidUpdateFindSelected(_ selected: Int?)
+    /// The terminal changed while an incremental scan was in flight. The
+    /// session keeps the last completed count visible until the replacement
+    /// scan reports, but must not navigate its stale coordinates.
+    func terminalDidInvalidateFindResults(lastReportedTotal: Int?)
 }
 
 /// A Command-clickable terminal value after the owning session has resolved

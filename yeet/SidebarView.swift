@@ -74,6 +74,7 @@ struct SidebarView: View {
                             onDragEnded: endProjectDrag,
                             fontSize: settings.sidebarFontSize
                         )
+                        .frame(maxWidth: .infinity)
                         .background {
                             GeometryReader { proxy in
                                 Color.clear.preference(
@@ -239,9 +240,8 @@ private struct ProjectFramePreferenceKey: PreferenceKey {
     }
 }
 
-private struct SidebarProjectRow: View {
-    @ObservedObject var project: Project
-    @ObservedObject private var themeChanges = Theme.changes
+private struct SidebarProjectRow: NSViewRepresentable {
+    let project: Project
     let index: Int
     let isSelected: Bool
     let select: () -> Void
@@ -251,221 +251,27 @@ private struct SidebarProjectRow: View {
     let onDragEnded: () -> Void
     let fontSize: Double
 
-    @State private var isHovering = false
-    @State private var isRenaming = false
-    @State private var renameDraft = ""
-    @FocusState private var renameFocused: Bool
+    func makeNSView(context: Context) -> AppKitSidebarProjectRowView {
+        let view = AppKitSidebarProjectRowView(frame: .zero)
+        update(view)
+        return view
+    }
 
-    var body: some View {
-        Group {
-            if isRenaming {
-                rowContent
-            } else {
-                Button(action: select) {
-                    rowContent
-                }
-                .buttonStyle(.plain)
-                .highPriorityGesture(
-                    DragGesture(minimumDistance: 4, coordinateSpace: .global)
-                        .onChanged { onDrag($0.location) }
-                        .onEnded { _ in onDragEnded() }
-                )
-            }
-        }
-        .opacity(isDragging ? 0.65 : 1)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(
-                    isSelected
-                        ? Color(nsColor: Theme.chromeSelected)
-                        : (isHovering ? Color(nsColor: Theme.chromeHover) : .clear)
-                )
+    func updateNSView(_ view: AppKitSidebarProjectRowView, context: Context) {
+        update(view)
+    }
+
+    private func update(_ view: AppKitSidebarProjectRowView) {
+        view.update(
+            project: project,
+            index: index,
+            isSelected: isSelected,
+            isDragging: isDragging,
+            fontSize: fontSize,
+            onSelect: select,
+            onClose: close,
+            onDrag: onDrag,
+            onDragEnded: onDragEnded
         )
-        .overlay(alignment: .leading) {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color(nsColor: Theme.chromeAccent))
-                    .frame(width: 2)
-                    .padding(.vertical, 6)
-            }
-        }
-        .onHover { isHovering = $0 }
-        .contextMenu {
-            Button("Rename…") {
-                beginRename()
-            }
-            if project.customName != nil {
-                Button("Use Automatic Title") {
-                    project.customName = nil
-                }
-            }
-            Divider()
-            Button("Set Project Directory…") {
-                pickProjectDirectory()
-            }
-            if project.customDirectory != nil {
-                Button("Use Automatic Directory") {
-                    project.customDirectory = nil
-                }
-            }
-            Divider()
-            Button("Close Project") {
-                close()
-            }
-        }
-    }
-
-    /// Lets the user pin the project's directory — the root the file tree
-    /// and git panels anchor to instead of the automatic closest-git-repo.
-    private func pickProjectDirectory() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = String(localized: "Choose", comment: "Button in the project directory picker.")
-        panel.message = String(
-            localized: "Choose the directory for “\(project.name)”.",
-            comment: "Message in the project directory picker. The placeholder is a project name."
-        )
-        if let current = project.customDirectory
-            ?? project.selectedSession?.currentDirectoryPath {
-            panel.directoryURL = URL(fileURLWithPath: current, isDirectory: true)
-        }
-        let apply: (NSApplication.ModalResponse) -> Void = { response in
-            guard response == .OK, let url = panel.url else { return }
-            project.customDirectory = url.path
-        }
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            panel.beginSheetModal(for: window, completionHandler: apply)
-        } else {
-            apply(panel.runModal())
-        }
-    }
-
-    private var rowContent: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "folder")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(
-                    isSelected
-                        ? Color(nsColor: Theme.chromeAccent)
-                        : Color(nsColor: Theme.chromeMutedText)
-                )
-                .frame(width: max(14, fontSize), alignment: .center)
-
-            VStack(alignment: .leading, spacing: 1) {
-                if isRenaming {
-                    TextField("", text: $renameDraft)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: projectTitleFontSize, weight: .medium))
-                        .focused($renameFocused)
-                        .onSubmit(commitRename)
-                        .onExitCommand { isRenaming = false }
-                        .onChange(of: renameFocused) {
-                            afterViewUpdate {
-                                if !renameFocused, isRenaming {
-                                    commitRename()
-                                }
-                            }
-                        }
-                } else {
-                    Text(project.name)
-                        .font(.system(size: projectTitleFontSize))
-                        .foregroundStyle(
-                            isSelected
-                                ? Color(nsColor: Theme.chromePrimaryText)
-                                : Color(nsColor: Theme.chromeMutedText)
-                        )
-                        .lineLimit(1)
-                }
-                subtitle
-            }
-
-            Spacer(minLength: 0)
-
-            if let review = project.pendingReview, review.fileCount > 0, !isRenaming {
-                Text(verbatim: "\(review.fileCount)")
-                    .font(.system(size: supportingFontSize, weight: .medium).monospacedDigit())
-                    .foregroundStyle(Color(nsColor: Theme.chromeProgress))
-                    .accessibilityLabel(
-                        String(
-                            localized: "\(review.fileCount) files to review",
-                            comment: "Count of uncommitted files after an agent finished. The placeholder is the file count."
-                        )
-                    )
-            }
-
-            if let rollup = project.agentRollup, !isRenaming {
-                AgentStatusBadgeRepresentable(rollup: rollup)
-                    .fixedSize()
-            }
-
-            // Fixed trailing slot: close and the ⌘N hint share the same
-            // width so hover does not reflow the row. Continuous title
-            // updates from the terminal re-render the strip; without a
-            // stable slot that reflow reads as jitter under the pointer.
-            ZStack(alignment: .trailing) {
-                if isHovering, !isRenaming {
-                    Button(action: close) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 16, height: 16)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                } else if index < 9, !isRenaming {
-                    Text(verbatim: "⌘\(index + 1)")
-                        .font(.system(size: supportingFontSize))
-                        .foregroundStyle(Color(nsColor: Theme.chromeMutedText))
-                }
-            }
-            .frame(width: 24, height: 16, alignment: .trailing)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .contentShape(RoundedRectangle(cornerRadius: 6))
-        .help(rowHelp)
-    }
-
-    private var rowHelp: String {
-        project.selectedSession?.currentDirectoryPath ?? ""
-    }
-
-    private func beginRename() {
-        renameDraft = project.name
-        isRenaming = true
-        DispatchQueue.main.async {
-            renameFocused = true
-        }
-    }
-
-    private func commitRename() {
-        project.customName = Project.normalizedCustomName(renameDraft)
-        isRenaming = false
-    }
-
-    @ViewBuilder
-    private var subtitle: some View {
-        if project.sessions.count > 1 {
-            Text("\(project.sessions.count) sessions")
-                .font(.system(size: supportingFontSize))
-                .foregroundStyle(Color(nsColor: Theme.chromeMutedText))
-                .lineLimit(1)
-        }
-    }
-
-    private var supportingFontSize: Double {
-        10 * sidebarFontScale
-    }
-
-    /// Match the file-tree label's designed 11.5 pt size while following the
-    /// shared sidebar font-size setting.
-    private var projectTitleFontSize: Double {
-        11.5 * sidebarFontScale
-    }
-
-    private var sidebarFontScale: Double {
-        fontSize / AppSettings.defaultSidebarFontSize
     }
 }

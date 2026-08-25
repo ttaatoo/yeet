@@ -583,6 +583,10 @@ extension TerminalSession: TerminalBackendEvents {
         find.update(selected: selected)
     }
 
+    func terminalDidInvalidateFindResults(lastReportedTotal: Int?) {
+        find.invalidateResults(lastReportedTotal: lastReportedTotal)
+    }
+
     func terminalDidRequestClipboardConfirmation(_ request: TerminalClipboardRequest) {
         handleClipboardRequest(
             request,

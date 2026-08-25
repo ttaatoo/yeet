@@ -9,7 +9,13 @@ an editor, and a diff viewer. Existing SwiftUI code is legacy; AppKit is the UI 
 
 ## Verify
 
-Build, run the app, exercise the change;
+- During development, run the smallest test set that covers the current change.
+  Do not repeatedly run the full test suite.
+- For a simple change, run the affected module tests and required type checks.
+- For a complex change, also run tests for modules that directly depend on the
+  affected modules.
+- Run the full test suite only for a large refactor or a change to a core module.
+- Before completion, build and run the app, then exercise the changed behavior.
 
 ## Conventions
 

@@ -71,6 +71,7 @@ struct WindowChromeAccessor: NSViewRepresentable {
             // server-side title-bar drag entirely; WindowDragArea is the only
             // surface that opts into moving the window.
             window.isMovable = false
+            fillWindowCorners(window)
             reposition()
             // The initial system layout can land after us; catch up.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.reposition() }
@@ -96,9 +97,18 @@ struct WindowChromeAccessor: NSViewRepresentable {
             }
         }
 
+        /// Tahoe draws an accent rim around hidden-titlebar windows. A
+        /// transparent fill lets chromeProgress (mint) leak at the rounded
+        /// corners where that rim does not cover the square content bounds.
+        private func fillWindowCorners(_ window: NSWindow) {
+            window.backgroundColor = Theme.sidebar
+            window.isOpaque = true
+        }
+
         private func reposition() {
             guard let window else { return }
             window.isMovable = false
+            fillWindowCorners(window)
             guard !window.styleMask.contains(.fullScreen) else { return }
             let types: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
             for (index, type) in types.enumerated() {

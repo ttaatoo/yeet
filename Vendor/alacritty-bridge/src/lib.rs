@@ -8,10 +8,10 @@
 //! size) is answered here rather than crossing the boundary twice.
 //!
 //! Threading: the PTY read loop runs on its own thread and mutates the
-//! terminal behind a `FairMutex`. Every `kero_alacritty_*` entry point takes
-//! that lock, so Swift may call them from the main thread while the loop runs.
-//! The snapshot buffer is owned by the handle and is only valid until the next
-//! call on that handle.
+//! terminal behind a `FairMutex`. Render and state-changing entry points try to
+//! take that lock; `kero_alacritty_begin_frame` reports BUSY when it is held.
+//! The input-path mode getter reads an atomic parser snapshot. The snapshot
+//! buffer is owned by the handle and is only valid until the next call on it.
 
 mod graphics_event_loop;
 mod kitty_graphics;
@@ -24,7 +24,11 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::os::fd::{AsRawFd, RawFd};
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc, OnceLock,
+};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use alacritty_terminal::event::{Event, EventListener, Notify, OnResize, WindowSize};
@@ -42,7 +46,8 @@ use alacritty_terminal::vte::ansi::{Color, CursorShape, CursorStyle, NamedColor,
 use polling::{Event as PollingEvent, PollMode, Poller};
 
 use graphics_event_loop::{
-    GraphicsEventLoop, GraphicsEventLoopSender, GraphicsMsg, GraphicsNotifier,
+    apply_find_message, FindMessage, FindResultStore, FindState, FrameHandoff, GraphicsEventLoop,
+    GraphicsEventLoopSender, GraphicsMsg, GraphicsNotifier,
 };
 use kitty_graphics::{KittyGraphicsScreen, KittyGraphicsSize, KittyGraphicsStore};
 
@@ -65,6 +70,19 @@ pub const KERO_EVENT_SHELL_COMMAND_EXECUTING: u32 = 11;
 pub const KERO_EVENT_SHELL_COMMAND_FINISHED: u32 = 12;
 pub const KERO_EVENT_MOUSE_SHAPE: u32 = 13;
 
+/// Result kinds published by the asynchronous find worker.
+pub const KERO_FIND_RESULT_BEGIN: u32 = 1;
+pub const KERO_FIND_RESULT_STEP: u32 = 2;
+pub const KERO_FIND_RESULT_END: u32 = 3;
+/// The active Find was invalidated by terminal content or geometry changes.
+pub const KERO_FIND_RESULT_INVALIDATED: u32 = 4;
+
+/// Tri-state selection query results. BUSY is distinct from an acquired empty
+/// selection so UI commands can retry without disabling themselves.
+pub const KERO_SELECTION_BUSY: u32 = 0;
+pub const KERO_SELECTION_EMPTY: u32 = 1;
+pub const KERO_SELECTION_PRESENT: u32 = 2;
+
 /// Per-cell attributes handed to the renderer. A subset of
 /// `alacritty_terminal`'s `Flags` plus Kero's own `SELECTED`.
 pub const KERO_CELL_INVERSE: u16 = 1 << 0;
@@ -85,13 +103,48 @@ pub const KERO_DAMAGE_PARTIAL: u32 = 1;
 /// Everything changed — a resize, a screen swap, a scroll.
 pub const KERO_DAMAGE_FULL: u32 = 2;
 
+/// Per-frame verdicts from `kero_alacritty_begin_frame`.
+pub const KERO_FRAME_SKIP: u32 = 0;
+pub const KERO_FRAME_CURSOR: u32 = 1;
+pub const KERO_FRAME_DIRTY: u32 = 2;
+pub const KERO_FRAME_FULL: u32 = 3;
+/// The terminal or Kitty graphics mutex was busy; the host must retry next frame.
+pub const KERO_FRAME_BUSY: u32 = 4;
+
+/// Non-blocking find result read by the host after a worker wakeup.
 #[repr(C)]
-pub struct KeroDamage {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeroFindResult {
+    pub generation: u64,
     pub kind: u32,
-    /// Viewport row indices, owned by the handle and valid only until the next
-    /// call on it. Empty unless `kind` is `KERO_DAMAGE_PARTIAL`.
-    pub rows: *const usize,
-    pub rows_len: usize,
+    pub total: usize,
+    pub selected: isize,
+}
+
+/// One frame's worth of state: what kind of redraw the host owes, which
+/// viewport rows changed, and the snapshots to draw. Everything except
+/// `snapshot` and `kitty` is valid until the next call on the handle; their
+/// buffers follow the ownership rules of their respective snapshot types.
+#[repr(C)]
+pub struct KeroFrame {
+    /// `KERO_FRAME_*`. The snapshots are filled for CURSOR, DIRTY, and FULL;
+    /// SKIP and BUSY leave the previous snapshots untouched.
+    pub kind: u32,
+    /// Viewport rows that changed, owned by the handle. Empty unless DIRTY.
+    pub dirty_rows: *const usize,
+    pub dirty_rows_len: usize,
+    /// Cumulative number of frame attempts that found a frame lock busy.
+    pub busy_count: u64,
+    /// Time spent attempting both non-blocking frame locks, in nanoseconds.
+    pub lock_wait_ns: u64,
+    /// Time spent collecting damage and terminal metadata, in nanoseconds.
+    pub snapshot_ns: u64,
+    /// Time spent packing rows after metadata collection, in nanoseconds.
+    pub build_ns: u64,
+    /// Number of rows actually packed during this frame.
+    pub packed_rows: usize,
+    pub snapshot: KeroSnapshot,
+    pub kitty: KeroKittySnapshot,
 }
 
 pub type KeroEventCallback =
@@ -156,7 +209,55 @@ pub struct KeroSnapshot {
     pub display_offset: usize,
     pub total_lines: usize,
     pub screen_lines: usize,
+    /// Stable identity of each viewport row (`rows` entries): the absolute
+    /// line index counted from the oldest retained line. Lets the renderer
+    /// keep its row-instance cache across a scroll, where only the rows whose
+    /// id changed need rebuilding. Valid under the same rules as `cells`.
+    pub row_ids: *const u64,
+    /// Bumped whenever retained lines are dropped or re-indexed (history trim
+    /// at the scrollback cap, resize) or packing inputs change (theme). A
+    /// renderer holding cached rows from another generation must discard
+    /// them: the same id no longer names the same content.
+    pub row_generation: u64,
 }
+
+/// Packed-row reuse across frames, keyed by absolute line index so that a
+/// display_offset change — which the emulator always reports as full damage —
+/// repacks only the rows newly revealed by the scroll.
+///
+/// Absolute indices count from the oldest retained line, so growth at the
+/// bottom never re-indexes existing rows. Everything that can change a row
+/// without moving its id is checked under the same term lock the pack runs
+/// under, so there is no cross-thread signal to race with: a shrinking
+/// `total_lines` (clear, screen swap), a parser damage report, a different
+/// selection, or a column change all invalidate the affected rows or bump
+/// `generation`. `set_theme` bumps it too.
+#[derive(Default)]
+struct SnapshotCache {
+    rows: std::collections::HashMap<usize, Vec<KeroCell>>,
+    generation: u64,
+    last_total_lines: usize,
+    columns: usize,
+    selection: Option<(Point, Point)>,
+    /// `viewport_first` of the last completed fill. Cursor-only requests are
+    /// upgraded to a full assembly when it moves.
+    last_viewport_first: usize,
+    /// Per-frame viewport row ids, handed to Swift through `KeroSnapshot`.
+    row_ids: Vec<u64>,
+}
+
+impl SnapshotCache {
+    fn new() -> Self {
+        Self {
+            last_viewport_first: usize::MAX,
+            ..Self::default()
+        }
+    }
+}
+
+/// Combining-text arena bound between full walks. Appends only grow; this
+/// converts sustained growth into one full repack instead of a leak.
+const CELL_TEXT_LIMIT: usize = 4 << 20;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -227,7 +328,7 @@ fn configured_cursor_style(shape: u8, blinking: bool) -> CursorStyle {
 
 /// `alacritty_terminal` handles OSC sequences that mutate its grid, but does
 /// not expose host events for working directories or desktop notifications.
-/// Termy solves this at the PTY boundary; Kero uses the same seam so the
+/// Termy solves this at the PTY boundary; Kero uses the same integration point so the
 /// emulator still receives every sequence it understands while app
 /// integrations are lifted out first.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -395,7 +496,7 @@ impl OscInterceptor {
 // MARK: - Escape-stream scanning
 
 /// Watches the raw stream for escape sequences the host must react to but
-/// `alacritty_terminal` will not surface. DEC private mode 2026: Alacritty
+/// `alacritty_terminal` will not report. DEC private mode 2026: Alacritty
 /// buffers the enclosed bytes atomically, but Kero's host-driven cursor timer
 /// can otherwise request a frame while that buffer is still being assembled.
 /// Pointer shape: Ghostty's stream handler moves the pointer when mouse
@@ -404,6 +505,75 @@ impl OscInterceptor {
 struct StreamScanner {
     state: ScanState,
     parameters: Vec<u8>,
+}
+
+const MODE_APP_CURSOR: u32 = 1 << 0;
+const MODE_APP_KEYPAD: u32 = 1 << 1;
+const MODE_ALT_SCREEN: u32 = 1 << 2;
+const MODE_BRACKETED_PASTE: u32 = 1 << 3;
+const MODE_MOUSE: u32 = 1 << 4;
+const MODE_FOCUS_IN_OUT: u32 = 1 << 5;
+const MODE_MOUSE_REPORT_CLICK: u32 = 1 << 6;
+const MODE_MOUSE_DRAG: u32 = 1 << 7;
+const MODE_MOUSE_MOTION: u32 = 1 << 8;
+const MODE_SGR_MOUSE: u32 = 1 << 9;
+const MODE_ALTERNATE_SCROLL: u32 = 1 << 10;
+
+/// Last terminal mode published by the stream parser. The input path reads
+/// this atomic snapshot instead of waiting for the terminal mutex.
+#[derive(Clone)]
+struct ModeSnapshot(Arc<AtomicU32>);
+
+impl ModeSnapshot {
+    fn new() -> Self {
+        Self(Arc::new(AtomicU32::new(0)))
+    }
+
+    fn load(&self) -> u32 {
+        self.0.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn store_term_mode(&self, mode: TermMode) {
+        self.0.store(mode_bits(mode), Ordering::Release);
+    }
+}
+
+pub(crate) fn mode_bits(mode: TermMode) -> u32 {
+    let mut result = 0u32;
+    if mode.contains(TermMode::APP_CURSOR) {
+        result |= MODE_APP_CURSOR;
+    }
+    if mode.contains(TermMode::APP_KEYPAD) {
+        result |= MODE_APP_KEYPAD;
+    }
+    if mode.contains(TermMode::ALT_SCREEN) {
+        result |= MODE_ALT_SCREEN;
+    }
+    if mode.contains(TermMode::BRACKETED_PASTE) {
+        result |= MODE_BRACKETED_PASTE;
+    }
+    if mode.intersects(TermMode::MOUSE_MODE) {
+        result |= MODE_MOUSE;
+    }
+    if mode.contains(TermMode::FOCUS_IN_OUT) {
+        result |= MODE_FOCUS_IN_OUT;
+    }
+    if mode.contains(TermMode::MOUSE_REPORT_CLICK) {
+        result |= MODE_MOUSE_REPORT_CLICK;
+    }
+    if mode.contains(TermMode::MOUSE_DRAG) {
+        result |= MODE_MOUSE_DRAG;
+    }
+    if mode.contains(TermMode::MOUSE_MOTION) {
+        result |= MODE_MOUSE_MOTION;
+    }
+    if mode.contains(TermMode::SGR_MOUSE) {
+        result |= MODE_SGR_MOUSE;
+    }
+    if mode.contains(TermMode::ALTERNATE_SCROLL) {
+        result |= MODE_ALTERNATE_SCROLL;
+    }
+    result
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -529,9 +699,13 @@ impl StreamScanner {
                 } else {
                     SyncUpdateEvent::End
                 })),
-                b"9" | b"1000" | b"1002" | b"1003" => events.push(ScanEvent::MouseShape(
-                    if enabled { "default" } else { "text" },
-                )),
+                b"9" | b"1000" | b"1002" | b"1003" => {
+                    events.push(ScanEvent::MouseShape(if enabled {
+                        "default"
+                    } else {
+                        "text"
+                    }))
+                }
                 _ => {}
             }
         }
@@ -641,7 +815,7 @@ fn hex_value(byte: u8) -> Option<u8> {
 
 // MARK: - Event proxy
 
-/// Swift's view pointer, carried to the PTY thread. Kero keeps the surface
+/// Swift's view pointer, carried to the PTY thread. Kero keeps the pointer
 /// alive for as long as the handle exists, and every callback is bounced onto
 /// the main thread on the Swift side before it touches anything.
 #[derive(Clone, Copy)]
@@ -881,7 +1055,7 @@ impl EventListener for Proxy {
             Event::Bell => self.emit(KERO_EVENT_BELL, &[]),
             Event::Title(title) => self.emit(KERO_EVENT_TITLE, title.as_bytes()),
             // Kero derives the tab title from the shell and directory, so a
-            // reset is simply the absence of a title.
+            // reset is the absence of a title.
             Event::ResetTitle => self.emit(KERO_EVENT_TITLE, &[]),
             Event::Exit | Event::ChildExit(_) => self.emit(KERO_EVENT_EXIT, &[]),
             Event::ClipboardStore(_, text) => {
@@ -938,21 +1112,25 @@ impl Dimensions for TermSize {
 }
 
 pub struct KeroTerminal {
+    /// The PTY worker owns the terminal and callback proxy after `new` returns.
+    /// Keep its join handle so `free` cannot return while that worker can still
+    /// emit events or touch any of the shared terminal state.
+    event_loop: Option<JoinHandle<()>>,
     term: Arc<FairMutex<Term<Proxy>>>,
+    mode_snapshot: ModeSnapshot,
     term_config: Config,
     notifier: GraphicsNotifier,
     shared: Arc<FairMutex<Shared>>,
     kitty_graphics: Arc<FairMutex<KittyGraphicsStore>>,
     kitty_graphics_size: Arc<FairMutex<KittyGraphicsSize>>,
+    find_state: Arc<FairMutex<FindState>>,
+    find_results: FindResultStore,
     cells: Vec<KeroCell>,
     /// Variable-length UTF-8 cell contents for combining character clusters.
     cell_text: Vec<u8>,
     /// Palette used when packing snapshot cells. Copied on `set_theme` so a
     /// redraw does not take the PTY-shared lock.
     theme: KeroTheme,
-    /// Viewport `display_offset` of the last packed snapshot. A change means
-    /// every cached cell is on the wrong grid line.
-    last_display_offset: Option<usize>,
     /// Inclusive viewport-relative row span of the last reported selection.
     /// Alacritty's grid damage does not include selection.
     last_selection_rows: Option<(i32, i32)>,
@@ -960,10 +1138,6 @@ pub struct KeroTerminal {
     /// Kept so the host can ask which process group is in the foreground —
     /// that is how Kero tells a shell at its prompt from a running TUI.
     master_fd: RawFd,
-    /// Every match of the active find, in buffer order, and which one is
-    /// selected. Collected up front so the host can show a total.
-    matches: Vec<(Point, Point)>,
-    match_index: usize,
     /// Alacritty's URL hint DFA is reused because this lookup runs on every
     /// mouse move while the pointer is over the terminal.
     url_regex: RegexSearch,
@@ -973,8 +1147,15 @@ pub struct KeroTerminal {
     /// Retains each placement's RGBA while C pointers are visible to Swift.
     kitty_images: Vec<Arc<[u8]>>,
     last_kitty_damage_revision: u64,
-    /// Set once the shell has exited, so teardown does not wait on a loop that
-    /// has already stopped.
+    /// Packed rows reused across frames; see `SnapshotCache`.
+    snapshot_cache: SnapshotCache,
+    /// Number of non-blocking frame attempts that observed a frame lock busy.
+    frame_busy_count: u64,
+    /// Coordinates an already-scheduled frame with the PTY parser without
+    /// ever blocking the UI thread.
+    frame_handoff: FrameHandoff,
+    /// Set once the shell has exited, so teardown can skip a redundant shutdown
+    /// message. `free` still joins the worker in every case.
     exited: bool,
 }
 
@@ -1097,6 +1278,7 @@ pub unsafe extern "C" fn kero_alacritty_new(
         pending_clipboard: VecDeque::new(),
         next_clipboard_id: 1,
     }));
+    let mode_snapshot = ModeSnapshot::new();
     let proxy = Proxy {
         callback,
         context: SwiftContext(context),
@@ -1129,6 +1311,9 @@ pub unsafe extern "C" fn kero_alacritty_new(
         cell_width: f32::from(config.cell_width.max(1)),
         cell_height: f32::from(config.cell_height.max(1)),
     }));
+    let find_state = Arc::new(FairMutex::new(FindState::default()));
+    let find_results = FindResultStore::new();
+    let frame_handoff = FrameHandoff::new();
 
     let pty = match tty::new(&options, window_size, 0) {
         Ok(pty) => pty,
@@ -1147,6 +1332,10 @@ pub unsafe extern "C" fn kero_alacritty_new(
         pty,
         kitty_graphics.clone(),
         kitty_graphics_size.clone(),
+        mode_snapshot.clone(),
+        find_state.clone(),
+        find_results.clone(),
+        frame_handoff.clone(),
     ) {
         Ok(event_loop) => event_loop,
         Err(_) => return std::ptr::null_mut(),
@@ -1154,29 +1343,33 @@ pub unsafe extern "C" fn kero_alacritty_new(
     let sender = event_loop.channel();
     // Now that the loop exists, terminal-generated replies have somewhere to go.
     let _ = proxy.sender.set(sender.clone());
-    event_loop.spawn();
+    let event_loop = event_loop.spawn();
 
     Box::into_raw(Box::new(KeroTerminal {
+        event_loop: Some(event_loop),
         term,
+        mode_snapshot,
         term_config,
         notifier: GraphicsNotifier(sender),
         shared,
         kitty_graphics,
         kitty_graphics_size,
+        find_state,
+        find_results,
         cells: Vec::new(),
         cell_text: Vec::new(),
         theme: *theme,
-        last_display_offset: None,
         last_selection_rows: None,
         child_pid,
         master_fd,
-        matches: Vec::new(),
-        match_index: 0,
         url_regex,
         dirty_rows: Vec::new(),
         kitty_placements: Vec::new(),
         kitty_images: Vec::new(),
         last_kitty_damage_revision: 0,
+        snapshot_cache: SnapshotCache::new(),
+        frame_busy_count: 0,
+        frame_handoff,
         exited: false,
     }))
 }
@@ -1190,8 +1383,16 @@ pub unsafe extern "C" fn kero_alacritty_free(handle: *mut KeroTerminal) {
     if handle.is_null() {
         return;
     }
-    let terminal = Box::from_raw(handle);
-    let _ = terminal.notifier.0.send(GraphicsMsg::Shutdown);
+    let mut terminal = Box::from_raw(handle);
+    terminal.frame_handoff.finish();
+    let event_loop = terminal.event_loop.take();
+    if !terminal.exited {
+        let _ = terminal.notifier.0.send(GraphicsMsg::Shutdown);
+    }
+    drop(terminal);
+    if let Some(event_loop) = event_loop {
+        let _ = event_loop.join();
+    }
 }
 
 /// PID of the shell, for Kero's process panel and its teardown signals.
@@ -1245,9 +1446,7 @@ pub unsafe extern "C" fn kero_alacritty_write(
     }
     let terminal = &mut *handle;
     let payload = std::slice::from_raw_parts(bytes, len).to_vec();
-    // Any keystroke means the user is done reading scrollback.
-    terminal.term.lock().scroll_display(Scroll::Bottom);
-    terminal.notifier.notify(payload);
+    terminal.notifier.notify_user(payload.into());
 }
 
 /// Writes focus/mouse protocol input without snapping a viewport the user is
@@ -1333,6 +1532,17 @@ pub unsafe extern "C" fn kero_alacritty_resize(
         cell_width: cell_width.max(1),
         cell_height: cell_height.max(1),
     };
+    let size = TermSize {
+        columns: columns.max(1) as usize,
+        screen_lines: rows.max(1) as usize,
+    };
+    // Keep the terminal lock through the pre-invalidation and barrier enqueue.
+    // A queued Find step can finish against the old geometry before this
+    // resize, or it will see the cleared state and the barrier after the
+    // mutation; it cannot reuse old points between the mutation and enqueue.
+    let mut term = terminal.term.lock();
+    let preinvalidated_generation = terminal.find_state.lock().invalidate();
+    term.resize(size);
     terminal.shared.lock().window_size = window_size;
     *terminal.kitty_graphics_size.lock() = KittyGraphicsSize {
         columns: columns.max(1) as usize,
@@ -1340,16 +1550,18 @@ pub unsafe extern "C" fn kero_alacritty_resize(
         cell_width: f32::from(cell_width.max(1)),
         cell_height: f32::from(cell_height.max(1)),
     };
-
-    let size = TermSize {
-        columns: columns.max(1) as usize,
-        screen_lines: rows.max(1) as usize,
-    };
-    terminal.term.lock().resize(size);
+    if let Some(generation) = preinvalidated_generation {
+        terminal.notifier.invalidate_find_generation(generation);
+    }
     terminal.notifier.on_resize(window_size);
 }
 
 /// Scrolls by `delta` lines, positive toward older output.
+///
+/// Host scroll intent should ride `kero_alacritty_begin_frame`'s
+/// `pending_scroll` instead: this acquires the term lock per call, which at
+/// trackpad-event rate contends with the PTY parse thread. It stays for
+/// callers that scroll outside the render loop.
 ///
 /// # Safety
 /// `handle` must be live.
@@ -1359,21 +1571,6 @@ pub unsafe extern "C" fn kero_alacritty_scroll(handle: *mut KeroTerminal, delta:
         return;
     }
     (*handle).term.lock().scroll_display(Scroll::Delta(delta));
-}
-
-/// Puts the viewport `offset` lines above the live prompt.
-///
-/// # Safety
-/// `handle` must be live.
-#[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_scroll_to_offset(handle: *mut KeroTerminal, offset: usize) {
-    if handle.is_null() {
-        return;
-    }
-    let terminal = &mut *handle;
-    let mut term = terminal.term.lock();
-    let current = term.grid().display_offset() as i32;
-    term.scroll_display(Scroll::Delta(offset as i32 - current));
 }
 
 /// # Safety
@@ -1389,6 +1586,10 @@ pub unsafe extern "C" fn kero_alacritty_set_theme(
     let theme = *theme;
     let terminal = &mut *handle;
     terminal.theme = theme;
+    // Packed rows carry resolved colors; a new palette makes them stale even
+    // though no line moved.
+    terminal.snapshot_cache.generation = terminal.snapshot_cache.generation.wrapping_add(1);
+    terminal.snapshot_cache.rows.clear();
     // ColorRequest on the PTY thread still reads Shared.
     terminal.shared.lock().theme = theme;
 }
@@ -1417,6 +1618,7 @@ pub unsafe extern "C" fn kero_alacritty_set_cursor_style(
 
 /// Starts a selection at a viewport cell. `kind` is 0 simple, 1 semantic
 /// (word), 2 line — matching single, double, and triple click.
+/// Returns false when the terminal is busy.
 ///
 /// # Safety
 /// `handle` must be live.
@@ -1427,12 +1629,14 @@ pub unsafe extern "C" fn kero_alacritty_selection_start(
     column: usize,
     kind: u32,
     right_half: bool,
-) {
+) -> bool {
     if handle.is_null() {
-        return;
+        return false;
     }
     let terminal = &mut *handle;
-    let mut term = terminal.term.lock();
+    let Some(mut term) = try_ui_lock(&terminal.term) else {
+        return false;
+    };
     let offset = term.grid().display_offset();
     let point = Point::new(Line(line - offset as i32), Column(column));
     let side = if right_half { Side::Right } else { Side::Left };
@@ -1442,6 +1646,7 @@ pub unsafe extern "C" fn kero_alacritty_selection_start(
         _ => SelectionType::Simple,
     };
     term.selection = Some(Selection::new(selection_type, point, side));
+    true
 }
 
 /// # Safety
@@ -1452,39 +1657,97 @@ pub unsafe extern "C" fn kero_alacritty_selection_update(
     line: i32,
     column: usize,
     right_half: bool,
-) {
+) -> bool {
     if handle.is_null() {
-        return;
+        return false;
     }
     let terminal = &mut *handle;
-    let mut term = terminal.term.lock();
+    let Some(mut term) = try_ui_lock(&terminal.term) else {
+        return false;
+    };
     let offset = term.grid().display_offset();
     let point = Point::new(Line(line - offset as i32), Column(column));
     let side = if right_half { Side::Right } else { Side::Left };
     if let Some(selection) = term.selection.as_mut() {
         selection.update(point, side);
     }
+    true
 }
 
-/// Selects every row, scrollback included.
+/// Selects every row, scrollback included. Returns false when the terminal is
+/// busy; the UI caller should retry.
 ///
 /// # Safety
 /// `handle` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_select_all(handle: *mut KeroTerminal) {
+pub unsafe extern "C" fn kero_alacritty_select_all(handle: *mut KeroTerminal) -> bool {
     if handle.is_null() {
-        return;
+        return false;
     }
     let terminal = &mut *handle;
-    let mut term = terminal.term.lock();
+    let Some(mut term) = try_ui_lock(&terminal.term) else {
+        return false;
+    };
     let start = Point::new(term.topmost_line(), Column(0));
     let end = Point::new(term.bottommost_line(), term.last_column());
     let mut selection = Selection::new(SelectionType::Simple, start, Side::Left);
     selection.update(end, Side::Right);
     term.selection = Some(selection);
+    true
 }
 
-/// Whether anything is selected.
+/// Drops the current selection, if any. Returns whether a selection was present.
+/// Returns false when the terminal is busy.
+///
+/// # Safety
+/// `handle` must be live.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_clear_selection(handle: *mut KeroTerminal) -> bool {
+    if handle.is_null() {
+        return false;
+    }
+    let Some(mut term) = try_ui_lock(&(*handle).term) else {
+        return false;
+    };
+    let had = term.selection.is_some();
+    term.selection = None;
+    had
+}
+
+/// Queues selection clearing on the PTY worker without waiting for the
+/// terminal lock. The worker keeps the viewport where it is and wakes the
+/// host only when a selection was present.
+///
+/// # Safety
+/// `handle` must be live, or null.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_clear_selection_async(handle: *mut KeroTerminal) {
+    if handle.is_null() {
+        return;
+    }
+    (*handle).notifier.clear_selection_async();
+}
+
+/// Reports whether the current selection query acquired the terminal lock.
+///
+/// # Safety
+/// `handle` must be live, or null.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_selection_state(handle: *mut KeroTerminal) -> u32 {
+    if handle.is_null() {
+        return KERO_SELECTION_BUSY;
+    }
+    let Some(term) = try_ui_lock(&(*handle).term) else {
+        return KERO_SELECTION_BUSY;
+    };
+    if term.selection.is_some() {
+        KERO_SELECTION_PRESENT
+    } else {
+        KERO_SELECTION_EMPTY
+    }
+}
+
+/// Whether anything is selected. Returns false when the terminal is busy.
 ///
 /// # Safety
 /// `handle` must be live.
@@ -1493,15 +1756,15 @@ pub unsafe extern "C" fn kero_alacritty_has_selection(handle: *mut KeroTerminal)
     if handle.is_null() {
         return false;
     }
-    (*handle)
-        .term
-        .lock()
-        .selection_to_string()
-        .is_some_and(|text| !text.is_empty())
+    let Some(term) = try_ui_lock(&(*handle).term) else {
+        return false;
+    };
+    term.selection.is_some()
 }
 
 /// Copies the selection into `buffer`, returning the byte length written, or
 /// the length required when `buffer` is null or `capacity` is too small.
+/// Returns zero when the terminal is busy.
 ///
 /// # Safety
 /// `handle` must be live and `buffer` valid for `capacity` bytes.
@@ -1514,11 +1777,12 @@ pub unsafe extern "C" fn kero_alacritty_selection_text(
     if handle.is_null() {
         return 0;
     }
-    let text = (*handle)
-        .term
-        .lock()
-        .selection_to_string()
-        .unwrap_or_default();
+    let text = {
+        let Some(term) = try_ui_lock(&(*handle).term) else {
+            return 0;
+        };
+        term.selection_to_string().unwrap_or_default()
+    };
     let bytes = text.as_bytes();
     if buffer.is_null() || capacity < bytes.len() {
         return bytes.len();
@@ -1546,29 +1810,18 @@ pub unsafe extern "C" fn kero_alacritty_find(
         return 0;
     }
     let terminal = &mut *handle;
-    terminal.matches.clear();
-    terminal.match_index = 0;
-
-    let Some(needle) = cstr(needle).filter(|value| !value.is_empty()) else {
-        terminal.term.lock().selection = None;
-        return 0;
-    };
-    let Ok(mut regex) = RegexSearch::new(&regex_escape(&needle)) else {
-        return 0;
-    };
-
-    let term = terminal.term.lock();
-    let start = Point::new(term.topmost_line(), Column(0));
-    let end = Point::new(term.bottommost_line(), term.last_column());
-    for found in RegexIter::new(start, end, Direction::Right, &term, &mut regex) {
-        terminal.matches.push((*found.start(), *found.end()));
-        // A pathological pattern on a full scrollback would otherwise scan for
-        // long enough to stall the caller, which is on the main thread.
-        if terminal.matches.len() >= 10_000 {
-            break;
-        }
-    }
-    terminal.matches.len()
+    let needle = cstr(needle).unwrap_or_default();
+    let mut term = terminal.term.lock();
+    let mut find_state = terminal.find_state.lock();
+    apply_find_message(
+        &mut term,
+        &mut find_state,
+        FindMessage::Begin {
+            generation: 0,
+            needle,
+        },
+    )
+    .total
 }
 
 /// Selects and reveals the next or previous match, returning its zero-based
@@ -1585,24 +1838,17 @@ pub unsafe extern "C" fn kero_alacritty_find_step(
         return -1;
     }
     let terminal = &mut *handle;
-    let count = terminal.matches.len();
-    if count == 0 {
-        return -1;
-    }
-
-    terminal.match_index = if forward {
-        (terminal.match_index + 1) % count
-    } else {
-        (terminal.match_index + count - 1) % count
-    };
-    let (start, end) = terminal.matches[terminal.match_index];
-
     let mut term = terminal.term.lock();
-    let mut selection = Selection::new(SelectionType::Simple, start, Side::Left);
-    selection.update(end, Side::Right);
-    term.selection = Some(selection);
-    term.scroll_to_point(start);
-    terminal.match_index as isize
+    let mut find_state = terminal.find_state.lock();
+    apply_find_message(
+        &mut term,
+        &mut find_state,
+        FindMessage::Step {
+            generation: 0,
+            forward,
+        },
+    )
+    .selected
 }
 
 /// Clears the find and its selection.
@@ -1615,9 +1861,79 @@ pub unsafe extern "C" fn kero_alacritty_find_end(handle: *mut KeroTerminal) {
         return;
     }
     let terminal = &mut *handle;
-    terminal.matches.clear();
-    terminal.match_index = 0;
-    terminal.term.lock().selection = None;
+    let mut term = terminal.term.lock();
+    let mut find_state = terminal.find_state.lock();
+    let _ = apply_find_message(
+        &mut term,
+        &mut find_state,
+        FindMessage::End { generation: 0 },
+    );
+}
+
+/// Queues a find begin on the PTY worker. The call does not inspect the
+/// terminal or scan its scrollback.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_find_begin_async(
+    handle: *mut KeroTerminal,
+    needle: *const c_char,
+    generation: u64,
+) -> bool {
+    if handle.is_null() || generation == 0 {
+        return false;
+    }
+    let Some(needle) = cstr(needle) else {
+        return false;
+    };
+    (*handle).notifier.find_begin(generation, needle)
+}
+
+/// Queues a find navigation step on the PTY worker without taking the
+/// terminal lock on the caller's thread.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_find_step_async(
+    handle: *mut KeroTerminal,
+    forward: bool,
+    generation: u64,
+) -> bool {
+    if handle.is_null() || generation == 0 {
+        return false;
+    }
+    (*handle).notifier.find_step(generation, forward)
+}
+
+/// Queues find cleanup on the PTY worker. FIFO ordering keeps it after any
+/// already queued begin or step message for the same handle.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_find_end_async(
+    handle: *mut KeroTerminal,
+    generation: u64,
+) -> bool {
+    if handle.is_null() || generation == 0 {
+        return false;
+    }
+    (*handle).notifier.find_end(generation)
+}
+
+/// Reads the newest worker result without waiting for the terminal lock.
+/// `out` remains unchanged while no result is available.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_find_poll(
+    handle: *mut KeroTerminal,
+    out: *mut KeroFindResult,
+) -> bool {
+    if handle.is_null() || out.is_null() {
+        return false;
+    }
+    let Some(result) = (*handle).find_results.read() else {
+        return false;
+    };
+    *out = KeroFindResult {
+        generation: result.generation,
+        kind: result.kind,
+        total: result.total,
+        selected: result.selected,
+    };
+    true
 }
 
 /// Escapes a literal needle for the regex engine, so a search for `a.b` does
@@ -1955,7 +2271,7 @@ fn hyperlink_url_at<T: EventListener>(term: &Term<T>, point: Point) -> Option<(S
 ///
 /// # Safety
 /// `handle` must be live; `range` must be null or valid; and `buffer` must be
-/// null or valid for `capacity` bytes.
+/// null or valid for `capacity` bytes. Returns zero when the terminal is busy.
 #[no_mangle]
 pub unsafe extern "C" fn kero_alacritty_url_at(
     handle: *mut KeroTerminal,
@@ -1969,7 +2285,9 @@ pub unsafe extern "C" fn kero_alacritty_url_at(
         return 0;
     }
     let terminal = &mut *handle;
-    let term = terminal.term.lock();
+    let Some(term) = try_ui_lock(&terminal.term) else {
+        return 0;
+    };
     if line < 0 || line as usize >= term.screen_lines() || column >= term.columns() {
         return 0;
     }
@@ -2006,13 +2324,24 @@ pub unsafe extern "C" fn kero_alacritty_clear(handle: *mut KeroTerminal) {
         return;
     }
     let mut term = (*handle).term.lock();
+    let preinvalidated_generation = (*handle).find_state.lock().invalidate();
     term.grid_mut().clear_viewport();
     term.grid_mut().clear_history();
-    let mut graphics = (*handle).kitty_graphics.lock();
-    let primary = graphics.state.clear_screen(KittyGraphicsScreen::Primary);
-    let alternate = graphics.state.clear_screen(KittyGraphicsScreen::Alternate);
-    if primary || alternate {
-        graphics.mark_changed();
+    {
+        let mut graphics = (*handle).kitty_graphics.lock();
+        let primary = graphics.state.clear_screen(KittyGraphicsScreen::Primary);
+        let alternate = graphics.state.clear_screen(KittyGraphicsScreen::Alternate);
+        if primary || alternate {
+            graphics.mark_changed();
+        }
+    }
+    // Queue the invalidation while the terminal lock is still held. This
+    // makes the reset visible to the worker before it can start another Find
+    // chunk, while preserving FIFO order for the next user-input message.
+    if let Some(generation) = preinvalidated_generation {
+        (*handle).notifier.invalidate_find_generation(generation);
+    } else {
+        (*handle).notifier.invalidate_find();
     }
 }
 
@@ -2033,6 +2362,7 @@ mod tests {
     use super::*;
     use alacritty_terminal::event::VoidListener;
     use alacritty_terminal::vte::ansi::Processor;
+    use kitty_graphics::{KittyGraphicsInterceptor, KittyGraphicsItem};
 
     fn intercept(interceptor: &mut OscInterceptor, input: &[u8]) -> (Vec<u8>, Vec<OscEvent>) {
         let (output, events) = interceptor.process(input);
@@ -2123,6 +2453,33 @@ mod tests {
     }
 
     #[test]
+    fn mode_snapshot_maps_the_terminal_owner_bits() {
+        let snapshot = ModeSnapshot::new();
+        snapshot.store_term_mode(
+            TermMode::APP_CURSOR
+                | TermMode::APP_KEYPAD
+                | TermMode::ALT_SCREEN
+                | TermMode::BRACKETED_PASTE
+                | TermMode::MOUSE_DRAG
+                | TermMode::FOCUS_IN_OUT
+                | TermMode::SGR_MOUSE
+                | TermMode::ALTERNATE_SCROLL,
+        );
+        assert_eq!(
+            snapshot.load(),
+            MODE_APP_CURSOR
+                | MODE_APP_KEYPAD
+                | MODE_ALT_SCREEN
+                | MODE_BRACKETED_PASTE
+                | MODE_MOUSE
+                | MODE_MOUSE_DRAG
+                | MODE_FOCUS_IN_OUT
+                | MODE_SGR_MOUSE
+                | MODE_ALTERNATE_SCROLL
+        );
+    }
+
+    #[test]
     fn stream_scanner_restores_text_shape_on_full_reset() {
         let mut scanner = StreamScanner::default();
         assert_eq!(
@@ -2157,6 +2514,118 @@ mod tests {
         let mut processor: Processor = Processor::new();
         processor.advance(&mut term, input);
         term
+    }
+
+    #[test]
+    fn snapshot_cache_reuses_rows_across_scroll() {
+        // Five lines in a three-line screen: two lines of history above the
+        // viewport "three four five".
+        let mut term = parse(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
+        let mut snap = SnapshotState::new();
+        snap.fill(&term, None);
+        let generation = snap.out.row_generation;
+        assert_eq!(snap.cache.rows.len(), 3);
+        let ids: Vec<u64> = (0..snap.out.rows)
+            .map(|row| unsafe { *snap.out.row_ids.add(row) })
+            .collect();
+        assert_eq!(ids, vec![2, 3, 4]);
+
+        // A pure host scroll moves the window without touching any line: the
+        // two newly revealed rows are packed, the three old rows are reused,
+        // and the generation survives.
+        term.scroll_display(Scroll::Delta(2));
+        term.reset_damage();
+        snap.fill(&term, None);
+        assert_eq!(snap.out.row_generation, generation);
+        assert_eq!(snap.cache.rows.len(), 5);
+        let ids: Vec<u64> = (0..snap.out.rows)
+            .map(|row| unsafe { *snap.out.row_ids.add(row) })
+            .collect();
+        assert_eq!(ids, vec![0, 1, 2]);
+        assert_eq!(snap.ch(0, 1), 'n'); // "one"
+        assert_eq!(snap.ch(1, 1), 'w'); // "two"
+        assert_eq!(snap.ch(2, 1), 'h'); // "three"
+
+        // Growth at the bottom keeps every existing id: the viewport slides,
+        // nothing is invalidated.
+        write_vt(&mut term, b"\r\nsix");
+        term.reset_damage();
+        snap.fill(&term, None);
+        assert_eq!(snap.out.row_generation, generation);
+        assert_eq!(snap.out.total_lines, 6);
+
+        // A parser full-damage report forces a complete repack even when the
+        // retained line count does not change.
+        write_vt(&mut term, b"\rSEVEN");
+        term.reset_damage();
+        snap.fill_repack(&term);
+        assert_ne!(snap.out.row_generation, generation);
+    }
+
+    #[test]
+    fn frame_verdict_prefers_host_and_full_over_cursor() {
+        assert_eq!(
+            frame_verdict(false, false, KERO_DAMAGE_NONE),
+            KERO_FRAME_SKIP
+        );
+        assert_eq!(
+            frame_verdict(false, true, KERO_DAMAGE_NONE),
+            KERO_FRAME_CURSOR
+        );
+        assert_eq!(
+            frame_verdict(false, false, KERO_DAMAGE_PARTIAL),
+            KERO_FRAME_DIRTY
+        );
+        assert_eq!(
+            frame_verdict(false, false, KERO_DAMAGE_FULL),
+            KERO_FRAME_FULL
+        );
+        // Host-side changes and full damage outrank everything; a cursor hint
+        // loses to real damage because the damaged rows carry the cursor.
+        assert_eq!(
+            frame_verdict(true, false, KERO_DAMAGE_NONE),
+            KERO_FRAME_FULL
+        );
+        assert_eq!(
+            frame_verdict(true, true, KERO_DAMAGE_PARTIAL),
+            KERO_FRAME_FULL
+        );
+        assert_eq!(
+            frame_verdict(false, true, KERO_DAMAGE_PARTIAL),
+            KERO_FRAME_DIRTY
+        );
+    }
+
+    #[test]
+    fn scroll_display_reports_full_damage_only_when_offset_moves() {
+        // Five lines in a three-line screen: two lines of history to scroll
+        // into, and the parse damage drained before the assertions.
+        let mut term = parse(b"one\r\ntwo\r\nthree\r\nfour\r\nfive");
+        term.reset_damage();
+
+        // begin_frame reads parser damage before applying host scrolling. A
+        // prior full report must remain visible after that extra read.
+        write_vt(&mut term, b"\x1b[4h");
+        assert!(matches!(term.damage(), TermDamage::Full));
+        write_vt(&mut term, b"\x1b[4l");
+        term.reset_damage();
+
+        // A clamped scroll (already at the live bottom, delta toward newer
+        // output) moves nothing: damage stays at cursor bookkeeping (old and
+        // new cursor rows), which begin_frame refills as a couple of rows
+        // rather than a full rebuild.
+        term.scroll_display(Scroll::Delta(-5));
+        assert!(!matches!(term.damage(), TermDamage::Full));
+        term.reset_damage();
+
+        // A pending scroll that moves the offset is what makes a begin_frame
+        // with no other changes report FULL.
+        term.scroll_display(Scroll::Delta(1));
+        let full = match term.damage() {
+            TermDamage::Full => true,
+            TermDamage::Partial(_) => false,
+        };
+        assert!(full);
     }
 
     fn url_in(term: &Term<VoidListener>, point: Point) -> Option<String> {
@@ -2428,13 +2897,432 @@ mod tests {
             display_offset: 0,
             total_lines: 0,
             screen_lines: 0,
+            row_ids: std::ptr::null(),
+            row_generation: 0,
         }
+    }
+
+    fn empty_kitty_snapshot() -> KeroKittySnapshot {
+        KeroKittySnapshot {
+            revision: 0,
+            placements: std::ptr::null(),
+            placements_len: 0,
+        }
+    }
+
+    fn empty_frame() -> KeroFrame {
+        KeroFrame {
+            kind: KERO_FRAME_SKIP,
+            dirty_rows: std::ptr::null(),
+            dirty_rows_len: 0,
+            busy_count: 0,
+            lock_wait_ns: 0,
+            snapshot_ns: 0,
+            build_ns: 0,
+            packed_rows: 0,
+            snapshot: empty_snapshot(),
+            kitty: empty_kitty_snapshot(),
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct SnapshotFields {
+        cells: usize,
+        columns: usize,
+        rows: usize,
+        cursor_line: isize,
+        cursor_column: isize,
+        cursor_shape: u32,
+        cursor_color: u32,
+        background: u32,
+        cursor_blinking: bool,
+        text: usize,
+        text_len: usize,
+        display_offset: usize,
+        total_lines: usize,
+        screen_lines: usize,
+        row_ids: usize,
+        row_generation: u64,
+    }
+
+    fn snapshot_fields(snapshot: &KeroSnapshot) -> SnapshotFields {
+        SnapshotFields {
+            cells: snapshot.cells as usize,
+            columns: snapshot.columns,
+            rows: snapshot.rows,
+            cursor_line: snapshot.cursor_line,
+            cursor_column: snapshot.cursor_column,
+            cursor_shape: snapshot.cursor_shape,
+            cursor_color: snapshot.cursor_color,
+            background: snapshot.background,
+            cursor_blinking: snapshot.cursor_blinking,
+            text: snapshot.text as usize,
+            text_len: snapshot.text_len,
+            display_offset: snapshot.display_offset,
+            total_lines: snapshot.total_lines,
+            screen_lines: snapshot.screen_lines,
+            row_ids: snapshot.row_ids as usize,
+            row_generation: snapshot.row_generation,
+        }
+    }
+
+    fn kitty_fields(snapshot: &KeroKittySnapshot) -> (u64, usize, usize) {
+        (
+            snapshot.revision,
+            snapshot.placements as usize,
+            snapshot.placements_len,
+        )
+    }
+
+    fn add_test_kitty_placement(terminal: &KeroTerminal) {
+        let mut interceptor = KittyGraphicsInterceptor::default();
+        let items = interceptor.process(b"\x1b_Ga=T,f=32,s=1,v=1,i=7,c=1,r=1;AQID/w==\x1b\\");
+        let command = items
+            .into_iter()
+            .find_map(|item| match item {
+                KittyGraphicsItem::Command(command) => Some(command),
+                KittyGraphicsItem::Text(_) => None,
+            })
+            .expect("test Kitty command");
+        let size = *terminal.kitty_graphics_size.lock_unfair();
+        let term_mutex = Arc::clone(&terminal.term);
+        let term = term_mutex.lock_unfair();
+        let cursor = term.grid().cursor.point;
+        let history_size = term.grid().history_size();
+        drop(term);
+        let graphics_mutex = Arc::clone(&terminal.kitty_graphics);
+        let mut graphics = graphics_mutex.lock_unfair();
+        let result = graphics.state.apply(
+            command,
+            cursor.column.0,
+            cursor.line.0.max(0) as usize,
+            history_size,
+            size,
+            KittyGraphicsScreen::Primary,
+        );
+        assert!(result.changed);
+        graphics.mark_changed();
+    }
+
+    extern "C" fn test_callback(_context: *mut c_void, _kind: u32, _data: *const u8, _len: usize) {}
+
+    fn test_terminal_with_damage() -> KeroTerminal {
+        let theme = theme();
+        let window_size = WindowSize {
+            num_lines: 3,
+            num_cols: 40,
+            cell_width: 1,
+            cell_height: 1,
+        };
+        let shared = Arc::new(FairMutex::new(Shared {
+            theme,
+            window_size,
+            synchronized_update: false,
+            synchronized_update_ending: false,
+            synchronized_update_deadline: None,
+            pending_clipboard: VecDeque::new(),
+            next_clipboard_id: 1,
+        }));
+        let proxy = Proxy {
+            callback: test_callback,
+            context: SwiftContext(std::ptr::null_mut()),
+            sender: Arc::new(OnceLock::new()),
+            shared: shared.clone(),
+        };
+        let term_config = Config::default();
+        let size = TermSize {
+            columns: 40,
+            screen_lines: 3,
+        };
+        let term = Arc::new(FairMutex::new(Term::new(term_config.clone(), &size, proxy)));
+        let kitty_graphics = Arc::new(FairMutex::new(KittyGraphicsStore::default()));
+        let kitty_graphics_size = Arc::new(FairMutex::new(KittyGraphicsSize {
+            columns: 40,
+            rows: 3,
+            cell_width: 1.0,
+            cell_height: 1.0,
+        }));
+        let terminal = KeroTerminal {
+            event_loop: None,
+            term,
+            mode_snapshot: ModeSnapshot::new(),
+            term_config,
+            notifier: GraphicsNotifier::for_test(),
+            shared,
+            kitty_graphics,
+            kitty_graphics_size,
+            find_state: Arc::new(FairMutex::new(FindState::default())),
+            find_results: FindResultStore::new(),
+            cells: Vec::new(),
+            cell_text: Vec::new(),
+            theme,
+            last_selection_rows: None,
+            child_pid: 0,
+            master_fd: -1,
+            url_regex: RegexSearch::new(LINK_REGEX).expect("test URL regex"),
+            dirty_rows: Vec::new(),
+            kitty_placements: Vec::new(),
+            kitty_images: Vec::new(),
+            last_kitty_damage_revision: 0,
+            snapshot_cache: SnapshotCache::new(),
+            frame_busy_count: 0,
+            frame_handoff: FrameHandoff::new(),
+            exited: false,
+        };
+        {
+            let mut term = terminal.term.lock_unfair();
+            let mut parser: Processor = Processor::new();
+            parser.advance(&mut *term, b"one\r\ntwo\r\nthree\r\nfour");
+            term.reset_damage();
+            parser.advance(&mut *term, b"\x1b[2;1HX");
+        }
+        terminal
+    }
+
+    #[test]
+    fn clear_queues_find_invalidation_before_following_form_feed() {
+        let mut terminal = test_terminal_with_damage();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let poller = Arc::new(Poller::new().expect("test poller should be available"));
+        terminal.notifier = GraphicsNotifier(GraphicsEventLoopSender::for_test(sender, poller));
+        let handle = &mut terminal as *mut KeroTerminal;
+
+        unsafe { kero_alacritty_clear(handle) };
+        let form_feed = [b'\x0c'];
+        unsafe { kero_alacritty_write(handle, form_feed.as_ptr(), form_feed.len()) };
+
+        assert!(matches!(
+            receiver.recv().unwrap(),
+            GraphicsMsg::InvalidateFind
+        ));
+        assert!(matches!(
+            receiver.recv().unwrap(),
+            GraphicsMsg::UserInput(bytes) if bytes.as_ref() == form_feed
+        ));
+    }
+
+    #[test]
+    fn clear_carries_preinvalidated_find_generation() {
+        let mut terminal = test_terminal_with_damage();
+        {
+            let mut term = terminal.term.lock();
+            let mut find_state = terminal.find_state.lock();
+            let result = apply_find_message(
+                &mut term,
+                &mut find_state,
+                FindMessage::Begin {
+                    generation: 70,
+                    needle: "two".to_owned(),
+                },
+            );
+            assert_eq!(result.total, 1);
+            terminal.find_results.publish(
+                result.generation,
+                result.kind,
+                result.total,
+                result.selected,
+            );
+        }
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let poller = Arc::new(Poller::new().expect("test poller should be available"));
+        terminal.notifier = GraphicsNotifier(GraphicsEventLoopSender::for_test(sender, poller));
+        let handle = &mut terminal as *mut KeroTerminal;
+
+        unsafe { kero_alacritty_clear(handle) };
+
+        assert!(matches!(
+            receiver.recv().unwrap(),
+            GraphicsMsg::InvalidateFindWithGeneration(70)
+        ));
+    }
+
+    #[test]
+    fn resize_queues_barrier_before_following_find_step() {
+        let mut terminal = test_terminal_with_damage();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let poller = Arc::new(Poller::new().expect("test poller should be available"));
+        terminal.notifier = GraphicsNotifier(GraphicsEventLoopSender::for_test(sender, poller));
+        let handle = &mut terminal as *mut KeroTerminal;
+
+        unsafe { kero_alacritty_resize(handle, 80, 5, 2, 3) };
+        assert!(unsafe { kero_alacritty_find_step_async(handle, true, 7) });
+
+        match receiver.recv().unwrap() {
+            GraphicsMsg::Resize(size) => {
+                assert_eq!(size.num_cols, 80);
+                assert_eq!(size.num_lines, 5);
+                assert_eq!(size.cell_width, 2);
+                assert_eq!(size.cell_height, 3);
+            }
+            message => panic!("expected Resize barrier, got {message:?}"),
+        }
+        assert!(matches!(
+            receiver.recv().unwrap(),
+            GraphicsMsg::Find(FindMessage::Step {
+                generation: 7,
+                forward: true,
+            })
+        ));
+    }
+
+    #[test]
+    fn resize_carries_preinvalidated_find_generation_before_barrier() {
+        let mut terminal = test_terminal_with_damage();
+        {
+            let mut term = terminal.term.lock();
+            let mut find_state = terminal.find_state.lock();
+            let result = apply_find_message(
+                &mut term,
+                &mut find_state,
+                FindMessage::Begin {
+                    generation: 71,
+                    needle: "two".to_owned(),
+                },
+            );
+            assert_eq!(result.total, 1);
+            terminal.find_results.publish(
+                result.generation,
+                result.kind,
+                result.total,
+                result.selected,
+            );
+        }
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let poller = Arc::new(Poller::new().expect("test poller should be available"));
+        terminal.notifier = GraphicsNotifier(GraphicsEventLoopSender::for_test(sender, poller));
+        let handle = &mut terminal as *mut KeroTerminal;
+
+        unsafe { kero_alacritty_resize(handle, 80, 5, 2, 3) };
+
+        assert!(matches!(
+            receiver.recv().unwrap(),
+            GraphicsMsg::InvalidateFindWithGeneration(71)
+        ));
+        assert!(matches!(
+            receiver.recv().unwrap(),
+            GraphicsMsg::Resize(WindowSize {
+                num_cols: 80,
+                num_lines: 5,
+                cell_width: 2,
+                cell_height: 3,
+            })
+        ));
+    }
+
+    #[test]
+    fn free_waits_for_event_loop_worker_before_returning() {
+        let mut terminal = test_terminal_with_damage();
+        let (entered_sender, entered_receiver) = std::sync::mpsc::channel();
+        let (release_sender, release_receiver) = std::sync::mpsc::channel();
+        let worker_exited = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let worker_exited_clone = worker_exited.clone();
+
+        terminal.event_loop = Some(std::thread::spawn(move || {
+            entered_sender.send(()).expect("test worker entered");
+            release_receiver.recv().expect("test worker release signal");
+            worker_exited_clone.fetch_add(1, Ordering::SeqCst);
+        }));
+        let handle = Box::into_raw(Box::new(terminal));
+        entered_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("test worker should start");
+
+        let (freed_sender, freed_receiver) = std::sync::mpsc::channel();
+        let handle_bits = handle as usize;
+        let free_thread = std::thread::spawn(move || {
+            unsafe { kero_alacritty_free(handle_bits as *mut KeroTerminal) };
+            freed_sender.send(()).expect("free completion signal");
+        });
+
+        let returned_before_worker_release = freed_receiver
+            .recv_timeout(Duration::from_millis(100))
+            .is_ok();
+        release_sender.send(()).expect("release test worker");
+        freed_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("free should return after the worker exits");
+        free_thread.join().expect("free thread should join");
+
+        assert!(!returned_before_worker_release);
+        assert_eq!(worker_exited.load(Ordering::SeqCst), 1);
+    }
+
+    fn damage_signature<L: EventListener>(term: &mut Term<L>) -> (u32, usize) {
+        match term.damage() {
+            TermDamage::Full => (KERO_DAMAGE_FULL, 0),
+            TermDamage::Partial(iter) => (KERO_DAMAGE_PARTIAL, iter.count()),
+        }
+    }
+
+    #[test]
+    fn frame_metrics_start_empty_and_have_a_stable_shape() {
+        let frame = empty_frame();
+        assert_eq!(frame.kind, KERO_FRAME_SKIP);
+        assert_eq!(frame.busy_count, 0);
+        assert_eq!(frame.packed_rows, 0);
+        assert_eq!(frame.kitty.placements_len, 0);
+    }
+
+    #[test]
+    fn try_snapshot_rejects_null_handle_without_touching_output() {
+        let mut out = empty_snapshot();
+        out.columns = 7;
+        let before = out.columns;
+
+        assert!(!unsafe { kero_alacritty_try_snapshot(std::ptr::null_mut(), &mut out) });
+        assert_eq!(out.columns, before);
+    }
+
+    #[test]
+    fn frame_kitty_snapshot_from_empty_store_is_empty() {
+        let term = parse(b"");
+        let graphics = KittyGraphicsStore::default();
+        let mut placements = Vec::new();
+        let mut images = Vec::new();
+        let mut out = empty_kitty_snapshot();
+
+        fill_kitty_snapshot(&mut placements, &mut images, &graphics, &term, &mut out);
+
+        assert_eq!(out.revision, 0);
+        assert!(out.placements.is_null());
+        assert_eq!(out.placements_len, 0);
+    }
+
+    #[test]
+    fn parser_full_damage_is_not_hidden_by_host_scroll() {
+        assert!(should_repack_all(KERO_FRAME_FULL, true, false, false));
+        assert!(should_repack_all(KERO_FRAME_FULL, false, true, true));
+        // Partial damage before a host scroll invalidates only those row ids;
+        // the remaining cached rows can still be reused.
+        assert!(!should_repack_all(KERO_FRAME_FULL, false, true, false));
+        assert!(should_repack_all(KERO_FRAME_FULL, false, false, false));
+    }
+
+    #[test]
+    fn parser_partial_rows_are_removed_before_host_scroll_reuse() {
+        let mut cache = SnapshotCache::new();
+        for id in 0..5 {
+            cache.rows.insert(id, Vec::new());
+        }
+
+        invalidate_pre_host_rows(&mut cache, 5, 0, 3, &[1]);
+
+        assert!(cache.rows.contains_key(&2));
+        assert!(!cache.rows.contains_key(&3));
+        assert!(cache.rows.contains_key(&4));
+    }
+
+    #[test]
+    fn pending_target_delta_is_saturated_to_scroll_api_range() {
+        assert_eq!(target_scroll_delta(i64::MAX, 0), Some(i32::MAX));
+        assert_eq!(target_scroll_delta(0, i64::MAX as usize), Some(i32::MIN));
+        assert_eq!(target_scroll_delta(-1, 0), None);
     }
 
     struct SnapshotState {
         cells: Vec<KeroCell>,
         cell_text: Vec<u8>,
-        last_display_offset: Option<usize>,
+        cache: SnapshotCache,
         out: KeroSnapshot,
     }
 
@@ -2443,21 +3331,35 @@ mod tests {
             Self {
                 cells: Vec::new(),
                 cell_text: Vec::new(),
-                last_display_offset: None,
+                cache: SnapshotCache::new(),
                 out: empty_snapshot(),
             }
         }
 
-        fn fill(&mut self, term: &Term<VoidListener>, dirty_rows: Option<&[usize]>) {
+        fn fill(&mut self, term: &Term<VoidListener>, dirty_rows: Option<&[usize]>) -> usize {
             fill_snapshot(
                 &mut self.cells,
                 &mut self.cell_text,
-                &mut self.last_display_offset,
+                &mut self.cache,
                 &theme(),
                 term,
                 dirty_rows,
+                false,
                 &mut self.out,
-            );
+            )
+        }
+
+        fn fill_repack(&mut self, term: &Term<VoidListener>) -> usize {
+            fill_snapshot(
+                &mut self.cells,
+                &mut self.cell_text,
+                &mut self.cache,
+                &theme(),
+                term,
+                None,
+                true,
+                &mut self.out,
+            )
         }
 
         fn ch(&self, row: usize, column: usize) -> char {
@@ -2480,6 +3382,196 @@ mod tests {
         assert_eq!(snap.ch(1, 0), ' ');
         assert_eq!(snap.out.cursor_line, 0);
         assert_eq!(snap.out.cursor_column, 2);
+    }
+
+    #[test]
+    fn snapshot_reports_actual_rows_packed() {
+        let term = parse(b"Hi");
+        let mut snap = SnapshotState::new();
+        assert_eq!(snap.fill(&term, None), 3);
+        assert_eq!(snap.fill(&term, Some(&[])), 0);
+    }
+
+    #[test]
+    fn frame_try_lock_reports_busy_without_waiting() {
+        let mutex = FairMutex::new(());
+        let _held = mutex.lock_unfair();
+        assert!(try_frame_lock(&mutex).is_none());
+    }
+
+    #[test]
+    fn frame_try_lock_pair_fails_when_either_frame_lock_is_held() {
+        let graphics = FairMutex::new(());
+        let term = FairMutex::new(());
+        let handoff = FrameHandoff::new();
+
+        let held_graphics = graphics.lock_unfair();
+        assert!(try_frame_locks(&handoff, &graphics, &term).is_none());
+        drop(held_graphics);
+
+        let held_term = term.lock_unfair();
+        assert!(try_frame_locks(&handoff, &graphics, &term).is_none());
+        drop(held_term);
+
+        assert!(try_frame_locks(&handoff, &graphics, &term).is_some());
+    }
+
+    #[test]
+    fn ui_try_lock_reports_busy_without_waiting() {
+        let mutex = FairMutex::new(());
+        let _held = mutex.lock_unfair();
+
+        assert!(try_ui_lock(&mutex).is_none());
+    }
+
+    #[test]
+    fn ui_ffi_null_handles_return_false_or_zero() {
+        let null = std::ptr::null_mut();
+        assert!(!unsafe { kero_alacritty_selection_start(null, 0, 0, 0, false) });
+        assert!(!unsafe { kero_alacritty_selection_update(null, 0, 0, false) });
+        assert!(!unsafe { kero_alacritty_select_all(null) });
+        assert!(!unsafe { kero_alacritty_clear_selection(null) });
+        assert_eq!(
+            unsafe { kero_alacritty_selection_state(null) },
+            KERO_SELECTION_BUSY
+        );
+        unsafe { kero_alacritty_clear_selection_async(null) };
+        assert_eq!(
+            unsafe {
+                kero_alacritty_url_at(
+                    null,
+                    0,
+                    0,
+                    std::ptr::null_mut::<KeroURLRange>(),
+                    std::ptr::null_mut::<u8>(),
+                    0,
+                )
+            },
+            0
+        );
+    }
+
+    #[test]
+    fn async_find_api_rejects_null_without_touching_result() {
+        let null = std::ptr::null_mut();
+        let mut result = KeroFindResult {
+            generation: 99,
+            kind: KERO_FIND_RESULT_STEP,
+            total: 7,
+            selected: 3,
+        };
+
+        assert!(!unsafe { kero_alacritty_find_poll(null, &mut result) });
+        assert_eq!(result.generation, 99);
+        assert!(!unsafe { kero_alacritty_find_begin_async(null, std::ptr::null(), 1) });
+        assert!(!unsafe { kero_alacritty_find_step_async(null, true, 2) });
+        assert!(!unsafe { kero_alacritty_find_end_async(null, 3) });
+    }
+
+    #[test]
+    fn selection_reads_and_select_all_report_busy_without_waiting() {
+        let mut terminal = test_terminal_with_damage();
+        let handle = &mut terminal as *mut KeroTerminal;
+        let term_mutex = Arc::clone(&terminal.term);
+        let held_term = term_mutex.lock_unfair();
+
+        assert_eq!(
+            unsafe { kero_alacritty_selection_state(handle) },
+            KERO_SELECTION_BUSY
+        );
+        assert!(!unsafe { kero_alacritty_has_selection(handle) });
+        let mut buffer = [0xA5; 4];
+        assert_eq!(
+            unsafe { kero_alacritty_selection_text(handle, buffer.as_mut_ptr(), buffer.len()) },
+            0
+        );
+        assert_eq!(buffer, [0xA5; 4]);
+        assert!(!unsafe { kero_alacritty_select_all(handle) });
+
+        drop(held_term);
+        assert_eq!(
+            unsafe { kero_alacritty_selection_state(handle) },
+            KERO_SELECTION_EMPTY
+        );
+        assert!(unsafe { kero_alacritty_select_all(handle) });
+        assert_eq!(
+            unsafe { kero_alacritty_selection_state(handle) },
+            KERO_SELECTION_PRESENT
+        );
+    }
+
+    #[test]
+    fn begin_frame_busy_preserves_handle_state_for_both_locks() {
+        let mut terminal = test_terminal_with_damage();
+        add_test_kitty_placement(&terminal);
+        let handle = &mut terminal as *mut KeroTerminal;
+        let mut frame = empty_frame();
+        unsafe {
+            kero_alacritty_begin_frame(handle, 0, -1, true, false, &mut frame);
+        }
+        assert_ne!(frame.kind, KERO_FRAME_BUSY);
+        assert!(!frame.snapshot.cells.is_null());
+        assert!(frame.snapshot.columns > 0);
+        assert!(frame.snapshot.rows > 0);
+        assert!(!frame.snapshot.row_ids.is_null());
+        assert!(frame.kitty.placements_len > 0);
+        assert!(!frame.kitty.placements.is_null());
+        let before_snapshot = snapshot_fields(&frame.snapshot);
+        let before_kitty = kitty_fields(&frame.kitty);
+
+        {
+            let term_mutex = Arc::clone(&terminal.term);
+            let mut term = term_mutex.lock_unfair();
+            let mut parser: Processor = Processor::new();
+            parser.advance(&mut *term, b"\x1b[2;1HY");
+        }
+        let (before_offset, before_damage) = {
+            let term_mutex = Arc::clone(&terminal.term);
+            let mut term = term_mutex.lock_unfair();
+            (term.grid().display_offset(), damage_signature(&mut term))
+        };
+
+        let graphics_mutex = Arc::clone(&terminal.kitty_graphics);
+        let held_graphics = graphics_mutex.lock_unfair();
+        unsafe {
+            kero_alacritty_begin_frame(handle, 1, -1, false, false, &mut frame);
+        }
+        assert_eq!(frame.kind, KERO_FRAME_BUSY);
+        assert_eq!(snapshot_fields(&frame.snapshot), before_snapshot);
+        assert_eq!(kitty_fields(&frame.kitty), before_kitty);
+        drop(held_graphics);
+
+        {
+            let term_mutex = Arc::clone(&terminal.term);
+            let mut term = term_mutex.lock_unfair();
+            assert_eq!(term.grid().display_offset(), before_offset);
+            assert_eq!(damage_signature(&mut term), before_damage);
+        }
+
+        let term_mutex = Arc::clone(&terminal.term);
+        let held_term = term_mutex.lock_unfair();
+        unsafe {
+            kero_alacritty_begin_frame(handle, 1, -1, false, false, &mut frame);
+        }
+        assert_eq!(frame.kind, KERO_FRAME_BUSY);
+        assert_eq!(snapshot_fields(&frame.snapshot), before_snapshot);
+        assert_eq!(kitty_fields(&frame.kitty), before_kitty);
+        drop(held_term);
+
+        {
+            let mut term = term_mutex.lock_unfair();
+            assert_eq!(term.grid().display_offset(), before_offset);
+            assert_eq!(damage_signature(&mut term), before_damage);
+        }
+
+        unsafe {
+            kero_alacritty_begin_frame(handle, 1, -1, false, false, &mut frame);
+        }
+        assert_eq!(frame.kind, KERO_FRAME_FULL);
+        let mut term = term_mutex.lock_unfair();
+        assert_eq!(term.grid().display_offset(), before_offset + 1);
+        term.reset_damage();
+        assert!(!matches!(term.damage(), TermDamage::Full));
     }
 
     #[test]
@@ -2550,36 +3642,227 @@ mod tests {
         assert_eq!(snap.ch(1, 0), 'Y');
         assert_eq!(snap.ch(4, 0), ' ');
     }
+
+    #[test]
+    fn snapshot_arena_reset_refills_rows_with_old_text_offsets() {
+        let mut term = parse("A\u{301}\r\nB\u{302}".as_bytes());
+        let mut snap = SnapshotState::new();
+        snap.fill(&term, None);
+
+        // Force the same arena-bound invalidation used in production, then
+        // report only the second row as dirty. Every existing text offset must
+        // still point into the new arena returned by this call.
+        snap.cell_text.resize(CELL_TEXT_LIMIT + 1, 0);
+        write_vt(&mut term, b"\x1b[2;1HX");
+        snap.fill(&term, Some(&[1]));
+
+        let cell = snap.cells[0];
+        let start = cell.text_offset as usize;
+        let end = start + cell.text_len as usize;
+        assert!(end <= snap.cell_text.len());
+        assert_eq!(&snap.cell_text[start..end], "A\u{301}".as_bytes());
+    }
 }
 
-/// Which viewport rows changed since the last call, resetting the emulator's
-/// damage as it goes.
+/// One locked region per frame: applies pending host scroll, drains the
+/// emulator's damage, and fills the snapshot the host needs to draw.
+///
+/// The lock structure is the point. The PTY parse thread holds the term mutex
+/// in multi-millisecond bursts under heavy output, and the host used to
+/// acquire it three ways per frame — once per scroll event
+/// (`kero_alacritty_scroll` at trackpad rate), once for damage, once for the
+/// snapshot — each an unbounded wait behind the parser. Scroll intent now
+/// accumulates on the host (`pending_scroll` line delta, or
+/// `pending_target` absolute display offset, which wins when both are set)
+/// and everything happens inside this single critical section after one
+/// non-blocking attempt to acquire both frame locks.
 ///
 /// A wakeup only means bytes arrived, not that the grid moved: a heartbeat, a
 /// cursor-position query, or output that overwrites a cell with identical
 /// contents all wake the host for nothing. And when something *has* changed it
 /// is usually one row — a prompt redraw, a cursor blink — so rebuilding every
-/// cell's draw instance is almost all waste.
+/// cell's draw instance adds work without changing the frame.
+///
+/// Verdict: `force_full` (host-side changes the emulator cannot see — resize,
+/// theme, selection, focus) or emulator FULL damage yields FULL and a full
+/// snapshot walk; PARTIAL damage yields DIRTY and refills only those rows;
+/// otherwise `cursor_only` yields CURSOR (cursor fields, cells untouched);
+/// otherwise SKIP and the host drops the frame.
 ///
 /// Rows rather than the full spans: the renderer caches per row and columns
 /// would not let it skip any more work, so carrying them would only widen the
 /// FFI. The row list belongs to the handle and is valid until the next call.
 ///
+fn try_frame_lock<T>(mutex: &FairMutex<T>) -> Option<impl std::ops::DerefMut<Target = T> + '_> {
+    mutex.try_lock_unfair()
+}
+
+fn try_ui_lock<T>(mutex: &FairMutex<T>) -> Option<impl std::ops::DerefMut<Target = T> + '_> {
+    mutex.try_lock_unfair()
+}
+
+fn try_frame_locks<'a, T, U>(
+    handoff: &FrameHandoff,
+    graphics_mutex: &'a FairMutex<T>,
+    term_mutex: &'a FairMutex<U>,
+) -> Option<(
+    impl std::ops::DerefMut<Target = T> + 'a,
+    impl std::ops::DerefMut<Target = U> + 'a,
+)> {
+    let mut turn = handoff.try_reserve_frame_lock()?;
+    let graphics = try_frame_lock(graphics_mutex)?;
+    let term = try_frame_lock(term_mutex)?;
+    // Keep the handoff turn through the whole frame. This prevents a worker
+    // from claiming the turn between the non-blocking lock attempts and the
+    // frame guards' drop, while failed attempts release it via `Drop`.
+    turn.hold_for_frame();
+    Some((graphics, term))
+}
+
+fn target_scroll_delta(target: i64, current: usize) -> Option<i32> {
+    let target = (target >= 0).then_some(target)?;
+    let current = i64::try_from(current).unwrap_or(i64::MAX);
+    let delta = target.saturating_sub(current);
+    Some(delta.clamp(i32::MIN as i64, i32::MAX as i64) as i32)
+}
+
+/// Completes a successful frame handoff after its frame locks leave scope.
+/// BUSY disarms the guard so a retry leaves the worker turn unchanged.
+struct FrameHandoffCompletion {
+    handoff: FrameHandoff,
+    finish_on_drop: bool,
+}
+
+impl FrameHandoffCompletion {
+    fn new(handoff: FrameHandoff) -> Self {
+        Self {
+            handoff,
+            finish_on_drop: true,
+        }
+    }
+
+    fn leave_requested(&mut self) {
+        self.finish_on_drop = false;
+    }
+}
+
+impl Drop for FrameHandoffCompletion {
+    fn drop(&mut self) {
+        if self.finish_on_drop {
+            self.handoff.finish();
+        }
+    }
+}
+
+/// Signals that the host has queued a display frame. The frame path tries both
+/// locks without waiting; the PTY worker continues parsing, and an already
+/// waiting worker keeps the next terminal-lock turn after a frame completes.
+///
 /// # Safety
-/// `handle` must be live and `out` a valid `KeroDamage`.
+/// `handle` must be null or point to a live `KeroTerminal`.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_take_damage(
+pub unsafe extern "C" fn kero_alacritty_request_frame(handle: *mut KeroTerminal) {
+    if let Some(terminal) = handle.as_ref() {
+        terminal.frame_handoff.request();
+    }
+}
+
+/// Cancels a queued frame handoff when the host no longer intends to render.
+///
+/// # Safety
+/// `handle` must be null or point to a live `KeroTerminal`.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_cancel_frame_request(handle: *mut KeroTerminal) {
+    if let Some(terminal) = handle.as_ref() {
+        terminal.frame_handoff.finish();
+    }
+}
+
+/// # Safety
+/// `handle` must be live and `out` a valid `KeroFrame`.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_begin_frame(
     handle: *mut KeroTerminal,
-    out: *mut KeroDamage,
+    pending_scroll: i32,
+    pending_target: i64,
+    force_full: bool,
+    cursor_only: bool,
+    out: *mut KeroFrame,
 ) {
     if handle.is_null() || out.is_null() {
         return;
     }
     let terminal = &mut *handle;
+    terminal.frame_handoff.request();
+    // Declared before the lock guards, so Rust drops the locks first and only
+    // then wakes the PTY worker on every successful return path.
+    let mut handoff_completion = FrameHandoffCompletion::new(terminal.frame_handoff.clone());
+    terminal.dirty_rows.clear();
+    let theme = terminal.theme;
+    let lock_started = Instant::now();
+
+    let Some((graphics, mut term)) = try_frame_locks(
+        &terminal.frame_handoff,
+        &terminal.kitty_graphics,
+        &terminal.term,
+    ) else {
+        handoff_completion.leave_requested();
+        terminal.frame_busy_count = terminal.frame_busy_count.saturating_add(1);
+        (*out).kind = KERO_FRAME_BUSY;
+        (*out).dirty_rows = std::ptr::null();
+        (*out).dirty_rows_len = 0;
+        (*out).busy_count = terminal.frame_busy_count;
+        (*out).lock_wait_ns = lock_started.elapsed().as_nanos() as u64;
+        (*out).snapshot_ns = 0;
+        (*out).build_ns = 0;
+        (*out).packed_rows = 0;
+        return;
+    };
+    let lock_wait_ns = lock_started.elapsed().as_nanos() as u64;
+    let snapshot_started = Instant::now();
+
+    // Read damage before applying host scrolling. Alacritty reports the
+    // scroll itself as FULL, which must not hide a parser FULL from the same
+    // frame. For parser PARTIAL, remember the old viewport row ids; a host
+    // scroll changes their viewport positions, so those cached rows cannot be
+    // reused at their old absolute ids.
+    let screen_lines = term.screen_lines();
+    let pre_host_total_lines = term.total_lines();
+    let pre_host_offset = term.grid().display_offset();
+    let parser_damage_full = match term.damage() {
+        TermDamage::Full => true,
+        TermDamage::Partial(iter) => {
+            for bounds in iter {
+                terminal.dirty_rows.push(bounds.line);
+            }
+            false
+        }
+    };
+
+    // Host scroll first: scroll_display marks FULL damage whenever the offset
+    // moves. `parser_damage_full` above distinguishes that host-only FULL from
+    // a parser FULL that must repack every row.
+    let offset_before = term.grid().display_offset();
+    if let Some(delta) = target_scroll_delta(pending_target, offset_before) {
+        if delta != 0 {
+            term.scroll_display(Scroll::Delta(delta));
+        }
+    } else if pending_scroll != 0 {
+        term.scroll_display(Scroll::Delta(pending_scroll));
+    }
+    let host_scrolled = term.grid().display_offset() != offset_before;
+
+    if host_scrolled && !parser_damage_full {
+        invalidate_pre_host_rows(
+            &mut terminal.snapshot_cache,
+            pre_host_total_lines,
+            pre_host_offset,
+            screen_lines,
+            &terminal.dirty_rows,
+        );
+    }
     terminal.dirty_rows.clear();
 
-    let mut term = terminal.term.lock();
-    let screen_lines = term.screen_lines();
     let mut kind = match term.damage() {
         TermDamage::Full => KERO_DAMAGE_FULL,
         TermDamage::Partial(iter) => {
@@ -2595,8 +3878,7 @@ pub unsafe extern "C" fn kero_alacritty_take_damage(
     };
     term.reset_damage();
     let selection_rows = selection_viewport_row_range(&term);
-    drop(term);
-    let graphics_revision = terminal.kitty_graphics.lock().revision;
+    let graphics_revision = graphics.revision;
     if graphics_revision != terminal.last_kitty_damage_revision {
         terminal.last_kitty_damage_revision = graphics_revision;
         kind = KERO_DAMAGE_FULL;
@@ -2621,11 +3903,95 @@ pub unsafe extern "C" fn kero_alacritty_take_damage(
     }
     terminal.last_selection_rows = selection_rows;
 
-    *out = KeroDamage {
-        kind,
-        rows: terminal.dirty_rows.as_ptr(),
-        rows_len: terminal.dirty_rows.len(),
+    let frame_kind = frame_verdict(force_full, cursor_only, kind);
+    if frame_kind == KERO_FRAME_SKIP {
+        (*out).kind = KERO_FRAME_SKIP;
+        (*out).dirty_rows = terminal.dirty_rows.as_ptr();
+        (*out).dirty_rows_len = terminal.dirty_rows.len();
+        (*out).busy_count = terminal.frame_busy_count;
+        (*out).lock_wait_ns = lock_wait_ns;
+        (*out).snapshot_ns = snapshot_started.elapsed().as_nanos() as u64;
+        (*out).build_ns = 0;
+        (*out).packed_rows = 0;
+        return;
+    }
+    let snapshot_ns = snapshot_started.elapsed().as_nanos() as u64;
+    let request: Option<&[usize]> = match frame_kind {
+        KERO_FRAME_FULL => None,
+        KERO_FRAME_DIRTY => Some(terminal.dirty_rows.as_slice()),
+        _ => Some(&[]),
     };
+
+    // FULL damage the host's own scroll did not cause means every row may
+    // have changed in place (a mode flip repaint), which no id shift covers.
+    // Host-forced frames (theme) get the same treatment.
+    let repack_all = should_repack_all(frame_kind, force_full, host_scrolled, parser_damage_full);
+    let build_started = Instant::now();
+    let packed_rows = fill_snapshot(
+        &mut terminal.cells,
+        &mut terminal.cell_text,
+        &mut terminal.snapshot_cache,
+        &theme,
+        &term,
+        request,
+        repack_all,
+        &mut (*out).snapshot,
+    );
+    fill_kitty_snapshot(
+        &mut terminal.kitty_placements,
+        &mut terminal.kitty_images,
+        &graphics,
+        &term,
+        &mut (*out).kitty,
+    );
+    let build_ns = build_started.elapsed().as_nanos() as u64;
+
+    (*out).kind = frame_kind;
+    (*out).dirty_rows = terminal.dirty_rows.as_ptr();
+    (*out).dirty_rows_len = terminal.dirty_rows.len();
+    (*out).busy_count = terminal.frame_busy_count;
+    (*out).lock_wait_ns = lock_wait_ns;
+    (*out).snapshot_ns = snapshot_ns;
+    (*out).build_ns = build_ns;
+    (*out).packed_rows = packed_rows;
+}
+
+/// The verdict half of `kero_alacritty_begin_frame`: how to refill the
+/// snapshot given the host's flags and the drained emulator damage.
+fn should_repack_all(
+    frame_kind: u32,
+    force_full: bool,
+    host_scrolled: bool,
+    parser_damage_full: bool,
+) -> bool {
+    frame_kind == KERO_FRAME_FULL && (force_full || !host_scrolled || parser_damage_full)
+}
+
+fn invalidate_pre_host_rows(
+    cache: &mut SnapshotCache,
+    total_lines: usize,
+    display_offset: usize,
+    screen_lines: usize,
+    rows: &[usize],
+) {
+    let viewport_first = total_lines.saturating_sub(display_offset + screen_lines);
+    for &row in rows {
+        if row < screen_lines {
+            cache.rows.remove(&(viewport_first + row));
+        }
+    }
+}
+
+fn frame_verdict(force_full: bool, cursor_only: bool, damage: u32) -> u32 {
+    if force_full || damage == KERO_DAMAGE_FULL {
+        KERO_FRAME_FULL
+    } else if damage == KERO_DAMAGE_PARTIAL {
+        KERO_FRAME_DIRTY
+    } else if cursor_only {
+        KERO_FRAME_CURSOR
+    } else {
+        KERO_FRAME_SKIP
+    }
 }
 
 fn selection_viewport_row_range<L: EventListener>(term: &Term<L>) -> Option<(i32, i32)> {
@@ -2779,6 +4145,8 @@ fn write_snapshot_out<L: EventListener>(
     columns: usize,
     screen_lines: usize,
     background: u32,
+    row_ids: &[u64],
+    row_generation: u64,
 ) {
     let cursor = content.cursor;
     let hidden = !term.mode().contains(TermMode::SHOW_CURSOR)
@@ -2813,25 +4181,30 @@ fn write_snapshot_out<L: EventListener>(
         display_offset: content.display_offset,
         total_lines: term.total_lines(),
         screen_lines,
+        row_ids: row_ids.as_ptr(),
+        row_generation,
     };
 }
 
 /// Packs the visible grid into `cells`.
 ///
-/// `None` walks every row. `Some(&[])` is cursor-only: cells stay as they
-/// are. `Some(rows)` refills those viewport rows. An empty buffer, a size
-/// change, or a `display_offset` change still walks every visible row —
-/// cached cells are viewport-relative, so a scroll would otherwise leave
-/// the wrong lines on screen.
+/// `None` means anything may have changed: rows whose absolute line id is
+/// already in the cache are copied and only the rest are walked — a scroll
+/// reveals a couple of new rows, not a new viewport. `Some(&[])` is
+/// cursor-only: cells stay as they are. `Some(rows)` refills those viewport
+/// rows. An empty buffer or a size change still walks every visible row.
+/// `repack_all` forces that walk too, for full damage the host did not cause
+/// by scrolling (a mode flip repaints every row in place).
 fn fill_snapshot<L: EventListener>(
     cells: &mut Vec<KeroCell>,
     cell_text: &mut Vec<u8>,
-    last_display_offset: &mut Option<usize>,
+    cache: &mut SnapshotCache,
     theme: &KeroTheme,
     term: &Term<L>,
     dirty_rows: Option<&[usize]>,
+    repack_all: bool,
     out: &mut KeroSnapshot,
-) {
+) -> usize {
     let columns = term.columns();
     let screen_lines = term.screen_lines();
     let background = term.colors()[NamedColor::Background as usize]
@@ -2839,13 +4212,28 @@ fn fill_snapshot<L: EventListener>(
         .unwrap_or(theme.background);
     let content = term.renderable_content();
     let display_offset = content.display_offset;
-    let fill_all = dirty_rows.is_none()
-        || cells.is_empty()
-        || cells.len() != columns * screen_lines
-        || *last_display_offset != Some(display_offset);
+    let total_lines = term.total_lines();
 
-    if fill_all {
+    // First absolute line index visible in the viewport.
+    let viewport_first = total_lines.saturating_sub(display_offset + screen_lines);
+
+    let geometry_changed = cells.len() != columns * screen_lines || cache.columns != columns;
+    let selection = content.selection.map(|range| (range.start, range.end));
+    let cache_reset = total_lines < cache.last_total_lines
+        || selection != cache.selection
+        || geometry_changed
+        || repack_all
+        || cell_text.len() > CELL_TEXT_LIMIT;
+    if cache_reset {
+        cache.generation = cache.generation.wrapping_add(1);
+        cache.rows.clear();
         cell_text.clear();
+    }
+    cache.columns = columns;
+    cache.last_total_lines = total_lines;
+    cache.selection = selection;
+
+    if geometry_changed {
         cells.clear();
         cells.resize(
             columns * screen_lines,
@@ -2858,36 +4246,104 @@ fn fill_snapshot<L: EventListener>(
                 flags: 0,
             },
         );
-        refill_viewport_rows(
-            cells,
-            cell_text,
-            term,
-            theme,
-            content.selection,
-            content.colors,
-            display_offset,
-            columns,
-            screen_lines,
-            0..screen_lines,
-        );
-    } else if let Some(rows) = dirty_rows.filter(|rows| !rows.is_empty()) {
-        // Combining text for dirty rows is appended. Offsets on other rows
-        // stay valid; orphans are dropped on the next full refill.
-        refill_viewport_rows(
-            cells,
-            cell_text,
-            term,
-            theme,
-            content.selection,
-            content.colors,
-            display_offset,
-            columns,
-            screen_lines,
-            rows.iter().copied(),
-        );
     }
 
-    *last_display_offset = Some(display_offset);
+    cache.row_ids.clear();
+    cache
+        .row_ids
+        .extend((0..screen_lines).map(|row| (viewport_first + row) as u64));
+
+    // Cursor-only and partial requests are only valid while the window
+    // stands still at the same size: a geometry change or a moved window
+    // upgrades them, so unnamed rows never keep pre-move content.
+    let window_moved = cache.last_viewport_first != viewport_first;
+    let request: Option<&[usize]> = if cache_reset
+        || geometry_changed
+        || (window_moved && dirty_rows.is_some_and(|rows| rows.is_empty()))
+    {
+        None
+    } else {
+        dirty_rows
+    };
+    let mut packed_rows = 0;
+    match request {
+        Some(rows) if !rows.is_empty() => {
+            // Combining text for dirty rows is appended. Offsets on other
+            // rows stay valid; orphans are dropped on the next full walk.
+            refill_viewport_rows(
+                cells,
+                cell_text,
+                term,
+                theme,
+                content.selection,
+                content.colors,
+                display_offset,
+                columns,
+                screen_lines,
+                rows.iter().copied(),
+            );
+            packed_rows = rows.iter().filter(|&&row| row < screen_lines).count();
+            for &row in rows {
+                if row < screen_lines {
+                    let start = row * columns;
+                    cache
+                        .rows
+                        .insert(viewport_first + row, cells[start..start + columns].to_vec());
+                }
+            }
+        }
+        // Cursor-only: cells stay as they are.
+        Some(_) => {}
+        None => {
+            // Pack what the cache is missing, then copy the hits in.
+            let mut misses: Vec<usize> = Vec::new();
+            for row in 0..screen_lines {
+                if !cache.rows.contains_key(&(viewport_first + row)) {
+                    misses.push(row);
+                }
+            }
+            if !misses.is_empty() {
+                refill_viewport_rows(
+                    cells,
+                    cell_text,
+                    term,
+                    theme,
+                    content.selection,
+                    content.colors,
+                    display_offset,
+                    columns,
+                    screen_lines,
+                    misses.iter().copied(),
+                );
+                packed_rows = misses.len();
+                for &row in &misses {
+                    let start = row * columns;
+                    cache
+                        .rows
+                        .insert(viewport_first + row, cells[start..start + columns].to_vec());
+                }
+            }
+            for row in 0..screen_lines {
+                if misses.contains(&row) {
+                    continue;
+                }
+                if let Some(cached) = cache.rows.get(&(viewport_first + row)) {
+                    let start = row * columns;
+                    cells[start..start + columns].copy_from_slice(cached);
+                }
+            }
+        }
+    }
+
+    // Bound the map to rows near the viewport so a long scroll through
+    // history cannot grow it without limit.
+    if cache.rows.len() > 4 * screen_lines {
+        let keep_from = viewport_first.saturating_sub(screen_lines);
+        let keep_to = viewport_first + 2 * screen_lines;
+        cache.rows.retain(|&id, _| id >= keep_from && id <= keep_to);
+    }
+    cache.last_viewport_first = viewport_first;
+
     write_snapshot_out(
         out,
         cells,
@@ -2898,13 +4354,19 @@ fn fill_snapshot<L: EventListener>(
         columns,
         screen_lines,
         background,
+        &cache.row_ids,
+        cache.generation,
     );
+    packed_rows
 }
 
 /// Fills `out` with the visible grid.
 ///
 /// Always a full refill. The cell array belongs to the handle and stays
 /// valid only until the next call on it, which keeps a redraw from allocating.
+/// The render loop should use `kero_alacritty_begin_frame`, which folds this
+/// into its single locked region; this stands for out-of-loop readers
+/// (scrollbar geometry, link hit-testing, automation reads).
 ///
 /// # Safety
 /// `handle` must be live and `out` must be a valid `KeroSnapshot`.
@@ -2913,81 +4375,79 @@ pub unsafe extern "C" fn kero_alacritty_snapshot(
     handle: *mut KeroTerminal,
     out: *mut KeroSnapshot,
 ) {
-    kero_alacritty_snapshot_rows(handle, out, std::ptr::null(), 0);
-}
-
-/// Like `kero_alacritty_snapshot`, but only walks the named viewport rows.
-///
-/// `dirty_rows` NULL: full refill. A non-NULL pointer with `dirty_rows_len`
-/// 0: cursor fields only; cells are left as they are. Non-empty: refill
-/// those rows. Resize, an empty cell buffer, or a display_offset change
-/// still refill the whole grid.
-///
-/// # Safety
-/// `handle` must be live, `out` a valid `KeroSnapshot`, and `dirty_rows`
-/// valid for `dirty_rows_len` entries when non-NULL.
-#[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_snapshot_rows(
-    handle: *mut KeroTerminal,
-    out: *mut KeroSnapshot,
-    dirty_rows: *const usize,
-    dirty_rows_len: usize,
-) {
     if handle.is_null() || out.is_null() {
         return;
     }
     let terminal = &mut *handle;
-    let request = if dirty_rows.is_null() {
-        None
-    } else {
-        Some(std::slice::from_raw_parts(dirty_rows, dirty_rows_len))
-    };
     let theme = terminal.theme;
     let term = terminal.term.lock();
+    // Always a full walk. Unlike begin_frame, this caller has not drained
+    // the emulator's damage, so it cannot know which rows changed since its
+    // last call — cache reuse would serve rows from before the change.
     fill_snapshot(
         &mut terminal.cells,
         &mut terminal.cell_text,
-        &mut terminal.last_display_offset,
+        &mut terminal.snapshot_cache,
         &theme,
         &term,
-        request,
+        None,
+        true,
         &mut *out,
     );
 }
 
-/// Fills `out` with visible Kitty image placements. Pixel pointers belong to the
-/// handle and remain valid until its next FFI call.
+/// Attempts to fill `out` with the visible grid without waiting for the PTY
+/// parser. Returns false when the terminal is busy; in that case `out` is
+/// unchanged.
 ///
 /// # Safety
-/// `handle` must be live and `out` must be a valid `KeroKittySnapshot`.
+/// `handle` must be live and `out` must be a valid `KeroSnapshot`.
 #[no_mangle]
-pub unsafe extern "C" fn kero_alacritty_kitty_snapshot(
+pub unsafe extern "C" fn kero_alacritty_try_snapshot(
     handle: *mut KeroTerminal,
-    out: *mut KeroKittySnapshot,
-) {
+    out: *mut KeroSnapshot,
+) -> bool {
     if handle.is_null() || out.is_null() {
-        return;
+        return false;
     }
     let terminal = &mut *handle;
-    let (history_size, display_offset, rows, columns, screen) = {
-        let term = terminal.term.lock();
-        (
-            term.grid().history_size(),
-            term.grid().display_offset(),
-            term.grid().screen_lines(),
-            term.grid().columns(),
-            KittyGraphicsScreen::from_alternate_screen(term.mode().contains(TermMode::ALT_SCREEN)),
-        )
+    let Some(term) = try_ui_lock(&terminal.term) else {
+        return false;
     };
-    let (revision, mut placements) = {
-        let graphics = terminal.kitty_graphics.lock();
-        (
-            graphics.revision,
-            graphics
-                .state
-                .render_placements(history_size, display_offset, rows, columns, screen),
-        )
-    };
+    let theme = terminal.theme;
+    fill_snapshot(
+        &mut terminal.cells,
+        &mut terminal.cell_text,
+        &mut terminal.snapshot_cache,
+        &theme,
+        &term,
+        None,
+        true,
+        &mut *out,
+    );
+    true
+}
+
+// Builds the Kitty output while the caller holds the terminal and graphics
+// locks. Pixel pointers remain valid while the output vectors are retained.
+fn fill_kitty_snapshot<L: EventListener>(
+    placements_out: &mut Vec<KeroKittyPlacement>,
+    images_out: &mut Vec<Arc<[u8]>>,
+    graphics: &KittyGraphicsStore,
+    term: &Term<L>,
+    out: &mut KeroKittySnapshot,
+) {
+    let history_size = term.grid().history_size();
+    let display_offset = term.grid().display_offset();
+    let rows = term.grid().screen_lines();
+    let columns = term.grid().columns();
+    let screen =
+        KittyGraphicsScreen::from_alternate_screen(term.mode().contains(TermMode::ALT_SCREEN));
+    let revision = graphics.revision;
+    let mut placements =
+        graphics
+            .state
+            .render_placements(history_size, display_offset, rows, columns, screen);
     placements.sort_by(|left, right| {
         left.z_index
             .cmp(&right.z_index)
@@ -2996,17 +4456,16 @@ pub unsafe extern "C" fn kero_alacritty_kitty_snapshot(
             .then(left.placement_serial.cmp(&right.placement_serial))
     });
 
-    terminal.kitty_placements.clear();
-    terminal.kitty_images.clear();
-    terminal.kitty_placements.reserve(placements.len());
-    terminal.kitty_images.reserve(placements.len());
+    placements_out.clear();
+    images_out.clear();
+    placements_out.reserve(placements.len());
+    images_out.reserve(placements.len());
     for placement in placements {
-        terminal.kitty_images.push(placement.rgba);
-        let pixels = terminal
-            .kitty_images
+        images_out.push(placement.rgba);
+        let pixels = images_out
             .last()
             .expect("image was retained for the placement");
-        terminal.kitty_placements.push(KeroKittyPlacement {
+        placements_out.push(KeroKittyPlacement {
             placement_serial: placement.placement_serial,
             image_id: placement.image_id,
             placement_id: placement.placement_id,
@@ -3033,13 +4492,42 @@ pub unsafe extern "C" fn kero_alacritty_kitty_snapshot(
 
     *out = KeroKittySnapshot {
         revision,
-        placements: terminal.kitty_placements.as_ptr(),
-        placements_len: terminal.kitty_placements.len(),
+        placements: if placements_out.is_empty() {
+            std::ptr::null()
+        } else {
+            placements_out.as_ptr()
+        },
+        placements_len: placements_out.len(),
     };
 }
 
-/// Whether the terminal is in an application/alt-screen mode where arrow keys
-/// and the keypad take their application forms.
+/// Fills `out` with visible Kitty image placements. Pixel pointers belong to the
+/// handle and remain valid until its next FFI call.
+///
+/// # Safety
+/// `handle` must be live and `out` must be a valid `KeroKittySnapshot`.
+#[no_mangle]
+pub unsafe extern "C" fn kero_alacritty_kitty_snapshot(
+    handle: *mut KeroTerminal,
+    out: *mut KeroKittySnapshot,
+) {
+    if handle.is_null() || out.is_null() {
+        return;
+    }
+    let terminal = &mut *handle;
+    let term = terminal.term.lock();
+    let graphics = terminal.kitty_graphics.lock();
+    fill_kitty_snapshot(
+        &mut terminal.kitty_placements,
+        &mut terminal.kitty_images,
+        &graphics,
+        &term,
+        &mut *out,
+    );
+}
+
+/// Returns the last mode snapshot published by the parser after a terminal
+/// batch. This input-path getter does not wait for the terminal mutex.
 ///
 /// # Safety
 /// `handle` must be live.
@@ -3048,43 +4536,7 @@ pub unsafe extern "C" fn kero_alacritty_mode(handle: *mut KeroTerminal) -> u32 {
     if handle.is_null() {
         return 0;
     }
-    let term = (*handle).term.lock();
-    let mode = term.mode();
-    let mut result = 0u32;
-    if mode.contains(TermMode::APP_CURSOR) {
-        result |= 1 << 0;
-    }
-    if mode.contains(TermMode::APP_KEYPAD) {
-        result |= 1 << 1;
-    }
-    if mode.contains(TermMode::ALT_SCREEN) {
-        result |= 1 << 2;
-    }
-    if mode.contains(TermMode::BRACKETED_PASTE) {
-        result |= 1 << 3;
-    }
-    if mode.intersects(TermMode::MOUSE_MODE) {
-        result |= 1 << 4;
-    }
-    if mode.contains(TermMode::FOCUS_IN_OUT) {
-        result |= 1 << 5;
-    }
-    if mode.contains(TermMode::MOUSE_REPORT_CLICK) {
-        result |= 1 << 6;
-    }
-    if mode.contains(TermMode::MOUSE_DRAG) {
-        result |= 1 << 7;
-    }
-    if mode.contains(TermMode::MOUSE_MOTION) {
-        result |= 1 << 8;
-    }
-    if mode.contains(TermMode::SGR_MOUSE) {
-        result |= 1 << 9;
-    }
-    if mode.contains(TermMode::ALTERNATE_SCROLL) {
-        result |= 1 << 10;
-    }
-    result
+    (*handle).mode_snapshot.load()
 }
 
 /// Marks the shell as gone so teardown does not wait on a stopped loop.

@@ -15,7 +15,7 @@ struct TerminalFindBar: View {
 
     @FocusState private var fieldFocused: Bool
 
-    private var hasMatches: Bool { (find.total ?? 0) > 0 }
+    private var hasMatches: Bool { !find.isRefreshing && (find.total ?? 0) > 0 }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -98,10 +98,14 @@ struct TerminalFindBar: View {
         .help(forward ? "Next match" : "Previous match")
     }
 
-    /// Blank while a count for the current needle is still pending, so a tally
-    /// belonging to the previous term is never shown.
+    /// A new needle starts blank. While output refreshes the current needle,
+    /// retain its last completed tally and mark it pending instead of making
+    /// the count appear to disappear.
     private var counterText: String {
         guard !find.query.isEmpty, let total = find.total else { return "" }
+        if find.isRefreshing {
+            return total > 0 ? "\(total) …" : "0/0 …"
+        }
         guard total > 0 else { return "0/0" }
         guard let selected = find.selected else { return "\(total)" }
         return "\(min(selected + 1, total))/\(total)"

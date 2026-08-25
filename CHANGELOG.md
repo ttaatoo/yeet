@@ -15,6 +15,10 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Agent and project status is clearer: starting agents use a short arc, finished or interrupted Grok turns stop the spinner, project metadata stays aligned, and split-pane status bars remain inside the focus ring.
+- Terminal selection uses the theme selection color and clears on a click or keystroke, including when a mouse-aware TUI such as Grok is active.
+- Terminal panes stay responsive during heavy output: typing reaches terminal programs promptly, and Find keeps its query and last count while output refreshes results.
+
 ## [0.1.53]
 
 - Yeet Dark and Yeet Light are the default themes. Dark chrome is a warm near-black frame with an orange selection mark and a mint cursor; light chrome uses warm paper. Older `Default Dark` / `Default Light` names in `config.toml` still load these built-ins.

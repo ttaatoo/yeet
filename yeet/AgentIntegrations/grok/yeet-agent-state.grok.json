@@ -22,6 +22,17 @@
         ]
       }
     ],
+    "StopCancelled": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$YEET_AUTOMATION\" = \"1\" ] || exit 0; command -v yeet >/dev/null 2>&1 || exit 0; exec yeet +agent _integration grok idle --turn-ended # YEET_INTEGRATION_ID=grok",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
     "StopFailure": [
       {
         "hooks": [
@@ -40,6 +51,16 @@
           {
             "type": "command",
             "command": "[ \"$YEET_AUTOMATION\" = \"1\" ] || exit 0; command -v yeet >/dev/null 2>&1 || exit 0; exec yeet +agent _integration grok blocked # YEET_INTEGRATION_ID=grok",
+            "timeout": 2
+          }
+        ]
+      },
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$YEET_AUTOMATION\" = \"1\" ] || exit 0; command -v yeet >/dev/null 2>&1 || exit 0; exec yeet +agent _integration grok idle --turn-ended # YEET_INTEGRATION_ID=grok",
             "timeout": 2
           }
         ]

@@ -32,6 +32,18 @@ pub(crate) struct KittyGraphicsCommand {
     oversized: bool,
 }
 
+/// The small part of a Kitty command needed to format a response. Keeping
+/// payload out of this value is important on malformed commands: a rejected
+/// 256 MiB payload must not be cloned just to inspect `q`, `i`, or `p`.
+#[derive(Clone, Debug)]
+pub(crate) struct KittyGraphicsResponseCommand {
+    control: Vec<(char, String)>,
+}
+
+pub(crate) trait ResponseControls {
+    fn response_u32_value(&self, key: char) -> Option<u32>;
+}
+
 impl KittyGraphicsCommand {
     fn parse(bytes: Vec<u8>, oversized: bool) -> Self {
         let separator = bytes.iter().position(|byte| *byte == b';');
@@ -75,6 +87,60 @@ impl KittyGraphicsCommand {
     fn i32_value(&self, key: char) -> Option<i32> {
         self.value(key)?.parse().ok()
     }
+
+    pub(crate) fn needs_payload_decode(&self) -> bool {
+        matches!(self.char_value('a').unwrap_or('t'), 't' | 'T' | 'q')
+    }
+
+    pub(crate) fn response_metadata(&self) -> KittyGraphicsResponseCommand {
+        KittyGraphicsResponseCommand {
+            control: self.control.clone(),
+        }
+    }
+
+    fn into_response_metadata(self) -> KittyGraphicsResponseCommand {
+        KittyGraphicsResponseCommand {
+            control: self.control,
+        }
+    }
+}
+
+impl ResponseControls for KittyGraphicsCommand {
+    fn response_u32_value(&self, key: char) -> Option<u32> {
+        self.u32_value(key)
+    }
+}
+
+impl ResponseControls for KittyGraphicsResponseCommand {
+    fn response_u32_value(&self, key: char) -> Option<u32> {
+        self.control.iter().rev().find_map(|(candidate, value)| {
+            (*candidate == key).then(|| value.parse().ok()).flatten()
+        })
+    }
+}
+
+fn merge_chunk_command(
+    mut first: KittyGraphicsCommand,
+    tail: KittyGraphicsCommand,
+) -> KittyGraphicsCommand {
+    for (key, value) in tail.control {
+        if key != 'm' {
+            first.control.push((key, value));
+        }
+    }
+    first
+}
+
+fn merge_response_command(
+    mut first: KittyGraphicsResponseCommand,
+    tail: &KittyGraphicsCommand,
+) -> KittyGraphicsResponseCommand {
+    for (key, value) in &tail.control {
+        if *key != 'm' {
+            first.control.push((*key, value.clone()));
+        }
+    }
+    first
 }
 
 #[derive(Clone, Debug)]
@@ -255,17 +321,56 @@ struct Placement {
 #[derive(Clone, Debug)]
 struct PendingUpload {
     command: KittyGraphicsCommand,
-    decoded: Vec<u8>,
+    chunks: Vec<Vec<u8>>,
+    decoded_len: usize,
     context: PlacementContext,
 }
 
 #[derive(Clone, Copy, Debug)]
-struct PlacementContext {
-    cursor_column: usize,
-    cursor_row: usize,
-    history_size: usize,
-    size: KittyGraphicsSize,
-    screen: KittyGraphicsScreen,
+pub(crate) struct PlacementContext {
+    pub(crate) cursor_column: usize,
+    pub(crate) cursor_row: usize,
+    pub(crate) history_size: usize,
+    pub(crate) size: KittyGraphicsSize,
+    pub(crate) screen: KittyGraphicsScreen,
+}
+
+/// A command after the cheap state transition that assembles chunked
+/// uploads. The upload bytes are intentionally kept outside the graphics
+/// mutex until PNG/zlib preparation has completed.
+pub(crate) enum KittyGraphicsStage {
+    Noop,
+    Direct {
+        command: KittyGraphicsCommand,
+        context: PlacementContext,
+    },
+    Upload(PreparedKittyUpload),
+    Failure(KittyGraphicsApplyResult),
+}
+
+pub(crate) struct PreparedKittyUpload {
+    pub(crate) command: KittyGraphicsCommand,
+    chunks: Vec<Vec<u8>>,
+    decoded_len: usize,
+    pub(crate) context: PlacementContext,
+}
+
+pub(crate) struct PreparedKittyImage {
+    pub(crate) command: KittyGraphicsCommand,
+    pub(crate) rgba: Arc<[u8]>,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) context: PlacementContext,
+}
+
+pub(crate) enum KittyGraphicsReady {
+    Noop,
+    Direct {
+        command: KittyGraphicsCommand,
+        context: PlacementContext,
+    },
+    Image(PreparedKittyImage),
+    Failure(KittyGraphicsApplyResult),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -309,7 +414,7 @@ pub(crate) struct KittyGraphicsRenderPlacement {
     pub(crate) z_index: i32,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct KittyGraphicsApplyResult {
     pub(crate) response: Option<Vec<u8>>,
     pub(crate) cursor_advance: Option<(u32, u32)>,
@@ -342,6 +447,184 @@ impl KittyGraphicsStore {
 }
 
 impl KittyGraphicsState {
+    fn take_pending_response(
+        &mut self,
+        tail: KittyGraphicsCommand,
+    ) -> KittyGraphicsResponseCommand {
+        match self.pending.take() {
+            None => tail.into_response_metadata(),
+            Some(pending) => {
+                merge_response_command(pending.command.into_response_metadata(), &tail)
+            }
+        }
+    }
+
+    pub(crate) fn stage(
+        &mut self,
+        command: KittyGraphicsCommand,
+        decoded: Option<Result<Vec<u8>, String>>,
+        context: PlacementContext,
+    ) -> KittyGraphicsStage {
+        if command.oversized {
+            let response_command = self.take_pending_response(command);
+            return KittyGraphicsStage::Failure(self.failure(
+                &response_command,
+                "EFBIG:image command exceeds storage limit",
+            ));
+        }
+
+        let action = command.char_value('a').unwrap_or('t');
+        if action == 'd' {
+            // A delete terminates an in-flight upload. Otherwise a later
+            // payload tail could attach to the deleted command.
+            self.pending = None;
+            return KittyGraphicsStage::Direct { command, context };
+        }
+        if action == 'p' {
+            return KittyGraphicsStage::Direct { command, context };
+        }
+        if !matches!(action, 't' | 'T' | 'q') {
+            return KittyGraphicsStage::Failure(
+                self.failure(&command, "EINVAL:unsupported graphics action"),
+            );
+        }
+
+        let decoded = match decoded {
+            Some(Ok(decoded)) => decoded,
+            Some(Err(error)) => {
+                let response_command = self.take_pending_response(command);
+                return KittyGraphicsStage::Failure(self.failure(&response_command, &error));
+            }
+            None => {
+                return KittyGraphicsStage::Failure(
+                    self.failure(&command, "EINVAL:missing image payload"),
+                )
+            }
+        };
+
+        if decoded.len() > MAX_IMAGE_BYTES {
+            let response_command = self.take_pending_response(command);
+            return KittyGraphicsStage::Failure(self.failure(
+                &response_command,
+                "EFBIG:image payload exceeds storage limit",
+            ));
+        }
+
+        let more = command.u32_value('m').unwrap_or(0) == 1;
+        if let Some(mut pending) = self.pending.take() {
+            let total = pending.decoded_len.saturating_add(decoded.len());
+            if total > MAX_IMAGE_BYTES {
+                let response_command =
+                    merge_response_command(pending.command.into_response_metadata(), &command);
+                return KittyGraphicsStage::Failure(self.failure(
+                    &response_command,
+                    "EFBIG:image payload exceeds storage limit",
+                ));
+            }
+            pending.decoded_len = total;
+            pending.chunks.push(decoded);
+            if more {
+                self.pending = Some(pending);
+                return KittyGraphicsStage::Noop;
+            }
+            let first = merge_chunk_command(pending.command, command);
+            return KittyGraphicsStage::Upload(PreparedKittyUpload {
+                command: first,
+                chunks: pending.chunks,
+                decoded_len: pending.decoded_len,
+                context,
+            });
+        }
+
+        if more {
+            let decoded_len = decoded.len();
+            self.pending = Some(PendingUpload {
+                command,
+                chunks: vec![decoded],
+                decoded_len,
+                context,
+            });
+            return KittyGraphicsStage::Noop;
+        }
+
+        let decoded_len = decoded.len();
+        KittyGraphicsStage::Upload(PreparedKittyUpload {
+            command,
+            chunks: vec![decoded],
+            decoded_len,
+            context,
+        })
+    }
+
+    pub(crate) fn commit_direct(
+        &mut self,
+        command: KittyGraphicsCommand,
+        context: PlacementContext,
+    ) -> KittyGraphicsApplyResult {
+        match command.char_value('a').unwrap_or('t') {
+            'd' => self.delete(
+                &command,
+                context.cursor_column,
+                context.cursor_row,
+                context.history_size,
+                context.screen,
+            ),
+            'p' => self.put(command, context),
+            _ => self.failure(&command, "EINVAL:unsupported graphics action"),
+        }
+    }
+
+    pub(crate) fn commit_prepared(
+        &mut self,
+        prepared: PreparedKittyImage,
+    ) -> KittyGraphicsApplyResult {
+        let command = prepared.command;
+        if command.char_value('a').unwrap_or('t') == 'q' {
+            return self.success(&command, false, None, prepared.context.screen);
+        }
+
+        let requested_id = command.u32_value('i').unwrap_or(0);
+        let image_id = if requested_id == 0 {
+            self.allocate_anonymous_id()
+        } else {
+            requested_id
+        };
+        self.remove_image(image_id);
+        let byte_len = prepared.rgba.len();
+        self.next_generation = self.next_generation.wrapping_add(1).max(1);
+        self.images.insert(
+            image_id,
+            StoredImage {
+                rgba: prepared.rgba.clone(),
+                width: prepared.width,
+                height: prepared.height,
+                byte_len,
+                generation: self.next_generation,
+            },
+        );
+        self.insertion_order.push_back(image_id);
+        self.stored_bytes = self.stored_bytes.saturating_add(byte_len);
+        if !self.enforce_quota(Some(image_id)) {
+            self.remove_image(image_id);
+            return self.failure(&command, "ENOSPC:image storage quota exceeded");
+        }
+
+        let display = command.char_value('a').unwrap_or('t') == 'T';
+        let cursor_advance = if display {
+            match self.add_placement(image_id, &command, prepared.context) {
+                Ok(advance) => advance,
+                Err(error) => {
+                    self.remove_image(image_id);
+                    return self.failure(&command, &error);
+                }
+            }
+        } else {
+            None
+        };
+        self.success(&command, true, cursor_advance, prepared.context.screen)
+    }
+
+    #[cfg(test)]
     pub(crate) fn apply(
         &mut self,
         command: KittyGraphicsCommand,
@@ -358,86 +641,20 @@ impl KittyGraphicsState {
             size,
             screen,
         };
-        if command.oversized {
-            let response_command = self
-                .pending
-                .take()
-                .map_or_else(|| command.clone(), |pending| pending.command);
-            return self.failure(
-                &response_command,
-                "EFBIG:image command exceeds storage limit",
-            );
-        }
-
         let action = command.char_value('a').unwrap_or('t');
-        if action == 'd' {
-            return self.delete(
-                &command,
-                context.cursor_column,
-                context.cursor_row,
-                context.history_size,
-                context.screen,
-            );
-        }
-        if action == 'p' {
-            return self.put(command, context);
-        }
-        if !matches!(action, 't' | 'T' | 'q') {
-            return self.failure(&command, "EINVAL:unsupported graphics action");
-        }
-
-        let decoded = match BASE64.decode(&command.payload) {
-            Ok(decoded) if decoded.len() <= MAX_IMAGE_BYTES => decoded,
-            Ok(_) => {
-                let response_command = self
-                    .pending
-                    .take()
-                    .map_or_else(|| command.clone(), |pending| pending.command);
-                return self.failure(
-                    &response_command,
-                    "EFBIG:image payload exceeds storage limit",
-                );
-            }
-            Err(_) => {
-                let response_command = self
-                    .pending
-                    .take()
-                    .map_or_else(|| command.clone(), |pending| pending.command);
-                return self.failure(&response_command, "EINVAL:invalid base64 payload");
-            }
-        };
-
-        let more = command.u32_value('m').unwrap_or(0) == 1;
-        if let Some(mut pending) = self.pending.take() {
-            if pending.decoded.len().saturating_add(decoded.len()) > MAX_IMAGE_BYTES {
-                return self.failure(
-                    &pending.command,
-                    "EFBIG:image payload exceeds storage limit",
-                );
-            }
-            pending.decoded.extend_from_slice(&decoded);
-            if more {
-                self.pending = Some(pending);
-                return KittyGraphicsApplyResult::default();
-            }
-            let mut first = pending.command;
-            for (key, value) in command.control {
-                if key != 'm' {
-                    first.control.push((key, value));
+        let decoded = matches!(action, 't' | 'T' | 'q').then(|| decode_payload(&command));
+        match self.stage(command, decoded, context) {
+            KittyGraphicsStage::Noop => KittyGraphicsApplyResult::default(),
+            KittyGraphicsStage::Failure(result) => result,
+            KittyGraphicsStage::Direct { command, context } => self.commit_direct(command, context),
+            KittyGraphicsStage::Upload(upload) => {
+                let command_for_error = upload.command.response_metadata();
+                match prepare_upload(upload) {
+                    Ok(prepared) => self.commit_prepared(prepared),
+                    Err(error) => self.failure(&command_for_error, &error),
                 }
             }
-            return self.finish_upload(first, pending.decoded, pending.context);
         }
-
-        if more {
-            self.pending = Some(PendingUpload {
-                command,
-                decoded,
-                context,
-            });
-            return KittyGraphicsApplyResult::default();
-        }
-        self.finish_upload(command, decoded, context)
     }
 
     pub(crate) fn render_placements(
@@ -590,74 +807,6 @@ impl KittyGraphicsState {
             changed = true;
         }
         changed
-    }
-
-    fn finish_upload(
-        &mut self,
-        command: KittyGraphicsCommand,
-        decoded: Vec<u8>,
-        context: PlacementContext,
-    ) -> KittyGraphicsApplyResult {
-        let data = match self.resolve_transmission_data(&command, decoded) {
-            Ok(data) => data,
-            Err(error) => return self.failure(&command, &error),
-        };
-        let data = match command.char_value('o') {
-            None => data,
-            Some('z') => match decompress_zlib(&data) {
-                Ok(data) => data,
-                Err(error) => return self.failure(&command, &error),
-            },
-            Some(_) => return self.failure(&command, "EINVAL:unsupported compression"),
-        };
-        let (rgba, width, height) = match normalize_image(&command, &data) {
-            Ok(image) => image,
-            Err(error) => return self.failure(&command, &error),
-        };
-
-        if command.char_value('a').unwrap_or('t') == 'q' {
-            return self.success(&command, false, None, context.screen);
-        }
-
-        let requested_id = command.u32_value('i').unwrap_or(0);
-        let image_id = if requested_id == 0 {
-            self.allocate_anonymous_id()
-        } else {
-            requested_id
-        };
-        self.remove_image(image_id);
-        let byte_len = rgba.len();
-        self.next_generation = self.next_generation.wrapping_add(1).max(1);
-        self.images.insert(
-            image_id,
-            StoredImage {
-                rgba: Arc::from(rgba),
-                width,
-                height,
-                byte_len,
-                generation: self.next_generation,
-            },
-        );
-        self.insertion_order.push_back(image_id);
-        self.stored_bytes = self.stored_bytes.saturating_add(byte_len);
-        if !self.enforce_quota(Some(image_id)) {
-            self.remove_image(image_id);
-            return self.failure(&command, "ENOSPC:image storage quota exceeded");
-        }
-
-        let display = command.char_value('a').unwrap_or('t') == 'T';
-        let cursor_advance = if display {
-            match self.add_placement(image_id, &command, context) {
-                Ok(advance) => advance,
-                Err(error) => {
-                    self.remove_image(image_id);
-                    return self.failure(&command, &error);
-                }
-            }
-        } else {
-            None
-        };
-        self.success(&command, true, cursor_advance, context.screen)
     }
 
     fn put(
@@ -861,21 +1010,6 @@ impl KittyGraphicsState {
         self.success(command, before != self.placements.len(), None, screen)
     }
 
-    fn resolve_transmission_data(
-        &self,
-        command: &KittyGraphicsCommand,
-        decoded: Vec<u8>,
-    ) -> Result<Vec<u8>, String> {
-        match command.char_value('t').unwrap_or('d') {
-            'd' => Ok(decoded),
-            // Paths arrive from the PTY guest. Opening them would let the
-            // terminal process read (and for `t`, delete) arbitrary host files.
-            'f' | 't' => Err("ENOTSUP:file transmission is not supported".into()),
-            's' => Err("ENOTSUP:shared-memory transmission is not supported".into()),
-            _ => Err("EINVAL:unsupported transmission medium".into()),
-        }
-    }
-
     fn allocate_anonymous_id(&mut self) -> u32 {
         if self.next_anonymous_id == 0 {
             self.next_anonymous_id = u32::MAX;
@@ -957,12 +1091,55 @@ impl KittyGraphicsState {
         }
     }
 
-    fn failure(&self, command: &KittyGraphicsCommand, message: &str) -> KittyGraphicsApplyResult {
+    pub(crate) fn failure<C: ResponseControls>(
+        &self,
+        command: &C,
+        message: &str,
+    ) -> KittyGraphicsApplyResult {
         KittyGraphicsApplyResult {
             response: response(command, false, message),
             ..KittyGraphicsApplyResult::default()
         }
     }
+}
+
+pub(crate) fn decode_payload(command: &KittyGraphicsCommand) -> Result<Vec<u8>, String> {
+    match BASE64.decode(&command.payload) {
+        Ok(decoded) if decoded.len() <= MAX_IMAGE_BYTES => Ok(decoded),
+        Ok(_) => Err("EFBIG:image payload exceeds storage limit".into()),
+        Err(_) => Err("EINVAL:invalid base64 payload".into()),
+    }
+}
+
+/// Completes the expensive part of a Kitty upload without touching shared
+/// graphics state. The caller commits the resulting RGBA image later, inside
+/// the short frame-handoff turn.
+pub(crate) fn prepare_upload(upload: PreparedKittyUpload) -> Result<PreparedKittyImage, String> {
+    let mut data = Vec::with_capacity(upload.decoded_len);
+    for chunk in upload.chunks {
+        data.extend_from_slice(&chunk);
+    }
+    let data = match upload.command.char_value('t').unwrap_or('d') {
+        'd' => data,
+        // Paths arrive from the PTY guest. Opening them would let the
+        // terminal process read (and for `t`, delete) arbitrary host files.
+        'f' | 't' => return Err("ENOTSUP:file transmission is not supported".into()),
+        's' => return Err("ENOTSUP:shared-memory transmission is not supported".into()),
+        _ => return Err("EINVAL:unsupported transmission medium".into()),
+    };
+    let data = match upload.command.char_value('o') {
+        None => data,
+        Some('z') => decompress_zlib(&data)?,
+        Some(_) => return Err("EINVAL:unsupported compression".into()),
+    };
+    let (rgba, width, height) = normalize_image(&upload.command, &data)?;
+    Ok(PreparedKittyImage {
+        command: upload.command,
+        rgba: Arc::from(rgba),
+        width,
+        height,
+        context: upload.context,
+    })
 }
 
 fn placement_contains(placement: &Placement, line: i64, column: usize) -> bool {
@@ -978,14 +1155,16 @@ fn placement_contains(placement: &Placement, line: i64, column: usize) -> bool {
                 .saturating_add(placement.occupied_columns as usize)
 }
 
-fn response(command: &KittyGraphicsCommand, success: bool, message: &str) -> Option<Vec<u8>> {
-    let quiet = command.u32_value('q').unwrap_or(0);
+fn response<C: ResponseControls>(command: &C, success: bool, message: &str) -> Option<Vec<u8>> {
+    let quiet = command.response_u32_value('q').unwrap_or(0);
     if (success && quiet >= 1) || (!success && quiet >= 2) {
         return None;
     }
-    let image_id = command.u32_value('i').or_else(|| command.u32_value('I'))?;
+    let image_id = command
+        .response_u32_value('i')
+        .or_else(|| command.response_u32_value('I'))?;
     let mut control = format!("i={image_id}");
-    if let Some(placement_id) = command.u32_value('p') {
+    if let Some(placement_id) = command.response_u32_value('p') {
         control.push_str(&format!(",p={placement_id}"));
     }
     Some(format!("\x1b_G{control};{message}\x1b\\").into_bytes())
@@ -998,7 +1177,8 @@ fn normalize_image(
     match command.u32_value('f').unwrap_or(32) {
         100 => {
             let mut decoder = png::Decoder::new(Cursor::new(data));
-            decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+            decoder
+                .set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
             let mut reader = decoder
                 .read_info()
                 .map_err(|_| "EINVAL:invalid PNG image".to_owned())?;
@@ -1191,6 +1371,91 @@ mod tests {
     }
 
     #[test]
+    fn delete_aborts_pending_chunked_upload_before_tail_arrives() {
+        let mut graphics = KittyGraphicsState::default();
+        let first = command("a=T,f=32,s=1,v=1,i=17,m=1,c=1,r=1", &[1, 2]);
+        assert!(matches!(
+            graphics.stage(first, Some(Ok(vec![1, 2])), placement_context(0, 0)),
+            KittyGraphicsStage::Noop
+        ));
+        assert!(graphics.pending.is_some());
+
+        let delete = command("a=d,d=a", &[]);
+        assert!(matches!(
+            graphics.stage(delete, None, placement_context(0, 0)),
+            KittyGraphicsStage::Direct { .. }
+        ));
+        assert!(graphics.pending.is_none());
+
+        let tail = command("m=0", &[3, 255]);
+        let tail_stage = graphics.stage(tail, Some(Ok(vec![3, 255])), placement_context(0, 0));
+        let KittyGraphicsStage::Upload(upload) = tail_stage else {
+            panic!("tail must start a fresh upload after delete");
+        };
+        assert_eq!(upload.command.u32_value('i'), None);
+    }
+
+    #[test]
+    fn final_chunk_context_anchors_completed_upload() {
+        let mut graphics = KittyGraphicsState::default();
+        let first = command("a=T,f=32,s=1,v=1,i=18,m=1,c=1,r=1", &[1, 2]);
+        assert!(matches!(
+            graphics.stage(first, Some(Ok(vec![1, 2])), placement_context(2, 3)),
+            KittyGraphicsStage::Noop
+        ));
+
+        let tail = command("m=0", &[3, 255]);
+        let stage = graphics.stage(tail, Some(Ok(vec![3, 255])), placement_context(7, 9));
+        let KittyGraphicsStage::Upload(upload) = stage else {
+            panic!("final chunk must complete the upload");
+        };
+        let prepared = prepare_upload(upload).expect("valid chunked image");
+        assert!(graphics.commit_prepared(prepared).changed);
+        let placements = graphics.render_placements(0, 0, 24, 80, KittyGraphicsScreen::Primary);
+        assert_eq!(placements.len(), 1);
+        assert_eq!(placements[0].column, 7);
+        assert_eq!(placements[0].viewport_row, 9);
+    }
+
+    #[test]
+    fn final_chunk_decode_error_uses_tail_quiet_control() {
+        let mut graphics = KittyGraphicsState::default();
+        let first = command("a=T,f=32,s=1,v=1,i=19,m=1,c=1,r=1", &[1, 2]);
+        assert!(matches!(
+            graphics.stage(first, Some(Ok(vec![1, 2])), placement_context(0, 0)),
+            KittyGraphicsStage::Noop
+        ));
+
+        let mut bytes = b"m=0,q=2,i=19;".to_vec();
+        bytes.extend_from_slice(b"%%%invalid-base64%%%");
+        let tail = KittyGraphicsCommand::parse(bytes, false);
+        let decoded = decode_payload(&tail);
+        let stage = graphics.stage(tail, Some(decoded), placement_context(0, 0));
+        let KittyGraphicsStage::Failure(result) = stage else {
+            panic!("invalid tail must fail");
+        };
+        assert!(result.response.is_none(), "tail q=2 must suppress error");
+    }
+
+    #[test]
+    fn final_chunk_size_error_uses_tail_quiet_control() {
+        let mut graphics = KittyGraphicsState::default();
+        graphics.pending = Some(PendingUpload {
+            command: command("a=T,f=32,s=1,v=1,i=23,m=1", &[]),
+            chunks: Vec::new(),
+            decoded_len: MAX_IMAGE_BYTES,
+            context: placement_context(0, 0),
+        });
+
+        let tail = command("m=0,q=2,i=23", &[1]);
+        let stage = graphics.stage(tail, Some(Ok(vec![1])), placement_context(0, 0));
+        let KittyGraphicsStage::Failure(result) = stage else {
+            panic!("oversized tail must fail");
+        };
+        assert!(result.response.is_none(), "tail q=2 must suppress error");
+    }
+
+    #[test]
     fn interceptor_does_not_treat_utf8_continuation_as_c1_apc() {
         let mut interceptor = KittyGraphicsInterceptor::default();
         assert!(
@@ -1283,5 +1548,95 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn upload_preparation_does_not_mutate_graphics_before_commit() {
+        let mut graphics = KittyGraphicsState::default();
+        let command = command("a=T,f=32,s=1,v=1,i=12,c=1,r=1", &[1, 2, 3, 255]);
+        let decoded = decode_payload(&command).expect("valid base64 payload");
+        let stage = graphics.stage(command, Some(Ok(decoded)), placement_context(0, 0));
+
+        let upload = match stage {
+            KittyGraphicsStage::Upload(upload) => upload,
+            _ => panic!("expected an upload stage"),
+        };
+        assert!(graphics
+            .render_placements(0, 0, 24, 80, KittyGraphicsScreen::Primary)
+            .is_empty());
+
+        let prepared = prepare_upload(upload).expect("valid raw RGBA image");
+        assert!(graphics
+            .render_placements(0, 0, 24, 80, KittyGraphicsScreen::Primary)
+            .is_empty());
+
+        let result = graphics.commit_prepared(prepared);
+        assert!(result.changed);
+        assert_eq!(
+            graphics
+                .render_placements(0, 0, 24, 80, KittyGraphicsScreen::Primary)
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn zlib_upload_preparation_does_not_hold_graphics_state() {
+        let mut encoder =
+            flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut encoder, &[1, 2, 3, 255]).expect("compress RGBA probe");
+        let compressed = encoder.finish().expect("finish zlib probe");
+
+        let mut graphics = KittyGraphicsState::default();
+        let command = command("a=T,f=32,s=1,v=1,i=13,o=z,c=1,r=1", &compressed);
+        let decoded = decode_payload(&command).expect("valid base64 payload");
+        let stage = graphics.stage(command, Some(Ok(decoded)), placement_context(0, 0));
+        let upload = match stage {
+            KittyGraphicsStage::Upload(upload) => upload,
+            _ => panic!("expected an upload stage"),
+        };
+        let prepared = prepare_upload(upload).expect("valid zlib RGBA image");
+        assert!(graphics
+            .render_placements(0, 0, 24, 80, KittyGraphicsScreen::Primary)
+            .is_empty());
+        assert!(graphics.commit_prepared(prepared).changed);
+    }
+
+    #[test]
+    fn png_upload_preparation_does_not_hold_graphics_state() {
+        let mut encoded = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(Cursor::new(&mut encoded), 1, 1);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().expect("write PNG header");
+            writer
+                .write_image_data(&[1, 2, 3, 255])
+                .expect("write PNG pixel");
+        }
+
+        let mut graphics = KittyGraphicsState::default();
+        let command = command("a=T,f=100,s=1,v=1,i=14,c=1,r=1", &encoded);
+        let decoded = decode_payload(&command).expect("valid base64 payload");
+        let stage = graphics.stage(command, Some(Ok(decoded)), placement_context(0, 0));
+        let upload = match stage {
+            KittyGraphicsStage::Upload(upload) => upload,
+            _ => panic!("expected an upload stage"),
+        };
+        let prepared = prepare_upload(upload).expect("valid PNG image");
+        assert!(graphics
+            .render_placements(0, 0, 24, 80, KittyGraphicsScreen::Primary)
+            .is_empty());
+        assert!(graphics.commit_prepared(prepared).changed);
+    }
+
+    fn placement_context(cursor_column: usize, cursor_row: usize) -> PlacementContext {
+        PlacementContext {
+            cursor_column,
+            cursor_row,
+            history_size: 0,
+            size: size(),
+            screen: KittyGraphicsScreen::Primary,
+        }
     }
 }
