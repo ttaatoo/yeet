@@ -7,6 +7,21 @@ import AppKit
 import Combine
 import Foundation
 
+enum TerminalSelectionAvailability: Equatable, Sendable {
+    case busy
+    case empty
+    case selected
+
+    nonisolated var allowsSelectionCommand: Bool {
+        self != .empty
+    }
+}
+
+@MainActor
+protocol TerminalSelectionAvailabilitySurface: AnyObject {
+    var selectionAvailability: TerminalSelectionAvailability { get }
+}
+
 /// Find-in-terminal state for one session.
 ///
 /// The backend owns the search itself — it scans the screen and scrollback on
@@ -152,8 +167,21 @@ final class TerminalFind: nonisolated ObservableObject {
     /// it back through ``started(needle:)``, so the selection never has to be
     /// read out and re-escaped here.
     func searchSelection() {
+        if let availabilitySurface = surface as? any TerminalSelectionAvailabilitySurface {
+            guard Self.shouldRequestSelectionFind(
+                for: availabilitySurface.selectionAvailability
+            ) else { return }
+            surface.findSelection()
+            return
+        }
         guard surface.hasSelection else { return }
         surface.findSelection()
+    }
+
+    nonisolated static func shouldRequestSelectionFind(
+        for availability: TerminalSelectionAvailability
+    ) -> Bool {
+        availability.allowsSelectionCommand
     }
 
     // MARK: - Reports from the backend

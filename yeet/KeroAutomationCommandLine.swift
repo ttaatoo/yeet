@@ -5,6 +5,27 @@
 
 import Foundation
 
+/// Grok's Stop hook also fires at session teardown, so idle reports from that
+/// hook still require `--genuine-stop` plus `reason == end_turn`. Interrupt
+/// (`StopCancelled`) and the `idle_prompt` notification use `--turn-ended`.
+/// Subagent events must not idle the host session.
+enum KeroGrokIdleGate {
+    static func accepts(
+        isGenuineStop: Bool,
+        isTurnEnded: Bool,
+        payload: KeroJSONValue?
+    ) -> Bool {
+        if let subagent = payload?.objectValue?["subagentType"]?.stringValue,
+           !subagent.isEmpty {
+            return false
+        }
+        if isGenuineStop {
+            return payload?.objectValue?["reason"]?.stringValue == "end_turn"
+        }
+        return isTurnEnded
+    }
+}
+
 /// Script-facing wrappers for Kero's local automation protocol. Pane and agent
 /// operations return JSON so scripts can compose stable IDs and state. Skill
 /// management is human-readable by default and offers explicit `--json` output.
@@ -230,22 +251,28 @@ enum KeroAutomationCommandLine {
               phase == .working || phase == .blocked || phase == .idle
         else { return }
 
-        let isGenuineStop = arguments.count == 3
-            && arguments[2] == "--genuine-stop"
+        let flag = arguments.count == 3 ? arguments[2] : nil
+        let isGenuineStop = flag == "--genuine-stop"
+        let isTurnEnded = flag == "--turn-ended"
+        guard flag == nil || isGenuineStop || isTurnEnded else { return }
         // One payload read serves both the session identifier and Grok's
         // genuine-stop validation; hooks always close stdin after the JSON.
         let payload = readIntegrationPayload()
         if phase == .idle {
-            // Process recognition owns startup idle. The only lifecycle event
-            // allowed to end a Grok turn is a validated genuine Stop, which
-            // also makes older cached SessionStart hooks harmless. Claude Code
-            // and Codex fire Stop only when a turn actually completes.
+            // Process recognition owns startup idle. Grok's Stop hook also
+            // fires at session teardown, so genuine completion still requires
+            // `--genuine-stop` plus `reason == end_turn`. Interrupt and the
+            // idle-prompt backstop use `--turn-ended` — without them, Esc
+            // leaves the Working spinner spinning while the TUI sits idle.
+            // Claude Code and Codex fire Stop only when a turn completes.
             if kind == .grok {
-                guard isGenuineStop,
-                      payload?.objectValue?["reason"]?.stringValue == "end_turn"
-                else { return }
+                guard KeroGrokIdleGate.accepts(
+                    isGenuineStop: isGenuineStop,
+                    isTurnEnded: isTurnEnded,
+                    payload: payload
+                ) else { return }
             } else {
-                guard !isGenuineStop else { return }
+                guard !isGenuineStop, !isTurnEnded else { return }
             }
         } else if arguments.count != 2 {
             return
@@ -279,7 +306,9 @@ enum KeroAutomationCommandLine {
     }
 
     /// Claude Code and Codex report `session_id`; Grok reports `sessionId`.
-    private static func integrationSessionID(in event: KeroJSONValue) -> String? {
+    private nonisolated static func integrationSessionID(
+        in event: KeroJSONValue
+    ) -> String? {
         for key in ["session_id", "sessionId", "sessionID"] {
             if let value = event.objectValue?[key]?.stringValue, !value.isEmpty {
                 return value

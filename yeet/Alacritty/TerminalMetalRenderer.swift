@@ -39,6 +39,32 @@ final class TerminalMetalRenderer {
         var backgroundCount: Int
     }
 
+    struct RebuildPlan: Equatable, Sendable {
+        let rows: [Int]
+        let isFullCensus: Bool
+    }
+
+    struct FrameMetrics: Equatable, Sendable {
+        let rebuiltRows: Int
+        /// Sum of instances assembled by each CPU build pass. Atlas growth can
+        /// require a second full pass, so this is not the final upload size.
+        let packedInstances: Int
+        let uploadedInstances: Int
+        let submitted: Bool
+
+        static let zero = FrameMetrics(
+            rebuiltRows: 0,
+            packedInstances: 0,
+            uploadedInstances: 0,
+            submitted: false
+        )
+    }
+
+    private struct BuildResult {
+        let rebuiltRows: Int
+        let packedInstances: Int
+    }
+
     /// Compiled once per `MTLDevice`. Parked panes drop this renderer and
     /// would otherwise compile the same source on every unpark.
     private struct CachedPipeline {
@@ -68,6 +94,21 @@ final class TerminalMetalRenderer {
     /// Rebuilt rows are only valid for the geometry they were built at.
     private var cachedColumns = 0
     private var cachedRows = 0
+    /// The absolute line id each viewport row's instances were built from,
+    /// and the id generation they belong to. A scroll reports full damage —
+    /// every viewport slot "changed" — but a row whose id survived carries
+    /// identical content, so the emulator's full-damage frame rebuilds only
+    /// the rows the scroll actually revealed. A generation change (history
+    /// trim, resize, theme) drops the whole mapping: the same id no longer
+    /// names the same content.
+    private var rowIds: [UInt64] = []
+    private var cachedRowGeneration: UInt64 = 0
+    /// Atlas pass used to create the row instances' UVs. Grow and compact bump
+    /// the atlas generation; every cached row is then stale, including rows
+    /// that the terminal did not mark dirty.
+    private var lastAtlasGeneration: UInt64 = 0
+
+    private(set) var lastFrameMetrics = FrameMetrics.zero
 
     init?(device: MTLDevice) {
         guard let queue = device.makeCommandQueue(),
@@ -90,6 +131,43 @@ final class TerminalMetalRenderer {
 
     // MARK: - Frame
 
+    static func rebuildPlan(
+        columns: Int,
+        rows: Int,
+        cachedColumns: Int,
+        cachedRows: Int,
+        snapshotRowGeneration: UInt64,
+        cachedRowGeneration: UInt64,
+        atlasGeneration: UInt64,
+        cachedAtlasGeneration: UInt64,
+        needsLiveCensus: Bool,
+        dirtyRows: [Int]?,
+        rowIDs: UnsafePointer<UInt64>?,
+        cachedRowIDs: [UInt64]
+    ) -> RebuildPlan {
+        let geometryChanged = cachedColumns != columns || cachedRows != rows
+        let idsDropped = snapshotRowGeneration != cachedRowGeneration
+        let atlasInvalidated = atlasGeneration != cachedAtlasGeneration
+        let idsUsable = !geometryChanged && !idsDropped && !atlasInvalidated
+            && !needsLiveCensus
+            && cachedRowIDs.count == rows
+
+        if geometryChanged || idsDropped || atlasInvalidated || needsLiveCensus {
+            return RebuildPlan(rows: Array(0..<rows), isFullCensus: true)
+        }
+        if let dirtyRows {
+            return RebuildPlan(
+                rows: dirtyRows.filter { $0 >= 0 && $0 < rows },
+                isFullCensus: false
+            )
+        }
+        if idsUsable, let rowIDs {
+            let changed = (0..<rows).filter { cachedRowIDs[$0] != rowIDs[$0] }
+            return RebuildPlan(rows: changed, isFullCensus: changed.count == rows)
+        }
+        return RebuildPlan(rows: Array(0..<rows), isFullCensus: true)
+    }
+
     @discardableResult
     func render(
         snapshot: KeroSnapshot,
@@ -106,12 +184,23 @@ final class TerminalMetalRenderer {
         if atlas == nil {
             atlas = TerminalGlyphAtlas(device: device, metrics: metrics, scale: scale)
         }
-        guard let atlas else { return false }
+        guard let atlas else {
+            lastFrameMetrics = .zero
+            AlacrittyRenderStats.shared.recordFrame(
+                rebuiltRows: 0,
+                packedInstances: 0,
+                uploadedInstances: 0,
+                submitted: false
+            )
+            return false
+        }
         let generationBeforeReset = atlas.generation
         atlas.reset(metrics: metrics, scale: scale)
         let resetAtlas = atlas.generation != generationBeforeReset
 
         var pendingDirtyRows: [Int]? = resetAtlas ? nil : dirtyRows
+        var rebuiltRows = 0
+        var packedInstances = 0
         // Grow and compact bump `generation` and invalidate cached UVs. A
         // dirty-row overflow must also rebuild every row so the live set
         // includes glyphs that skipped `entry(for:)`. Three passes cover
@@ -119,12 +208,14 @@ final class TerminalMetalRenderer {
         for _ in 0..<3 {
             let generation = atlas.generation
             let wasPartial = pendingDirtyRows != nil
-            build(
+            let buildResult = build(
                 snapshot: snapshot, metrics: metrics, padding: padding,
                 atlas: atlas,
                 dirtyRows: pendingDirtyRows,
                 viewportSize: viewportSize
             )
+            rebuiltRows += buildResult.rebuiltRows
+            packedInstances += buildResult.packedInstances
             if atlas.generation != generation {
                 pendingDirtyRows = nil
                 continue
@@ -154,7 +245,21 @@ final class TerminalMetalRenderer {
 
         guard let commands = queue.makeCommandBuffer(),
               let encoder = commands.makeRenderCommandEncoder(descriptor: pass)
-        else { return false }
+        else {
+            lastFrameMetrics = FrameMetrics(
+                rebuiltRows: rebuiltRows,
+                packedInstances: packedInstances,
+                uploadedInstances: 0,
+                submitted: false
+            )
+            AlacrittyRenderStats.shared.recordFrame(
+                rebuiltRows: rebuiltRows,
+                packedInstances: packedInstances,
+                uploadedInstances: 0,
+                submitted: false
+            )
+            return false
+        }
 
         drawKittyGraphics(
             kittyPlacements.filter { $0.zIndex < 0 },
@@ -163,7 +268,9 @@ final class TerminalMetalRenderer {
             viewportSize: viewportSize,
             with: encoder
         )
+        var uploadedInstances = 0
         if !instances.isEmpty, let buffer = uploadInstances() {
+            uploadedInstances = instances.count
             var viewport = SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
             encoder.setRenderPipelineState(pipeline)
             encoder.setVertexBuffer(buffer, offset: 0, index: 0)
@@ -188,14 +295,39 @@ final class TerminalMetalRenderer {
         kittyTextures = kittyTextures.filter { activeImageKeys.contains($0.key) }
 
         encoder.endEncoding()
-        if let onPresented {
-            drawable.addPresentedHandler { _ in onPresented() }
+        let stats = AlacrittyRenderStats.shared
+        let observesPresentation = stats.shouldObservePresentation
+        let displayOffset = Int(snapshot.display_offset)
+        if onPresented != nil || observesPresentation {
+            drawable.addPresentedHandler { drawable in
+                onPresented?()
+                guard observesPresentation else { return }
+                let presentedTime = drawable.presentedTime
+                stats.recordPresented(displayOffset: displayOffset, at: presentedTime)
+            }
+        }
+        if observesPresentation {
+            commands.addCompletedHandler { commandBuffer in
+                stats.recordCompleted(success: commandBuffer.status == .completed)
+            }
         }
         commands.present(drawable)
         commands.commit()
+        lastFrameMetrics = FrameMetrics(
+            rebuiltRows: rebuiltRows,
+            packedInstances: packedInstances,
+            uploadedInstances: uploadedInstances,
+            submitted: true
+        )
+        stats.recordFrame(
+            rebuiltRows: rebuiltRows,
+            packedInstances: packedInstances,
+            uploadedInstances: uploadedInstances,
+            submitted: true
+        )
         if waitUntilCompleted {
             commands.waitUntilCompleted()
-            return commands.status != .error
+            return commands.status == .completed
         }
         return true
     }
@@ -333,24 +465,39 @@ final class TerminalMetalRenderer {
         atlas: TerminalGlyphAtlas,
         dirtyRows: [Int]?,
         viewportSize: CGSize
-    ) {
+    ) -> BuildResult {
         instances.removeAll(keepingCapacity: true)
-        guard let cells = snapshot.cells else { return }
+        guard let cells = snapshot.cells else {
+            return BuildResult(rebuiltRows: 0, packedInstances: 0)
+        }
 
         let columns = snapshot.columns
         let rows = snapshot.rows
 
-        // A geometry change invalidates every cached row: positions are baked
-        // into the instances. Rebuild every row even if the emulator only
-        // reported partial damage for this frame.
-        let geometryChanged = cachedColumns != columns || cachedRows != rows
-        let fullRebuild = dirtyRows == nil || geometryChanged
-        // Clean rows skip `entry(for:)`, so a census is only complete after
-        // a full rebuild marks every on-screen glyph. Skip `markLiveComplete`
-        // if grow/compact bumps `generation` mid-pass — that pass's live set
-        // was cleared and a follow-up rebuild will census again.
+        // A geometry change invalidates every cached row because instance
+        // positions depend on it. An atlas repack moves UVs, a row-id
+        // generation change invalidates content ids, and a pending census
+        // must mark every on-screen glyph. These events also rebuild all rows.
         let generationAtStart = atlas.generation
-        if fullRebuild {
+        let plan = Self.rebuildPlan(
+            columns: columns,
+            rows: rows,
+            cachedColumns: cachedColumns,
+            cachedRows: cachedRows,
+            snapshotRowGeneration: snapshot.row_generation,
+            cachedRowGeneration: cachedRowGeneration,
+            atlasGeneration: generationAtStart,
+            cachedAtlasGeneration: lastAtlasGeneration,
+            needsLiveCensus: atlas.needsLiveCensus,
+            dirtyRows: dirtyRows,
+            rowIDs: snapshot.row_ids,
+            cachedRowIDs: rowIds
+        )
+        let geometryChanged = cachedColumns != columns || cachedRows != rows
+        let idsDropped = snapshot.row_generation != cachedRowGeneration
+        let censusFull = plan.isFullCensus
+        let rowsToBuild = plan.rows
+        if censusFull {
             atlas.beginLiveCensus()
         }
         if geometryChanged {
@@ -358,27 +505,30 @@ final class TerminalMetalRenderer {
                 repeating: RowInstances(instances: [], backgroundCount: 0),
                 count: rows
             )
+            rowIds = Array(repeating: .max, count: rows)
             cachedColumns = columns
             cachedRows = rows
         }
-
-        // nil means rebuild everything — a full-damage frame, or a host-side
-        // change the emulator never saw.
-        let rowsToBuild: [Int]
-        if geometryChanged {
-            rowsToBuild = Array(0..<rows)
-        } else if let dirtyRows {
-            rowsToBuild = dirtyRows.filter { $0 >= 0 && $0 < rows }
-        } else {
-            rowsToBuild = Array(0..<rows)
+        if idsDropped {
+            rowIds = Array(repeating: .max, count: rows)
+            cachedRowGeneration = snapshot.row_generation
         }
+
+        let selectionBackground = AlacrittyRenderer.packedSelectionBackground()
         for row in rowsToBuild {
             rowInstances[row] = buildRow(
                 row: row, cells: cells, columns: columns,
                 snapshot: snapshot, metrics: metrics, padding: padding,
-                atlas: atlas, viewportSize: viewportSize
+                atlas: atlas, viewportSize: viewportSize,
+                selectionBackground: selectionBackground
             )
         }
+        if let ids = snapshot.row_ids {
+            for row in rowsToBuild where row < rows {
+                rowIds[row] = ids[row]
+            }
+        }
+        lastAtlasGeneration = generationAtStart
 
         instances.reserveCapacity(
             rowInstances.reduce(0) { $0 + $1.instances.count } + 1
@@ -392,9 +542,10 @@ final class TerminalMetalRenderer {
             padding: padding,
             blockInsertionIndex: blockCursorInsertionIndex(snapshot: snapshot)
         )
-        if fullRebuild, atlas.generation == generationAtStart {
+        if censusFull, atlas.generation == generationAtStart {
             atlas.markLiveComplete()
         }
+        return BuildResult(rebuiltRows: rowsToBuild.count, packedInstances: instances.count)
     }
 
     private func buildRow(
@@ -405,7 +556,8 @@ final class TerminalMetalRenderer {
         metrics: AlacrittyMetrics,
         padding: CGPoint,
         atlas: TerminalGlyphAtlas,
-        viewportSize: CGSize
+        viewportSize: CGSize,
+        selectionBackground: UInt32
     ) -> RowInstances {
         var instances: [Instance] = []
         let cellWidth = Float(metrics.cellWidth)
@@ -420,12 +572,19 @@ final class TerminalMetalRenderer {
         // Backgrounds first, coalescing equal-coloured runs into one quad.
         while column < columns {
             let cell = cells[row * columns + column]
-            let background = AlacrittyRenderer.background(of: cell, default: defaultBackground)
+            let background = AlacrittyRenderer.background(
+                of: cell, default: defaultBackground, selection: selectionBackground
+            )
             var span = 1
+            var flood = AlacrittyRenderer.shouldFloodPadding(flags: cell.flags)
             while column + span < columns {
                 let next = cells[row * columns + column + span]
-                guard AlacrittyRenderer.background(of: next, default: defaultBackground)
-                    == background else { break }
+                guard AlacrittyRenderer.background(
+                    of: next, default: defaultBackground, selection: selectionBackground
+                ) == background else { break }
+                if !AlacrittyRenderer.shouldFloodPadding(flags: next.flags) {
+                    flood = false
+                }
                 span += 1
             }
             if background != defaultBackground {
@@ -433,13 +592,13 @@ final class TerminalMetalRenderer {
                 let reachesRightEdge = column + span == columns
                 let reachesTopEdge = row == 0
                 let reachesBottomEdge = row + 1 == snapshot.rows
-                let left = reachesLeftEdge
+                let left = flood && reachesLeftEdge
                     ? 0 : originX + Float(column) * cellWidth
-                let right = reachesRightEdge
+                let right = flood && reachesRightEdge
                     ? Float(viewportSize.width)
                     : originX + Float(column + span) * cellWidth
-                let runTop = reachesTopEdge ? 0 : top
-                let bottom = reachesBottomEdge
+                let runTop = flood && reachesTopEdge ? 0 : top
+                let bottom = flood && reachesBottomEdge
                     ? Float(viewportSize.height) : top + cellHeight
                 instances.append(Instance(
                     origin: SIMD2(left, runTop),
@@ -465,7 +624,9 @@ final class TerminalMetalRenderer {
                 && snapshot.cursor_column == column
                 && snapshot.cursor_shape == 0
             if isCursorCell {
-                foreground = AlacrittyRenderer.background(of: cell, default: defaultBackground)
+                foreground = AlacrittyRenderer.background(
+                    of: cell, default: defaultBackground, selection: selectionBackground
+                )
             }
             let color = Self.color(foreground)
             let left = originX + Float(column) * cellWidth

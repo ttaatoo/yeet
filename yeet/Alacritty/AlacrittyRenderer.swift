@@ -72,22 +72,59 @@ struct AlacrittyMetrics {
 /// terminal's own colours and the renderer decides how to present them.
 enum AlacrittyRenderer {
     static func foreground(of cell: KeroCell, default background: UInt32) -> UInt32 {
-        var color = cell.flags & UInt16(KERO_CELL_INVERSE) != 0 ? cell.bg : cell.fg
-        if cell.flags & UInt16(KERO_CELL_DIM) != 0 {
+        resolvedForeground(fg: cell.fg, bg: cell.bg, flags: cell.flags, default: background)
+    }
+
+    static func background(
+        of cell: KeroCell,
+        default background: UInt32,
+        selection: UInt32
+    ) -> UInt32 {
+        resolvedBackground(
+            fg: cell.fg, bg: cell.bg, flags: cell.flags,
+            default: background, selection: selection
+        )
+    }
+
+    /// Inverse, dim, and selection, without a `KeroCell` — used by tests.
+    static func resolvedForeground(
+        fg: UInt32, bg: UInt32, flags: UInt16, default _: UInt32
+    ) -> UInt32 {
+        var color = flags & UInt16(KERO_CELL_INVERSE) != 0 ? bg : fg
+        if flags & UInt16(KERO_CELL_DIM) != 0 {
             color = dim(color)
-        }
-        if cell.flags & UInt16(KERO_CELL_SELECTED) != 0 {
-            // Selection inverts, so the text takes the pane background.
-            color = background
         }
         return color
     }
 
-    static func background(of cell: KeroCell, default background: UInt32) -> UInt32 {
-        if cell.flags & UInt16(KERO_CELL_SELECTED) != 0 {
-            return cell.flags & UInt16(KERO_CELL_INVERSE) != 0 ? cell.bg : cell.fg
+    static func resolvedBackground(
+        fg: UInt32, bg: UInt32, flags: UInt16, default _: UInt32, selection: UInt32
+    ) -> UInt32 {
+        if flags & UInt16(KERO_CELL_SELECTED) != 0 {
+            return selection
         }
-        return cell.flags & UInt16(KERO_CELL_INVERSE) != 0 ? cell.fg : cell.bg
+        return flags & UInt16(KERO_CELL_INVERSE) != 0 ? fg : bg
+    }
+
+    /// Full-bleed TUI backgrounds may flood the pane padding. Selection must
+    /// not: Select All would otherwise recolor the whole pane, including the
+    /// 10×8 pt inset around the grid.
+    static func shouldFloodPadding(flags: UInt16) -> Bool {
+        flags & UInt16(KERO_CELL_SELECTED) == 0
+    }
+
+    /// Theme selection fill, packed 0xRRGGBB, resolved once per frame.
+    static func packedSelectionBackground() -> UInt32 {
+        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let hex = Theme.terminal(dark: isDark).selectionBackground ?? Theme.accentHex
+        return packed(hex: hex)
+    }
+
+    static func packed(hex: String) -> UInt32 {
+        var text = hex.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("#") { text.removeFirst() }
+        guard text.count == 6, let value = UInt32(text, radix: 16) else { return 0 }
+        return value
     }
 
     private static func dim(_ value: UInt32) -> UInt32 {

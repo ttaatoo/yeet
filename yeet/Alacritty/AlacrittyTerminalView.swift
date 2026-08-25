@@ -9,6 +9,430 @@ import IOSurface
 import Metal
 import QuartzCore
 
+/// Host-side work that must be presented to one terminal frame.
+///
+/// The render call consumes a copy. If the bridge reports BUSY, that copy is
+/// restored before any input queued after the failed attempt, so no scroll or
+/// redraw request is lost. A delta after an absolute target is folded into the
+/// target so the FFI never receives two competing scroll arguments.
+struct AlacrittyFrameIntent: Equatable {
+    private(set) var scrollDelta: Int64 = 0
+    private(set) var scrollTarget: Int64?
+    private(set) var hasTargetIntent = false
+    private(set) var needsTerminalDamageCheck = false
+    private(set) var forceFull = false
+    private(set) var cursorOnly = false
+
+    var isEmpty: Bool {
+        scrollDelta == 0
+            && !hasTargetIntent
+            && !needsTerminalDamageCheck
+            && !forceFull
+            && !cursorOnly
+    }
+
+    var hasAbsoluteTarget: Bool { scrollTarget != nil }
+
+    /// The C bridge currently accepts a signed 32-bit line delta. Keep a
+    /// wider accumulator so many input events cannot wrap before a frame.
+    var scrollDeltaArgument: Int32 { Int32(clamping: scrollDelta) }
+
+    var scrollTargetArgument: Int64 { scrollTarget ?? -1 }
+
+    mutating func addScroll(lines: Int) {
+        let value = Int64(clamping: lines)
+        if hasTargetIntent, let target = scrollTarget {
+            scrollTarget = Self.saturatedTargetAdd(target, value)
+        } else {
+            scrollDelta = Self.saturatedAdd(scrollDelta, value)
+        }
+    }
+
+    mutating func setScrollTarget(_ target: Int64?) {
+        // Rust reserves -1 for "no target". Keep every concrete target in the
+        // non-negative range, including after callers provide a stale offset.
+        scrollTarget = target.map { max(0, $0) }
+        hasTargetIntent = true
+        // An absolute target supersedes all earlier relative movement. This
+        // also makes the FFI arguments unambiguous: Rust ignores delta when
+        // target >= 0.
+        scrollDelta = 0
+    }
+
+    mutating func request(forceFull: Bool = false, cursorOnly: Bool = false) {
+        self.forceFull = self.forceFull || forceFull
+        self.cursorOnly = self.cursorOnly || cursorOnly
+    }
+
+    mutating func requestTerminalDamageCheck() {
+        needsTerminalDamageCheck = true
+    }
+
+    /// Move all currently pending work out of the queue for one frame.
+    mutating func take() -> Self {
+        let taken = self
+        self = Self()
+        return taken
+    }
+
+    /// Restore a failed frame before the events collected after it. A newer
+    /// absolute target wins; deltas and redraw flags are additive.
+    mutating func restore(_ consumed: Self) {
+        let newer = self
+        self = consumed
+        merge(newer)
+    }
+
+    mutating func merge(_ newer: Self) {
+        if newer.hasTargetIntent {
+            scrollTarget = newer.scrollTarget
+            hasTargetIntent = true
+            scrollDelta = 0
+        }
+        if newer.scrollDelta != 0 {
+            if hasTargetIntent, let target = scrollTarget {
+                scrollTarget = Self.saturatedTargetAdd(target, newer.scrollDelta)
+            } else {
+                scrollDelta = Self.saturatedAdd(scrollDelta, newer.scrollDelta)
+            }
+        }
+        needsTerminalDamageCheck =
+            needsTerminalDamageCheck || newer.needsTerminalDamageCheck
+        forceFull = forceFull || newer.forceFull
+        cursorOnly = cursorOnly || newer.cursorOnly
+    }
+
+    /// The bridge already applied the scroll and drained emulator damage, so
+    /// a drawable or Metal failure must request a fresh full snapshot without
+    /// replaying the consumed host movement.
+    mutating func recoverAfterAcceptedFrameFailure() {
+        request(forceFull: true)
+    }
+
+    private static func saturatedAdd(_ lhs: Int64, _ rhs: Int64) -> Int64 {
+        if rhs > 0, lhs > Int64.max - rhs { return Int64.max }
+        if rhs < 0, lhs < Int64.min - rhs { return Int64.min }
+        return lhs + rhs
+    }
+
+    private static func saturatedTargetAdd(_ lhs: Int64, _ rhs: Int64) -> Int64 {
+        max(0, saturatedAdd(lhs, rhs))
+    }
+}
+
+enum AlacrittyFrameRetryPolicy {
+    static let maxPresentationRecoveryAttempts = 5
+    static let presentationRecoveryProbeDelayMilliseconds = 1_000
+
+    private static let presentationRecoveryDelaysMilliseconds = [
+        1, 4, 16, 64, 250,
+    ]
+
+    static func shouldPauseDisplayLink(renderSucceeded: Bool) -> Bool {
+        !renderSucceeded
+    }
+
+    static func shouldWakeDisplayLinkForDamage(
+        recoveryScheduled: Bool,
+        recoveryAttempts: Int
+    ) -> Bool {
+        !recoveryScheduled && recoveryAttempts == 0
+    }
+
+    static func shouldPauseDisplayLinkForSelectionRetry(
+        renderSucceeded: Bool,
+        retryWaiting: Bool,
+        hasOtherPendingWork: Bool
+    ) -> Bool {
+        renderSucceeded && retryWaiting && !hasOtherPendingWork
+    }
+
+    static func shouldSchedulePresentationRecovery(
+        framePending: Bool,
+        recoveryScheduled: Bool,
+        attempts: Int
+    ) -> Bool {
+        framePending
+            && !recoveryScheduled
+            && attempts < maxPresentationRecoveryAttempts
+    }
+
+    static func shouldSchedulePresentationRecoveryProbe(
+        framePending: Bool,
+        probeScheduled: Bool,
+        attempts: Int
+    ) -> Bool {
+        framePending
+            && !probeScheduled
+            && attempts >= maxPresentationRecoveryAttempts
+    }
+
+    static func presentationRecoveryDelayMilliseconds(for attempt: Int) -> Int {
+        let index = min(
+            max(attempt, 0),
+            presentationRecoveryDelaysMilliseconds.count - 1
+        )
+        return presentationRecoveryDelaysMilliseconds[index]
+    }
+
+    static func shouldScheduleBusyRetry(
+        framePending: Bool,
+        retryScheduled: Bool,
+        retriesRemaining: Int
+    ) -> Bool {
+        framePending && !retryScheduled && retriesRemaining > 0
+    }
+}
+
+enum AlacrittySelectionRetryPolicy {
+    static let probeDelayMilliseconds = 1_000
+
+    static func shouldWakeDisplayLink(
+        retryWaiting: Bool,
+        hasOtherPendingWork: Bool
+    ) -> Bool {
+        !retryWaiting || hasOtherPendingWork
+    }
+
+    static func shouldScheduleProbe(
+        actionPending: Bool,
+        retryWindowExhausted: Bool,
+        probeScheduled: Bool
+    ) -> Bool {
+        actionPending && retryWindowExhausted && !probeScheduled
+    }
+}
+
+struct AlacrittySelectionRetryProbeState: Equatable {
+    private(set) var scheduledGeneration: UInt64? = nil
+
+    var isScheduled: Bool { scheduledGeneration != nil }
+
+    @discardableResult
+    mutating func schedule(generation: UInt64) -> Bool {
+        guard scheduledGeneration == nil else { return false }
+        scheduledGeneration = generation
+        return true
+    }
+
+    @discardableResult
+    mutating func begin(generation: UInt64) -> Bool {
+        guard scheduledGeneration == generation else { return false }
+        scheduledGeneration = nil
+        return true
+    }
+
+    mutating func cancel() {
+        scheduledGeneration = nil
+    }
+}
+
+struct AlacrittySelectionAnchor: Equatable {
+    let line: Int
+    let column: Int
+}
+
+/// Keeps selection input ordered around a non-blocking bridge call.
+struct AlacrittySelectionIntent: Equatable {
+    private(set) var anchor: AlacrittySelectionAnchor?
+
+    mutating func start(_ anchor: AlacrittySelectionAnchor, accepted: Bool) {
+        guard accepted else {
+            self.anchor = nil
+            return
+        }
+        self.anchor = anchor
+    }
+
+    @discardableResult
+    mutating func update(accepted: Bool) -> Bool {
+        guard anchor != nil, accepted else { return false }
+        return true
+    }
+
+    mutating func finish() {
+        anchor = nil
+    }
+}
+
+struct AlacrittySelectionEndpoint: Equatable {
+    let line: Int
+    let column: Int
+    let rightHalf: Bool
+}
+
+struct AlacrittySelectionStartIntent: Equatable {
+    let line: Int
+    let column: Int
+    let kind: UInt32
+    let rightHalf: Bool
+}
+
+/// Coalesces non-blocking selection work until a bridge call is accepted.
+/// A drag keeps only its latest endpoint, while copy/find/select-all retain
+/// their operation until success, explicit supersession, or detach.
+struct AlacrittySelectionRetryIntent: Equatable {
+    static let maximumRetryAttempts = 8
+
+    enum Action: Equatable {
+        case selectAll
+        case copySelection
+        case findSelection
+        case start(start: AlacrittySelectionStartIntent, endpoint: AlacrittySelectionEndpoint?)
+        case update(AlacrittySelectionEndpoint)
+    }
+
+    private(set) var action: Action?
+    private(set) var followUp: Action?
+    private(set) var attempts = 0
+
+    var isEmpty: Bool { action == nil }
+    var retryWindowExhausted: Bool {
+        !isEmpty && attempts >= Self.maximumRetryAttempts
+    }
+    var hasPendingStart: Bool {
+        if case .start = action { return true }
+        return false
+    }
+    var retryDelayMilliseconds: Int {
+        1 << min(max(attempts - 1, 0), 6)
+    }
+
+    mutating func enqueue(_ action: Action) {
+        let keepsSelection: Bool
+        switch self.action {
+        case .selectAll, .start, .update: keepsSelection = true
+        default: keepsSelection = false
+        }
+        let isRead: Bool
+        switch action {
+        case .copySelection, .findSelection: isRead = true
+        default: isRead = false
+        }
+        if keepsSelection, isRead {
+            followUp = action
+            attempts = 0
+            return
+        }
+        self.action = action
+        followUp = nil
+        attempts = 0
+    }
+
+    mutating func enqueueStart(_ start: AlacrittySelectionStartIntent) {
+        enqueue(.start(start: start, endpoint: nil))
+    }
+
+    mutating func enqueueUpdate(_ endpoint: AlacrittySelectionEndpoint) {
+        switch action {
+        case let .start(start, _):
+            action = .start(start: start, endpoint: endpoint)
+            attempts = 0
+        case .update:
+            action = .update(endpoint)
+            attempts = 0
+        default:
+            enqueue(.update(endpoint))
+        }
+    }
+
+    mutating func beginAttempt() -> Bool {
+        guard action != nil, attempts < Self.maximumRetryAttempts else {
+            return false
+        }
+        attempts += 1
+        return true
+    }
+
+    /// Keep the pending action, but open a new finite retry window after an
+    /// explicit user operation, presentation opportunity, or low-frequency
+    /// probe. Ordinary output wakeups must not reopen the window while the
+    /// worker remains busy.
+    mutating func resetRetryWindow() {
+        guard !isEmpty else { return }
+        attempts = 0
+    }
+
+    mutating func acceptStart() {
+        guard case let .start(_, endpoint) = action else { return }
+        guard let endpoint else {
+            acceptCurrent()
+            return
+        }
+        action = .update(endpoint)
+        attempts = 0
+    }
+
+    mutating func acceptCurrent() {
+        guard let followUp else {
+            complete()
+            return
+        }
+        action = followUp
+        self.followUp = nil
+        attempts = 0
+    }
+
+    @discardableResult
+    mutating func acceptUpdate() -> Bool {
+        guard case .update = action else { return false }
+        acceptCurrent()
+        return true
+    }
+
+    mutating func complete() {
+        action = nil
+        followUp = nil
+        attempts = 0
+    }
+
+    mutating func cancel() {
+        complete()
+    }
+
+    /// Terminal input supersedes a selection gesture that has not reached the
+    /// bridge yet. Keeping it alive would let a delayed retry recreate an old
+    /// highlight after the worker has already cleared it for the new input.
+    mutating func supersedeForTerminalInput() {
+        cancel()
+    }
+}
+
+struct AlacrittyCursorPosition: Equatable {
+    let line: Int
+    let column: Int
+    let shape: UInt32
+    let color: UInt32
+}
+
+struct AlacrittyCursorCache: Equatable {
+    private(set) var position: AlacrittyCursorPosition?
+
+    mutating func update(line: Int, column: Int, shape: UInt32, color: UInt32) {
+        position = AlacrittyCursorPosition(
+            line: line, column: column, shape: shape, color: color
+        )
+    }
+}
+
+/// Controls whether an inactive surface keeps its drawable pool. Production
+/// uses the memory-saving freeze path; ScrollBench opts in so presentation
+/// timestamps remain observable while the benchmark window is unfocused.
+struct AlacrittyPresentationPolicy: Equatable {
+    let benchmarkMode: Bool
+
+    func shouldKeepMetalLayerActive(
+        surfaceVisible: Bool,
+        appActive: Bool,
+        windowIsKey: Bool
+    ) -> Bool {
+        guard surfaceVisible else { return false }
+        return benchmarkMode || (appActive && windowIsKey)
+    }
+
+    var shouldFreezeOnApplicationResignActive: Bool { !benchmarkMode }
+}
+
 /// Kero's Alacritty backend: a `TerminalBackendSurface` rendered with Metal
 /// from a CoreText glyph atlas on top of the `alacritty_terminal` crate.
 ///
@@ -16,7 +440,8 @@ import QuartzCore
 /// here is Kero's: cell layout, glyph drawing, the cursor, selection, and the
 /// key encodings in `AlacrittyKeyMap`. State lives in Rust behind the handle;
 /// this view snapshots the visible grid each time it draws.
-final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfaceValidations {
+final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
+    TerminalSelectionAvailabilitySurface, NSUserInterfaceValidations {
     weak var events: (any TerminalBackendEvents)? {
         didSet { flushPendingEvents() }
     }
@@ -29,12 +454,17 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     private static let scrollbackLines = 10_000
 
     private var handle: OpaquePointer?
+    /// Retained after detach so diagnostics can await a release that an
+    /// earlier ordinary detach already started.
+    private var backendReleaseTask: Task<Void, Never>?
+    private var isDetached = false
     private let token = AlacrittyRegistry.shared.nextToken()
     private var metrics: AlacrittyMetrics
     private var gridSize = (columns: 0, rows: 0)
     private var markedText = ""
     private let markedTextField = NSTextField(labelWithString: "")
     private var isSurfaceVisible = false
+    private var presentationPolicy = AlacrittyPresentationPolicy(benchmarkMode: false)
     /// Covers Metal while a parked surface is moving back into a real pane.
     /// The cover lives above the drawable so the GPU can acquire and present
     /// the first correctly-sized frame before the terminal becomes visible.
@@ -65,7 +495,14 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     /// Fractional scroll accumulator, so a trackpad's sub-line deltas add up
     /// to a row instead of being discarded.
     private var scrollAccumulator: CGFloat = 0
-    private var selectionAnchor: (line: Int, column: Int)?
+    private var selectionIntent = AlacrittySelectionIntent()
+    private var selectionRetryIntent = AlacrittySelectionRetryIntent()
+    private var selectionRetryQueued = false
+    private var selectionRetryGeneration: UInt64 = 0
+    private var selectionRetryProbeGeneration: UInt64 = 0
+    private var selectionRetryProbeState = AlacrittySelectionRetryProbeState()
+    private var selectionRetryProbeWorkItem: DispatchWorkItem?
+    private var selectionMouseDown = false
     private let findState = AlacrittyFind()
     private var hoveredURL: URLHit?
 
@@ -95,9 +532,32 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     /// Coalesces PTY wakeups onto the display link instead of drawing from
     /// each run-loop turn. ProMotion stays at 120 Hz only while this range is
     /// requested.
-    private var displayLink: CADisplayLink?
+    private(set) var displayLink: CADisplayLink?
     private var displayLinkProxy: AlacrittyDisplayLinkProxy?
     private var framePending = false
+    private var frameBusyRetryScheduled = false
+    private var frameBusyRetriesRemaining = 0
+    /// A drawable or Metal submission can fail after the bridge has consumed
+    /// its frame. Pause the display link in that case, then use a small,
+    /// bounded backoff so a quiet terminal can recover without spinning at
+    /// 120 Hz forever.
+    private var presentationRecoveryScheduled = false
+    private var presentationRecoveryAttempts = 0
+    private var presentationRecoveryGeneration: UInt64 = 0
+    private var presentationRecoveryProbeScheduled = false
+    private var presentationRecoveryProbeWorkItem: DispatchWorkItem?
+    /// Scroll and redraw work accumulated until the next frame. The intent is
+    /// consumed only after the bridge accepts the frame; BUSY restores it.
+    private var pendingFrameIntent = AlacrittyFrameIntent()
+    /// Last geometry reported from a rendered snapshot. Scrollbar drags use
+    /// this cached position instead of taking a second full snapshot.
+    private var lastScrollPosition: TerminalScrollPosition?
+    /// A drag can arrive before the first frame has reported geometry. Keep
+    /// that fraction until the first accepted snapshot supplies row counts.
+    private var pendingScrollFraction: Double?
+    /// Cursor geometry from the last accepted frame. IME placement must not
+    /// acquire the terminal lock while asking for this position.
+    private var cursorCache = AlacrittyCursorCache()
     /// Host-side cursor blink: reuse cached rows and only rebuild the cursor.
     private var needsCursorRedraw = false
     /// Forces the next frame regardless of emulator damage. Set for changes
@@ -157,15 +617,17 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     }
 
     deinit {
+        isDetached = true
         stopDisplayLink()
         directoryTimer?.invalidate()
         cursorTimer?.invalidate()
+        findState.cancel()
         if let modifierMonitor {
             NSEvent.removeMonitor(modifierMonitor)
         }
         NotificationCenter.default.removeObserver(self)
         AlacrittyRegistry.shared.unregister(token)
-        if let handle { kero_alacritty_free(handle) }
+        if let handle { _ = AlacrittyHandleRelease.schedule(handle: handle) }
     }
 
     // MARK: - Lifecycle
@@ -205,18 +667,30 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     /// or while another app is active prevents the terminal heap and Metal
     /// drawable pages from becoming cold enough for macOS to reclaim.
     private func updateActiveTimers() {
+        guard !isDetached else { return }
         updateDirectoryPolling()
         updateCursorTimer()
     }
 
     private var shouldKeepMetalLayerActive: Bool {
-        isSurfaceVisible && NSApp.isActive && window?.isKeyWindow == true
+        presentationPolicy.shouldKeepMetalLayerActive(
+            surfaceVisible: isSurfaceVisible,
+            appActive: NSApp.isActive,
+            windowIsKey: window?.isKeyWindow == true
+        )
     }
 
     private func updateBackingLayerActivity(forceFrame: Bool = false) {
+        guard !isDetached else { return }
         if shouldKeepMetalLayerActive {
             let needsMetalLayer = !(layer is CAMetalLayer)
             guard needsMetalLayer || forceFrame else { return }
+            // Re-attaching the drawable, regaining focus, or explicitly
+            // refreshing the visible layer is a real presentation opportunity.
+            // It may start a fresh bounded recovery sequence after a previous
+            // drawable failure exhausted its budget.
+            resetPresentationRecovery()
+            resetSelectionRetryWindow()
             if needsMetalLayer {
                 lastPresentedSurface = nil
                 replaceBackingLayer(with: makeBackingLayer())
@@ -224,7 +698,8 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             isAwaitingVisibleFrame = true
             setPresentationCoverVisible(true)
             needsUnconditionalRedraw = true
-            if !renderFrame(waitUntilCompleted: true) {
+            if !renderFrame(waitUntilCompleted: true),
+               !presentationRecoveryScheduled {
                 scheduleRender(force: true)
             }
         } else {
@@ -250,6 +725,10 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             waitUntilCompleted: true,
             cursorHasFocus: cursorHasFocus
         )
+        // A synchronous inactive refresh may have queued a retry while the
+        // layer was still Metal. Do not carry that probe into the parked
+        // CALayer state; visibility/focus will provide the next opportunity.
+        cancelSelectionRetryProbe()
         cursorTimer?.invalidate()
         cursorTimer = nil
         cursorVisible = true
@@ -291,19 +770,19 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     /// finish. If the retained frame caught the hidden blink phase, draw the
     /// steady cursor as ordinary layers over that frozen IOSurface.
     private func addInactiveCursorOverlay(to frozenLayer: CALayer) {
-        guard let handle else { return }
-        var snapshot = KeroSnapshot()
-        kero_alacritty_snapshot(handle, &snapshot)
-        guard snapshot.cursor_line >= 0, snapshot.cursor_column >= 0 else { return }
+        guard let cursor = cursorCache.position,
+              cursor.line >= 0,
+              cursor.column >= 0
+        else { return }
 
         let cell = CGRect(
-            x: Self.padding.x + CGFloat(snapshot.cursor_column) * metrics.cellWidth,
+            x: Self.padding.x + CGFloat(cursor.column) * metrics.cellWidth,
             y: bounds.maxY - Self.padding.y
-                - CGFloat(snapshot.cursor_line + 1) * metrics.cellHeight,
+                - CGFloat(cursor.line + 1) * metrics.cellHeight,
             width: metrics.cellWidth,
             height: metrics.cellHeight
         )
-        let frames: [CGRect] = switch snapshot.cursor_shape {
+        let frames: [CGRect] = switch cursor.shape {
         case 1:
             [CGRect(x: 0, y: 0, width: cell.width, height: 2)]
         case 2:
@@ -320,7 +799,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         let overlay = CALayer()
         overlay.frame = cell
         overlay.contentsScale = frozenLayer.contentsScale
-        let color = AlacrittyRenderer.color(snapshot.cursor_color)
+        let color = AlacrittyRenderer.color(cursor.color)
         for frame in frames {
             let segment = CALayer()
             segment.frame = frame
@@ -379,20 +858,47 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     }
 
     func detach() {
+        _ = detachBackend()
+    }
+
+    /// Used by diagnostics that must validate the complete worker teardown
+    /// before releasing the window. Ordinary pane removal uses `detach()` and
+    /// lets the join continue on the utility executor.
+    func detachAndWaitForBackend() async {
+        guard let release = detachBackend() else { return }
+        await release.value
+    }
+
+    @discardableResult
+    private func detachBackend() -> Task<Void, Never>? {
+        guard !isDetached else { return backendReleaseTask }
+        isDetached = true
+        isSurfaceVisible = false
+        presentationGeneration &+= 1
         directoryTimer?.invalidate()
         directoryTimer = nil
         cursorTimer?.invalidate()
         cursorTimer = nil
         isPointerInside = false
         isCommandPressed = false
+        selectionMouseDown = false
+        selectionIntent.finish()
+        cancelSelectionRetry()
+        findState.cancel()
         stopModifierMonitor()
         updateHoveredURL(nil)
-        guard let handle else { return }
+        stopDisplayLink()
+        metalRenderer = nil
+        AlacrittyRegistry.shared.unregister(token)
+        guard let handle else { return nil }
         self.handle = nil
-        kero_alacritty_free(handle)
+        let release = AlacrittyHandleRelease.schedule(handle: handle)
+        backendReleaseTask = release
+        return release
     }
 
     func setSurfaceVisible(_ visible: Bool) {
+        guard !isDetached else { return }
         // The flag stops wakeups from scheduling frames nothing will
         // composite; parking also drops renderer-owned GPU allocations below.
         let changed = visible != isSurfaceVisible
@@ -436,6 +942,17 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             directoryTimer?.invalidate()
             directoryTimer = nil
         }
+    }
+
+    /// Enables the benchmark-only presentation path. The benchmark keeps a
+    /// visible CAMetalLayer attached while the app or window is unfocused so
+    /// Core Animation can report actual presentation timestamps. Production
+    /// callers leave this disabled and retain the inactive-frame freeze path.
+    func setBenchmarkPresentationMode(_ enabled: Bool) {
+        guard enabled != presentationPolicy.benchmarkMode else { return }
+        presentationPolicy = AlacrittyPresentationPolicy(benchmarkMode: enabled)
+        updateBackingLayerActivity(forceFrame: enabled)
+        updateActiveTimers()
     }
 
     func applyAppearance() {
@@ -497,7 +1014,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         synchronizeGridSize()
         // Padding remainder changes even when the number of rows/columns does
         // not, so a sub-cell resize still needs one host-side frame.
-        if changed { scheduleRender(force: true) }
+        if changed { schedulePresentationOpportunity(force: true) }
     }
 
     /// Pushes the current geometry down to the emulator, which resizes the
@@ -513,7 +1030,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             UInt16(size.columns), UInt16(size.rows),
             UInt16(metrics.cellWidth.rounded()), UInt16(metrics.cellHeight.rounded())
         )
-        scheduleRender(force: true)
+        schedulePresentationOpportunity(force: true)
     }
 
     override var isFlipped: Bool { false }
@@ -563,6 +1080,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     /// Frozen (non-Metal) surfaces still use one run-loop turn, matching the
     /// old CoreText `needsDisplay` batching.
     private func scheduleRender(force: Bool = false) {
+        guard !isDetached else { return }
         if force { needsUnconditionalRedraw = true }
         guard isSurfaceVisible else { return }
         if !(layer is CAMetalLayer) {
@@ -576,8 +1094,46 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             return
         }
         framePending = true
+        if let handle { kero_alacritty_request_frame(handle) }
+        let selectionRetryWaiting =
+            !selectionRetryIntent.isEmpty
+            && (selectionRetryQueued || selectionRetryIntent.retryWindowExhausted)
+        let hasOtherPendingWork =
+            !pendingFrameIntent.isEmpty
+            || needsUnconditionalRedraw
+            || needsCursorRedraw
+        guard AlacrittySelectionRetryPolicy.shouldWakeDisplayLink(
+            retryWaiting: selectionRetryWaiting,
+            hasOtherPendingWork: hasOtherPendingWork
+        ) else {
+            framePending = false
+            if let handle { kero_alacritty_cancel_frame_request(handle) }
+            return
+        }
+        // PTY, cursor, selection, and scroll damage only merge into the
+        // pending intent. A failed drawable owns the wakeup budget until its
+        // timer fires or a real presentation opportunity resets it.
+        guard AlacrittyFrameRetryPolicy.shouldWakeDisplayLinkForDamage(
+            recoveryScheduled: presentationRecoveryScheduled,
+            recoveryAttempts: presentationRecoveryAttempts
+        ) else { return }
         startDisplayLinkIfNeeded()
+        guard displayLink != nil else {
+            framePending = false
+            if let handle { kero_alacritty_cancel_frame_request(handle) }
+            return
+        }
         displayLink?.isPaused = false
+    }
+
+    /// Resets the bounded failure budget for a real presentation opportunity,
+    /// such as visibility, backing, geometry, or focus becoming valid again.
+    /// Ordinary PTY damage uses `scheduleRender` and must not call this path.
+    private func schedulePresentationOpportunity(force: Bool = false) {
+        guard !isDetached else { return }
+        resetPresentationRecovery()
+        resetSelectionRetryWindow()
+        scheduleRender(force: force)
     }
 
     private func startDisplayLinkIfNeeded() {
@@ -597,6 +1153,9 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     }
 
     private func stopDisplayLink() {
+        resetPresentationRecovery()
+        cancelSelectionRetryProbe()
+        if let handle { kero_alacritty_cancel_frame_request(handle) }
         displayLink?.invalidate()
         displayLink = nil
         displayLinkProxy = nil
@@ -609,11 +1168,31 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             return
         }
         guard framePending || needsUnconditionalRedraw || needsCursorRedraw else {
+            if let handle { kero_alacritty_cancel_frame_request(handle) }
             displayLink?.isPaused = true
             return
         }
+        if !frameBusyRetryScheduled {
+            frameBusyRetriesRemaining = 2
+        }
         framePending = false
-        renderFrame()
+        let rendered = renderFrame(retryBusyImmediately: true)
+        let selectionRetryWaiting =
+            !selectionRetryIntent.isEmpty
+            && (selectionRetryQueued || selectionRetryIntent.retryWindowExhausted)
+        let hasOtherPendingWork =
+            !pendingFrameIntent.isEmpty
+            || needsUnconditionalRedraw
+            || needsCursorRedraw
+        if AlacrittyFrameRetryPolicy.shouldPauseDisplayLink(
+            renderSucceeded: rendered
+        ) || AlacrittyFrameRetryPolicy.shouldPauseDisplayLinkForSelectionRetry(
+            renderSucceeded: rendered,
+            retryWaiting: selectionRetryWaiting,
+            hasOtherPendingWork: hasOtherPendingWork
+        ) {
+            displayLink?.isPaused = true
+        }
     }
 
     override func viewDidChangeBackingProperties() {
@@ -622,18 +1201,25 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         // every rasterized glyph.
         guard let scale = window?.backingScaleFactor else { return }
         (self.layer as? CAMetalLayer)?.contentsScale = scale
-        scheduleRender(force: true)
+        schedulePresentationOpportunity(force: true)
     }
 
     @discardableResult
     private func renderFrame(
         waitUntilCompleted: Bool = false,
-        cursorHasFocus: Bool? = nil
+        cursorHasFocus: Bool? = nil,
+        retryBusyImmediately: Bool = false
     ) -> Bool {
-        guard let handle, let metalLayer = layer as? CAMetalLayer else { return false }
+        guard !isDetached else { return false }
+        guard let handle else { return false }
+        guard let metalLayer = layer as? CAMetalLayer else {
+            kero_alacritty_cancel_frame_request(handle)
+            return false
+        }
         // Full-screen TUIs use DEC mode 2026 to replace a frame atomically.
         // A host cursor tick must not expose the cleared intermediate grid.
         if !waitUntilCompleted, kero_alacritty_synchronized_update(handle) {
+            kero_alacritty_cancel_frame_request(handle)
             framePending = true
             displayLink?.isPaused = false
             return true
@@ -643,69 +1229,130 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             metalRenderer = TerminalMetalRenderer(device: metalDevice)
         }
         guard let renderer = metalRenderer else {
+            kero_alacritty_cancel_frame_request(handle)
             NSLog("yeet: no Metal device; the Alacritty backend cannot draw")
             return false
         }
 
-        // A wakeup means bytes arrived, not that the grid moved. Ask the
-        // emulator whether anything actually changed before paying for a
-        // snapshot and a full instance rebuild — a heartbeat or a cursor
-        // query would otherwise cost a whole frame.
-        var damage = KeroDamage()
-        kero_alacritty_take_damage(handle, &damage)
-
+        // The bridge applies this request, damage, the grid snapshot, and the
+        // Kitty placements in one locked region. The scroll path only
+        // accumulates deltas; it does not acquire the terminal mutex once per
+        // input event. A wakeup also only means bytes arrived: a heartbeat or
+        // cursor query can report SKIP.
+        let renderStart = CFAbsoluteTimeGetCurrent()
+        defer {
+            AlacrittyRenderStats.shared.frame(
+                seconds: CFAbsoluteTimeGetCurrent() - renderStart
+            )
+        }
+        let selectionChanged = retrySelectionWork()
+        if selectionChanged {
+            pendingFrameIntent.request(forceFull: true)
+        }
+        let selectionRetryWaiting =
+            !selectionRetryIntent.isEmpty
+            && (selectionRetryQueued || selectionRetryIntent.retryWindowExhausted)
+        let hasOtherPendingWork =
+            !pendingFrameIntent.isEmpty
+            || needsUnconditionalRedraw
+            || needsCursorRedraw
+        if !waitUntilCompleted, selectionRetryWaiting, !hasOtherPendingWork {
+            // A selection-only BUSY result is parked until its bounded timer
+            // or a real wake. Do not call begin_frame on every display tick.
+            kero_alacritty_cancel_frame_request(handle)
+            return true
+        }
+        if !waitUntilCompleted,
+           selectionRetryIntent.isEmpty,
+           !hasOtherPendingWork {
+            kero_alacritty_cancel_frame_request(handle)
+            completePresentationRecovery()
+            return true
+        }
+        var frameIntent = pendingFrameIntent.take()
+        frameIntent.request(
+            forceFull: needsUnconditionalRedraw,
+            cursorOnly: needsCursorRedraw
+        )
+        var frame = KeroFrame()
+        kero_alacritty_begin_frame(
+            handle,
+            frameIntent.scrollDeltaArgument,
+            frameIntent.scrollTargetArgument,
+            frameIntent.forceFull,
+            frameIntent.cursorOnly,
+            &frame
+        )
+        AlacrittyRenderStats.shared.recordBridgeFrame(
+            busy: frame.kind == KERO_FRAME_BUSY,
+            busyCount: frame.busy_count,
+            lockWaitNs: frame.lock_wait_ns,
+            snapshotNs: frame.snapshot_ns,
+            buildNs: frame.build_ns,
+            packedRows: UInt64(frame.packed_rows)
+        )
+        // Restore the full request on BUSY before an immediate or display-link
+        // retry merges any newer input.
+        if frame.kind == KERO_FRAME_BUSY {
+            pendingFrameIntent.restore(frameIntent)
+            framePending = true
+            if displayLink == nil {
+                scheduleRender()
+            } else {
+                displayLink?.isPaused = false
+            }
+            if retryBusyImmediately {
+                scheduleBusyFrameRetry()
+            }
+            return true
+        }
         // nil means "rebuild every row": a full-damage frame, or a host-side
         // change — resize, theme, selection, focus — that the emulator never
         // saw and so never reported as damage.
         var dirtyRows: [Int]?
-        if needsUnconditionalRedraw || damage.kind == KERO_DAMAGE_FULL {
+        switch frame.kind {
+        case KERO_FRAME_FULL:
             dirtyRows = nil
-        } else if damage.kind == KERO_DAMAGE_PARTIAL, let rows = damage.rows {
-            dirtyRows = (0..<damage.rows_len).map { Int(rows[$0]) }
-        } else if needsCursorRedraw {
+        case KERO_FRAME_DIRTY:
+            dirtyRows = (0..<frame.dirty_rows_len).map { Int(frame.dirty_rows[$0]) }
+        case KERO_FRAME_CURSOR:
             // Empty means reuse every cached row and only rebuild the cursor.
             dirtyRows = []
-        } else {
+        default:
+            needsUnconditionalRedraw = false
+            needsCursorRedraw = false
             AlacrittyRenderStats.shared.skipped()
+            completePresentationRecovery()
             return true
         }
-        needsUnconditionalRedraw = false
-        needsCursorRedraw = false
-        let renderStart = CFAbsoluteTimeGetCurrent()
-        defer { AlacrittyRenderStats.shared.frame(seconds: CFAbsoluteTimeGetCurrent() - renderStart) }
-
+        cursorCache.update(
+            line: frame.snapshot.cursor_line,
+            column: frame.snapshot.cursor_column,
+            shape: frame.snapshot.cursor_shape,
+            color: frame.snapshot.cursor_color
+        )
         let scale = window?.backingScaleFactor ?? 2
         metalLayer.device = metalDevice
         metalLayer.contentsScale = scale
         let size = bounds.size
-        guard size.width > 0, size.height > 0 else { return false }
+        guard size.width > 0, size.height > 0 else {
+            recoverAfterAcceptedFrameFailure()
+            return false
+        }
         metalLayer.drawableSize = CGSize(
             width: size.width * scale, height: size.height * scale
         )
-        guard let drawable = metalLayer.nextDrawable() else { return false }
+        guard let drawable = metalLayer.nextDrawable() else {
+            recoverAfterAcceptedFrameFailure()
+            return false
+        }
         // Keep the IOSurface before render schedules this drawable for
         // presentation. Accessing drawable.texture afterward is invalid.
         let drawableSurface = drawable.texture.iosurface
 
-        var snapshot = KeroSnapshot()
-        if let dirtyRows {
-            if dirtyRows.isEmpty {
-                // A non-NULL empty list is cursor-only. Swift's empty-array
-                // buffer pointer is NULL, which the bridge treats as full.
-                var cursorOnly = 0
-                kero_alacritty_snapshot_rows(handle, &snapshot, &cursorOnly, 0)
-            } else {
-                dirtyRows.withUnsafeBufferPointer { rows in
-                    kero_alacritty_snapshot_rows(
-                        handle, &snapshot, rows.baseAddress, rows.count
-                    )
-                }
-            }
-        } else {
-            kero_alacritty_snapshot(handle, &snapshot)
-        }
+        var snapshot = frame.snapshot
         applyHoveredURLUnderline(to: &snapshot)
-        updateKittyGraphics(handle: handle)
+        updateKittyGraphics(snapshot: frame.kitty)
         updateMarkedTextOverlay(snapshot: snapshot)
         updateCursorBlinking(snapshot.cursor_blinking)
         if cursorBlinking, !cursorVisible {
@@ -750,7 +1397,12 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             waitUntilCompleted: waitUntilCompleted
         )
         if submitted {
+            needsUnconditionalRedraw = false
+            needsCursorRedraw = false
             lastPresentedSurface = drawableSurface
+            completePresentationRecovery()
+        } else {
+            recoverAfterAcceptedFrameFailure()
         }
         if submitted, waitUntilCompleted {
             lastPresentedSize = size
@@ -758,7 +1410,6 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             isAwaitingVisibleFrame = false
             setPresentationCoverVisible(false)
         }
-        AlacrittyRenderStats.shared.rebuilt(rows: dirtyRows?.count ?? snapshot.rows)
         if submitted {
             reportScroll(
                 totalLines: snapshot.total_lines,
@@ -767,6 +1418,160 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             )
         }
         return submitted
+    }
+
+    private func recoverAfterAcceptedFrameFailure() {
+        pendingFrameIntent.recoverAfterAcceptedFrameFailure()
+        framePending = true
+        schedulePresentationRecovery()
+    }
+
+    private func resetPresentationRecovery() {
+        presentationRecoveryGeneration &+= 1
+        presentationRecoveryScheduled = false
+        presentationRecoveryAttempts = 0
+        presentationRecoveryProbeWorkItem?.cancel()
+        presentationRecoveryProbeWorkItem = nil
+        presentationRecoveryProbeScheduled = false
+    }
+
+    private func completePresentationRecovery() {
+        resetPresentationRecovery()
+    }
+
+    /// Wakes a paused display link a finite number of times after a drawable
+    /// or Metal submission failure. The bridge frame was accepted already, so
+    /// the retained full-redraw intent is safe to retry; the backoff keeps a
+    /// quiet pane from polling the display link at 120 Hz indefinitely.
+    private func schedulePresentationRecovery() {
+        guard !isDetached,
+              isSurfaceVisible,
+              layer is CAMetalLayer,
+              framePending
+        else { return }
+
+        guard AlacrittyFrameRetryPolicy.shouldSchedulePresentationRecovery(
+            framePending: framePending,
+            recoveryScheduled: presentationRecoveryScheduled,
+            attempts: presentationRecoveryAttempts
+        ) else {
+            schedulePresentationRecoveryProbe()
+            return
+        }
+
+        let attempt = presentationRecoveryAttempts
+        presentationRecoveryAttempts += 1
+        presentationRecoveryScheduled = true
+        let generation = presentationRecoveryGeneration
+        let delay = AlacrittyFrameRetryPolicy
+            .presentationRecoveryDelayMilliseconds(for: attempt)
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + .milliseconds(delay)
+        ) { [weak self] in
+            guard let self,
+                  self.presentationRecoveryGeneration == generation,
+                  self.presentationRecoveryScheduled
+            else { return }
+            self.presentationRecoveryScheduled = false
+            guard !self.isDetached,
+                  self.isSurfaceVisible,
+                  self.layer is CAMetalLayer,
+                  self.framePending
+            else { return }
+            if let handle = self.handle {
+                kero_alacritty_request_frame(handle)
+            }
+            self.startDisplayLinkIfNeeded()
+            self.displayLink?.isPaused = false
+        }
+    }
+
+    /// Once the fast recovery budget is exhausted, keep a quiet terminal
+    /// live with one cancellable probe per second. Ordinary damage still only
+    /// merges intent; it cannot turn this probe into a 120 Hz display loop.
+    private func schedulePresentationRecoveryProbe() {
+        guard AlacrittyFrameRetryPolicy.shouldSchedulePresentationRecoveryProbe(
+            framePending: framePending,
+            probeScheduled: presentationRecoveryProbeScheduled,
+            attempts: presentationRecoveryAttempts
+        ) else { return }
+
+        presentationRecoveryProbeScheduled = true
+        let generation = presentationRecoveryGeneration
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self,
+                  self.presentationRecoveryGeneration == generation,
+                  self.presentationRecoveryProbeScheduled
+            else { return }
+            self.presentationRecoveryProbeScheduled = false
+            self.presentationRecoveryProbeWorkItem = nil
+            guard !self.isDetached,
+                  self.isSurfaceVisible,
+                  self.layer is CAMetalLayer,
+                  self.framePending
+            else { return }
+            if let handle = self.handle {
+                kero_alacritty_request_frame(handle)
+            }
+            self.startDisplayLinkIfNeeded()
+            guard self.displayLink != nil else {
+                self.schedulePresentationRecoveryProbe()
+                return
+            }
+            self.displayLink?.isPaused = false
+        }
+        presentationRecoveryProbeWorkItem = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now()
+                + .milliseconds(AlacrittyFrameRetryPolicy
+                    .presentationRecoveryProbeDelayMilliseconds),
+            execute: workItem
+        )
+    }
+
+    /// Retries a failed non-blocking bridge lock at most twice before the next
+    /// display tick. Sustained contention then falls back to display-link
+    /// pacing instead of spinning on the main thread.
+    private func scheduleBusyFrameRetry() {
+        guard AlacrittyFrameRetryPolicy.shouldScheduleBusyRetry(
+            framePending: framePending,
+            retryScheduled: frameBusyRetryScheduled,
+            retriesRemaining: frameBusyRetriesRemaining
+        ) else { return }
+        frameBusyRetriesRemaining -= 1
+        frameBusyRetryScheduled = true
+        // Let the PTY finish the critical section that made the first
+        // non-blocking attempt busy, while staying well inside one 120 Hz
+        // display interval.
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + .microseconds(500)
+        ) { [weak self] in
+            guard let self else { return }
+            frameBusyRetryScheduled = false
+            guard displayLink != nil,
+                  isSurfaceVisible,
+                  layer is CAMetalLayer,
+                  framePending
+            else { return }
+            framePending = false
+            let rendered = renderFrame(retryBusyImmediately: true)
+            let selectionRetryWaiting =
+                !selectionRetryIntent.isEmpty
+                && (selectionRetryQueued || selectionRetryIntent.retryWindowExhausted)
+            let hasOtherPendingWork =
+                !pendingFrameIntent.isEmpty
+                || needsUnconditionalRedraw
+                || needsCursorRedraw
+            if AlacrittyFrameRetryPolicy.shouldPauseDisplayLink(
+                renderSucceeded: rendered
+            ) || AlacrittyFrameRetryPolicy.shouldPauseDisplayLinkForSelectionRetry(
+                renderSucceeded: rendered,
+                retryWaiting: selectionRetryWaiting,
+                hasOtherPendingWork: hasOtherPendingWork
+            ) {
+                displayLink?.isPaused = true
+            }
+        }
     }
 
     /// Hover underline is OR'd onto snapshot cells. Partial row refills
@@ -800,9 +1605,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         }
     }
 
-    private func updateKittyGraphics(handle: OpaquePointer) {
-        var snapshot = KeroKittySnapshot()
-        kero_alacritty_kitty_snapshot(handle, &snapshot)
+    private func updateKittyGraphics(snapshot: KeroKittySnapshot) {
         guard snapshot.placements_len > 0, let placements = snapshot.placements else {
             kittyPlacements = []
             kittyImageData = [:]
@@ -850,7 +1653,9 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         else {
             // Geometry changed after this command buffer was submitted. Its
             // drawable stays behind the cover; render another at the new size.
-            if isSurfaceVisible { scheduleRender(force: true) }
+            if isSurfaceVisible {
+                schedulePresentationOpportunity(force: true)
+            }
             return
         }
         isAwaitingVisibleFrame = false
@@ -956,6 +1761,15 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         let position = TerminalScrollPosition(
             totalRows: total, viewportRows: viewport, topRow: top
         )
+        lastScrollPosition = position
+        if let fraction = pendingScrollFraction {
+            pendingScrollFraction = nil
+            let topRow = position.row(atDragFraction: fraction)
+            let history = total > viewport ? total - viewport : 0
+            let displayOffset = history - min(topRow, history)
+            pendingFrameIntent.setScrollTarget(Int64(clamping: displayOffset))
+            scheduleRender()
+        }
         events?.terminalDidScroll(position)
     }
 
@@ -963,6 +1777,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
 
     /// Always called on the main thread; `alacrittyEventCallback` bounces.
     func handleEvent(kind: UInt32, payload: Data) {
+        guard !isDetached else { return }
         if events == nil,
            kind == KERO_EVENT_TITLE
             || kind == KERO_EVENT_BELL
@@ -982,6 +1797,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
 
         switch kind {
         case KERO_EVENT_WAKEUP:
+            findState.observeWakeup()
             updateFocusReport()
             if isPointerInside, isCommandPressed {
                 refreshURLHover(modifierFlags: NSEvent.modifierFlags)
@@ -989,6 +1805,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             // Output must not restart the host cursor timer. Animated TUIs can
             // wake the PTY many times per second even while the user is idle.
             if isSurfaceVisible {
+                pendingFrameIntent.requestTerminalDamageCheck()
                 scheduleRender()
             }
         case KERO_EVENT_TITLE:
@@ -1182,20 +1999,34 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     }
 
     func scroll(toFraction fraction: Double) {
-        guard let handle else { return }
-        var snapshot = KeroSnapshot()
-        kero_alacritty_snapshot(handle, &snapshot)
-        let history = snapshot.total_lines > snapshot.screen_lines
-            ? snapshot.total_lines - snapshot.screen_lines : 0
+        guard handle != nil else { return }
+        guard fraction.isFinite else { return }
+        let clampedFraction = min(max(fraction, 0), 1)
+        guard let position = lastScrollPosition else {
+            pendingScrollFraction = clampedFraction
+            scheduleRender()
+            return
+        }
+        let topRow = position.row(atDragFraction: clampedFraction)
+        let history = position.totalRows > position.viewportRows
+            ? position.totalRows - position.viewportRows : 0
         // The scrollbar runs oldest-to-newest; display offset runs the other way.
-        let fromTop = Int((Double(history) * fraction).rounded())
-        kero_alacritty_scroll_to_offset(handle, history - min(fromTop, history))
-        scheduleRender(force: true)
+        let displayOffset = history - min(topRow, history)
+        pendingFrameIntent.setScrollTarget(Int64(clamping: displayOffset))
+        scheduleRender()
+    }
+
+    var selectionAvailability: TerminalSelectionAvailability {
+        guard let handle else { return .empty }
+        switch kero_alacritty_selection_state(handle) {
+        case KERO_SELECTION_BUSY: return .busy
+        case KERO_SELECTION_PRESENT: return .selected
+        default: return .empty
+        }
     }
 
     var hasSelection: Bool {
-        guard let handle else { return false }
-        return kero_alacritty_has_selection(handle)
+        selectionAvailability == .selected
     }
 
     var hasEffectiveTerminalFocus: Bool {
@@ -1220,17 +2051,10 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     }
 
     func findSelection() {
-        guard let handle, kero_alacritty_has_selection(handle) else { return }
-        let needed = kero_alacritty_selection_text(handle, nil, 0)
-        guard needed > 0 else { return }
-        var buffer = [UInt8](repeating: 0, count: needed)
-        let written = buffer.withUnsafeMutableBufferPointer { pointer in
-            kero_alacritty_selection_text(handle, pointer.baseAddress, needed)
-        }
-        guard written > 0 else { return }
-        let needle = String(decoding: buffer[..<written], as: UTF8.self)
-        events?.terminalDidBeginFind(needle: needle)
-        beginFind(needle)
+        guard handle != nil else { return }
+        selectionRetryIntent.enqueue(.findSelection)
+        _ = retrySelectionWork()
+        scheduleSelectionRetry()
     }
 
     func exportScreenFile() -> String? {
@@ -1248,7 +2072,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     func readVisibleText(maxLines: Int, maxColumns: Int) -> String? {
         guard let handle else { return nil }
         var snapshot = KeroSnapshot()
-        kero_alacritty_snapshot(handle, &snapshot)
+        guard kero_alacritty_try_snapshot(handle, &snapshot) else { return nil }
         guard snapshot.columns > 0, snapshot.rows > 0,
               let cells = snapshot.cells
         else { return "" }
@@ -1332,10 +2156,239 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
 
     private func write(_ bytes: [UInt8]) {
         guard let handle, !bytes.isEmpty else { return }
+        cancelSelectionRetryForTerminalInput()
         bytes.withUnsafeBufferPointer { pointer in
             kero_alacritty_write(handle, pointer.baseAddress, pointer.count)
         }
         resetCursorBlink()
+    }
+
+    private func cancelSelectionRetryProbe() {
+        selectionRetryProbeGeneration &+= 1
+        selectionRetryProbeWorkItem?.cancel()
+        selectionRetryProbeWorkItem = nil
+        selectionRetryProbeState.cancel()
+    }
+
+    private func resetSelectionRetryWindow() {
+        cancelSelectionRetryProbe()
+        selectionRetryIntent.resetRetryWindow()
+    }
+
+    private func cancelSelectionRetry() {
+        selectionRetryIntent.cancel()
+        selectionRetryQueued = false
+        selectionRetryGeneration &+= 1
+        cancelSelectionRetryProbe()
+    }
+
+    private func cancelSelectionRetryForTerminalInput() {
+        selectionRetryIntent.supersedeForTerminalInput()
+        selectionRetryQueued = false
+        selectionRetryGeneration &+= 1
+        cancelSelectionRetryProbe()
+    }
+
+    private func scheduleSelectionRetryProbe() {
+        guard isSurfaceVisible,
+              layer is CAMetalLayer,
+              handle != nil,
+              AlacrittySelectionRetryPolicy.shouldScheduleProbe(
+                  actionPending: !selectionRetryIntent.isEmpty,
+                  retryWindowExhausted: selectionRetryIntent.retryWindowExhausted,
+                  probeScheduled: selectionRetryProbeState.isScheduled
+              )
+        else { return }
+
+        let generation = selectionRetryProbeGeneration
+        guard selectionRetryProbeState.schedule(generation: generation) else {
+            return
+        }
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self,
+                  self.selectionRetryProbeGeneration == generation,
+                  self.selectionRetryProbeState.begin(generation: generation)
+            else { return }
+            self.selectionRetryProbeWorkItem = nil
+            guard !self.isDetached,
+                  self.isSurfaceVisible,
+                  self.layer is CAMetalLayer,
+                  self.handle != nil,
+                  !self.selectionRetryIntent.isEmpty,
+                  self.selectionRetryIntent.retryWindowExhausted
+            else { return }
+            // A probe opens one new finite window. It never starts or keeps
+            // the 120 Hz display link alive by itself; the normal retry timer
+            // performs one paced scheduleRender after this reset.
+            self.selectionRetryIntent.resetRetryWindow()
+            self.scheduleSelectionRetry()
+        }
+        selectionRetryProbeWorkItem = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now()
+                + .milliseconds(AlacrittySelectionRetryPolicy
+                    .probeDelayMilliseconds),
+            execute: workItem
+        )
+    }
+
+    private func scheduleSelectionRetry() {
+        guard !selectionRetryIntent.isEmpty, isSurfaceVisible else { return }
+        guard !selectionRetryIntent.retryWindowExhausted else {
+            scheduleSelectionRetryProbe()
+            return
+        }
+        // A new finite retry window supersedes any stale low-frequency probe.
+        cancelSelectionRetryProbe()
+        guard !selectionRetryQueued else { return }
+        selectionRetryQueued = true
+        let generation = selectionRetryGeneration
+        let delay = selectionRetryIntent.retryDelayMilliseconds
+        // Back off under sustained PTY contention. The intent remains pending,
+        // but a busy selection cannot keep the display link active at 120 Hz.
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + .milliseconds(delay)
+        ) { [weak self] in
+            guard let self else { return }
+            guard self.selectionRetryGeneration == generation else { return }
+            self.selectionRetryQueued = false
+            guard !self.selectionRetryIntent.isEmpty,
+                  self.isSurfaceVisible,
+                  self.handle != nil
+            else { return }
+            self.scheduleRender()
+        }
+    }
+
+    @discardableResult
+    private func retrySelectionWork() -> Bool {
+        guard !selectionRetryQueued else { return false }
+        guard let handle else {
+            cancelSelectionRetry()
+            return false
+        }
+        guard selectionRetryIntent.beginAttempt(),
+              let action = selectionRetryIntent.action
+        else {
+            if selectionRetryIntent.retryWindowExhausted {
+                scheduleSelectionRetryProbe()
+            }
+            return false
+        }
+        defer {
+            if selectionRetryIntent.isEmpty {
+                cancelSelectionRetryProbe()
+            }
+        }
+
+        switch action {
+        case .selectAll:
+            guard kero_alacritty_select_all(handle) else {
+                scheduleSelectionRetry()
+                return false
+            }
+            selectionRetryIntent.acceptCurrent()
+            if !selectionRetryIntent.isEmpty {
+                scheduleSelectionRetry()
+            }
+            return true
+
+        case .copySelection:
+            switch readSelectionText(handle) {
+            case .busy:
+                scheduleSelectionRetry()
+                return false
+            case .empty:
+                selectionRetryIntent.complete()
+                return false
+            case let .text(text):
+                selectionRetryIntent.complete()
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                return false
+            }
+
+        case .findSelection:
+            switch readSelectionText(handle) {
+            case .busy:
+                scheduleSelectionRetry()
+                return false
+            case .empty:
+                selectionRetryIntent.complete()
+                return false
+            case let .text(text):
+                selectionRetryIntent.complete()
+                events?.terminalDidBeginFind(needle: text)
+                beginFind(text)
+                return false
+            }
+
+        case let .start(start, _):
+            guard kero_alacritty_selection_start(
+                handle, Int32(start.line), start.column,
+                start.kind, start.rightHalf
+            ) else {
+                scheduleSelectionRetry()
+                return false
+            }
+            if selectionMouseDown {
+                selectionIntent.start(
+                    AlacrittySelectionAnchor(line: start.line, column: start.column),
+                    accepted: true
+                )
+            }
+            selectionRetryIntent.acceptStart()
+            if !selectionRetryIntent.isEmpty {
+                scheduleSelectionRetry()
+            }
+            return true
+
+        case let .update(endpoint):
+            guard kero_alacritty_selection_update(
+                handle, Int32(endpoint.line), endpoint.column, endpoint.rightHalf
+            ) else {
+                scheduleSelectionRetry()
+                return false
+            }
+            selectionRetryIntent.acceptUpdate()
+            if !selectionRetryIntent.isEmpty {
+                scheduleSelectionRetry()
+            }
+            return true
+        }
+    }
+
+    private enum SelectionTextRead {
+        case busy
+        case empty
+        case text(String)
+    }
+
+    private func readSelectionText(_ handle: OpaquePointer) -> SelectionTextRead {
+        switch kero_alacritty_selection_state(handle) {
+        case KERO_SELECTION_BUSY: return .busy
+        case KERO_SELECTION_EMPTY: return .empty
+        default: break
+        }
+        let needed = kero_alacritty_selection_text(handle, nil, 0)
+        guard needed > 0 else {
+            return kero_alacritty_selection_state(handle) == KERO_SELECTION_BUSY
+                ? .busy : .empty
+        }
+        var buffer = [UInt8](repeating: 0, count: needed)
+        let written = buffer.withUnsafeMutableBufferPointer { pointer in
+            kero_alacritty_selection_text(handle, pointer.baseAddress, needed)
+        }
+        guard written > 0, written <= buffer.count else {
+            return kero_alacritty_selection_state(handle) == KERO_SELECTION_BUSY
+                ? .busy : .empty
+        }
+        return .text(String(decoding: buffer[..<written], as: UTF8.self))
+    }
+
+    private func clearSelectionIfNeeded() {
+        guard let handle else { return }
+        kero_alacritty_clear_selection_async(handle)
     }
 
     private func writeControl(_ bytes: [UInt8]) {
@@ -1347,6 +2400,8 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
 
     private var terminalMode: AlacrittyTerminalMode {
         guard let handle else { return [] }
+        // The bridge reads the worker-published mode value. Input paths must
+        // not take the emulator mutex to classify a scroll or key event.
         return AlacrittyTerminalMode(rawValue: kero_alacritty_mode(handle))
     }
 
@@ -1357,7 +2412,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
         if accepted {
             onBecomeFirstResponder?()
             updateActiveTimers()
-            scheduleRender(force: true)
+            schedulePresentationOpportunity(force: true)
             updateFocusReport()
         }
         return accepted
@@ -1371,7 +2426,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
                 self.updateActiveTimers()
                 self.updateFocusReport()
                 if self.isSurfaceVisible {
-                    self.scheduleRender(force: true)
+                    self.schedulePresentationOpportunity(force: true)
                 }
             }
         }
@@ -1393,10 +2448,12 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     @objc private func applicationWillResignActive(_ notification: Notification) {
         isCommandPressed = false
         updateHoveredURL(nil)
-        // Once the app is inactive, CAMetalLayer may stop vending drawables.
-        // Capture the steady inactive cursor while the active drawable pool is
-        // still available, then keep that IOSurface behind the other app.
-        freezeVisibleFrame(cursorHasFocus: false)
+        // In normal mode, once the app is inactive, release the drawable pool
+        // after capturing a steady cursor. Benchmark mode intentionally keeps
+        // the CAMetalLayer attached so presentation timestamps remain visible.
+        if presentationPolicy.shouldFreezeOnApplicationResignActive {
+            freezeVisibleFrame(cursorHasFocus: false)
+        }
     }
 
     @objc private func effectiveFocusChanged(_ notification: Notification) {
@@ -1409,7 +2466,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             self.updateBackingLayerActivity()
             self.refreshURLHover(modifierFlags: NSEvent.modifierFlags)
             if self.shouldKeepMetalLayerActive {
-                self.scheduleRender(force: true)
+                self.schedulePresentationOpportunity(force: true)
             }
         }
     }
@@ -1427,24 +2484,21 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.command), let handle {
+        if event.modifierFlags.contains(.command), handle != nil {
             switch Int(event.keyCode) {
             case 115: // Command-Home
-                var snapshot = KeroSnapshot()
-                kero_alacritty_snapshot(handle, &snapshot)
-                let history = snapshot.total_lines > snapshot.screen_lines
-                    ? snapshot.total_lines - snapshot.screen_lines : 0
-                kero_alacritty_scroll_to_offset(handle, history)
-                scheduleRender(force: true)
+                pendingFrameIntent.setScrollTarget(nil)
+                pendingFrameIntent.addScroll(lines: Int.max)
+                scheduleRender()
                 return
             case 119: // Command-End
-                kero_alacritty_scroll_to_offset(handle, 0)
-                scheduleRender(force: true)
+                pendingFrameIntent.setScrollTarget(0)
+                scheduleRender()
                 return
             case 116, 121: // Command-Page Up / Page Down
-                let delta = Int32(max(gridSize.rows, 1)) * (event.keyCode == 116 ? 1 : -1)
-                kero_alacritty_scroll(handle, delta)
-                scheduleRender(force: true)
+                let delta = Int(max(gridSize.rows, 1)) * (event.keyCode == 116 ? 1 : -1)
+                pendingFrameIntent.addScroll(lines: delta)
+                scheduleRender()
                 return
             default:
                 break
@@ -1487,20 +2541,42 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             return
         }
         if shouldReportMouse(event) {
+            // Deliver the click to the TUI, but drop a leftover Select All
+            // first. Mouse reporting would otherwise keep the highlight.
+            selectionMouseDown = false
+            selectionIntent.finish()
+            cancelSelectionRetry()
+            clearSelectionIfNeeded()
             reportingMouseButton = true
             sendMouse(code: 0, event: event, released: false)
             return
         }
+        cancelSelectionRetry()
+        selectionMouseDown = true
         let point = gridPoint(for: event)
         let kind: UInt32 = switch event.clickCount {
         case 2: 1 // word
         case 3: 2 // line
         default: 0
         }
-        selectionAnchor = (point.line, point.column)
-        kero_alacritty_selection_start(
+        let start = AlacrittySelectionStartIntent(
+            line: point.line,
+            column: point.column,
+            kind: kind,
+            rightHalf: point.rightHalf
+        )
+        let accepted = kero_alacritty_selection_start(
             handle, Int32(point.line), point.column, kind, point.rightHalf
         )
+        selectionIntent.start(
+            AlacrittySelectionAnchor(line: point.line, column: point.column),
+            accepted: accepted
+        )
+        guard accepted else {
+            selectionRetryIntent.enqueueStart(start)
+            scheduleSelectionRetry()
+            return
+        }
         scheduleRender()
     }
 
@@ -1511,11 +2587,29 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             }
             return
         }
-        guard let handle, selectionAnchor != nil else { return }
+        guard let handle else { return }
         let point = gridPoint(for: event)
-        kero_alacritty_selection_update(
+        let endpoint = AlacrittySelectionEndpoint(
+            line: point.line, column: point.column, rightHalf: point.rightHalf
+        )
+        guard selectionIntent.anchor != nil else {
+            guard selectionRetryIntent.hasPendingStart else { return }
+            selectionRetryIntent.enqueueUpdate(endpoint)
+            scheduleSelectionRetry()
+            return
+        }
+        let accepted = kero_alacritty_selection_update(
             handle, Int32(point.line), point.column, point.rightHalf
         )
+        guard selectionIntent.update(accepted: accepted) else {
+            selectionRetryIntent.enqueueUpdate(endpoint)
+            scheduleSelectionRetry()
+            return
+        }
+        _ = selectionRetryIntent.acceptUpdate()
+        if !selectionRetryIntent.isEmpty {
+            scheduleSelectionRetry()
+        }
         scheduleRender()
     }
 
@@ -1524,7 +2618,8 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             reportingMouseButton = false
             sendMouse(code: 0, event: event, released: true)
         }
-        selectionAnchor = nil
+        selectionMouseDown = false
+        selectionIntent.finish()
     }
 
     override func updateTrackingAreas() {
@@ -1665,7 +2760,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     }
 
     override func scrollWheel(with event: NSEvent) {
-        guard let handle else { return }
+        guard handle != nil else { return }
         // Line-mode events already count rows; pixel-mode ones need the cell
         // height applied before they mean anything.
         let delta = event.hasPreciseScrollingDeltas
@@ -1692,8 +2787,11 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
             return
         }
 
-        kero_alacritty_scroll(handle, Int32(lines))
-        scheduleRender(force: true)
+        // Accumulate and apply inside the frame's locked region. The mode is
+        // read from the bridge's published value; this path does not take the
+        // terminal mutex for each trackpad event.
+        pendingFrameIntent.addScroll(lines: lines)
+        scheduleRender()
     }
 
     private func gridPoint(for event: NSEvent) -> (line: Int, column: Int, rightHalf: Bool) {
@@ -1795,18 +2893,10 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     // MARK: - Editing commands
 
     @objc func copy(_ sender: Any?) {
-        guard let handle else { return }
-        let needed = kero_alacritty_selection_text(handle, nil, 0)
-        guard needed > 0 else { return }
-        var buffer = [UInt8](repeating: 0, count: needed)
-        let written = buffer.withUnsafeMutableBufferPointer { pointer in
-            kero_alacritty_selection_text(handle, pointer.baseAddress, needed)
-        }
-        guard written > 0 else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(
-            String(decoding: buffer[..<written], as: UTF8.self), forType: .string
-        )
+        guard handle != nil else { return }
+        selectionRetryIntent.enqueue(.copySelection)
+        _ = retrySelectionWork()
+        scheduleSelectionRetry()
     }
 
     @objc func paste(_ sender: Any?) {
@@ -1824,14 +2914,18 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface, NSUserInterfa
     }
 
     override func selectAll(_ sender: Any?) {
-        guard let handle else { return }
-        kero_alacritty_select_all(handle)
+        guard handle != nil else { return }
+        selectionRetryIntent.enqueue(.selectAll)
+        guard retrySelectionWork() else {
+            scheduleSelectionRetry()
+            return
+        }
         scheduleRender(force: true)
     }
 
     func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
         switch item.action {
-        case #selector(copy(_:)): hasSelection
+        case #selector(copy(_:)): selectionAvailability.allowsSelectionCommand
         case #selector(paste(_:)):
             Self.pasteboardString(from: .general) != nil
                 || NSPasteboard.general.canReadObject(
@@ -2059,11 +3153,9 @@ extension AlacrittyTerminalView: NSTextInputClient {
 
     /// Places the IME candidate window under the cursor.
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
-        guard let handle, let window else { return .zero }
-        var snapshot = KeroSnapshot()
-        kero_alacritty_snapshot(handle, &snapshot)
-        let column = CGFloat(max(snapshot.cursor_column, 0))
-        let line = CGFloat(max(snapshot.cursor_line, 0))
+        guard let window, let cursor = cursorCache.position else { return .zero }
+        let column = CGFloat(max(cursor.column, 0))
+        let line = CGFloat(max(cursor.line, 0))
         let local = NSRect(
             x: Self.padding.x + column * metrics.cellWidth,
             y: bounds.maxY - Self.padding.y - (line + 1) * metrics.cellHeight,
@@ -2095,9 +3187,6 @@ final class AlacrittyRegistry: @unchecked Sendable {
     private let lock = NSLock()
     private var next: UInt64 = 1
     private var views: [UInt64: WeakView] = [:]
-    /// Wakeups already sitting on the main queue. Agent CLIs emit hundreds
-    /// per second; coalescing them is what keeps snapshot+draw at 1/frame.
-    private var queuedWakeups: Set<UInt64> = []
 
     private struct WeakView {
         weak var view: AlacrittyTerminalView?
@@ -2120,8 +3209,8 @@ final class AlacrittyRegistry: @unchecked Sendable {
     func unregister(_ token: UInt64) {
         lock.lock()
         views.removeValue(forKey: token)
-        queuedWakeups.remove(token)
         lock.unlock()
+        AlacrittyWakeupGate.shared.release(token: token)
     }
 
     fileprivate func view(for token: UInt64) -> AlacrittyTerminalView? {
@@ -2134,17 +3223,53 @@ final class AlacrittyRegistry: @unchecked Sendable {
         view(for: token)?.handleEvent(kind: kind, payload: payload)
     }
 
-    /// Returns true when this wakeup should be queued on the main thread.
-    fileprivate func queueWakeup(token: UInt64) -> Bool {
+}
+
+/// Coalesces PTY wakeups before they reach the main queue. This state is
+/// deliberately nonisolated: Rust invokes the callback from its worker, and
+/// the lock is the synchronization boundary for both callback and teardown.
+private nonisolated final class AlacrittyWakeupGate: @unchecked Sendable {
+    static let shared = AlacrittyWakeupGate()
+
+    private let lock = NSLock()
+    private var queuedTokens: Set<UInt64> = []
+
+    func claim(token: UInt64) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        return queuedWakeups.insert(token).inserted
+        return queuedTokens.insert(token).inserted
     }
 
-    fileprivate func clearWakeup(token: UInt64) {
+    func release(token: UInt64) {
         lock.lock()
-        queuedWakeups.remove(token)
+        queuedTokens.remove(token)
         lock.unlock()
+    }
+}
+
+/// Owns the blocking part of backend teardown. The Rust free function joins
+/// its PTY worker, so doing that from MainActor can stall pane removal while a
+/// shell is unwinding. The opaque pointer crosses the task boundary as an
+/// integer; the view clears its handle before scheduling this exactly once.
+enum AlacrittyHandleRelease {
+    @discardableResult
+    nonisolated static func schedule(
+        rawValue: UInt,
+        free: @escaping @Sendable (UInt) -> Void
+    ) -> Task<Void, Never> {
+        Task.detached(priority: .utility) {
+            free(rawValue)
+        }
+    }
+
+    @discardableResult
+    nonisolated static func schedule(
+        handle: OpaquePointer
+    ) -> Task<Void, Never> {
+        schedule(rawValue: UInt(bitPattern: handle)) { rawValue in
+            guard let handle = OpaquePointer(bitPattern: rawValue) else { return }
+            kero_alacritty_free(handle)
+        }
     }
 }
 
@@ -2158,9 +3283,9 @@ private nonisolated func alacrittyEventCallback(
     let token = UInt64(UInt(bitPattern: context))
     guard token != 0 else { return }
     if kind == KERO_EVENT_WAKEUP {
-        guard AlacrittyRegistry.shared.queueWakeup(token: token) else { return }
+        guard AlacrittyWakeupGate.shared.claim(token: token) else { return }
         DispatchQueue.main.async {
-            AlacrittyRegistry.shared.clearWakeup(token: token)
+            AlacrittyWakeupGate.shared.release(token: token)
             AlacrittyRegistry.shared.deliver(token: token, kind: kind, payload: Data())
         }
         return

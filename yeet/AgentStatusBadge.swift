@@ -10,7 +10,7 @@ import SwiftUI
 /// project rows.
 ///
 /// The badge is the agent's presence lamp, with two deliberate tiers. Ring
-/// shapes carry the ambient lifecycle — a dotted ring while starting, a live
+/// shapes carry the ambient lifecycle — a short arc while starting, a live
 /// spinner while working, a plain ring at rest — and stay quiet so a wall of
 /// running agents never shouts. Blocked and done, the only two states that
 /// also post a notification, are the only ones that earn a tinted capsule:
@@ -18,8 +18,10 @@ import SwiftUI
 /// tooltip, and accessibility label all encode the state, so status never
 /// depends on color alone.
 ///
-/// The spinner is a Core Animation transform loop, so continuous motion costs
-/// no main-thread time; Reduce Motion swaps it for a static partial ring.
+/// Starting is a 90° arc on a faint ring; working is a 270° arc that spins.
+/// Reduce Motion keeps working as a static long arc, so the two phases stay
+/// distinct by arc length, not motion. The spinner is a Core Animation
+/// transform loop, so continuous motion costs no main-thread time.
 final class AgentStatusBadgeView: NSView {
     private enum Metrics {
         static let height: CGFloat = 15
@@ -44,6 +46,14 @@ final class AgentStatusBadgeView: NSView {
 
     private var phase: KeroAgentPhase?
     private var count = 0
+    /// Set beside the layer path so tests can tell 90° from 270° without
+    /// relying on CAShapeLayer copying the CGPath.
+    private var arcKind: ArcKind = .working
+
+    private enum ArcKind {
+        case starting
+        case working
+    }
     private var countSize = NSSize.zero
     private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
@@ -61,9 +71,26 @@ final class AgentStatusBadgeView: NSView {
         )
     }()
 
+    /// 90° tick from 12 o'clock to 3 o'clock. Starting stays static, so this
+    /// short arc cannot be mistaken for working's 270° spinner — including
+    /// when Reduce Motion freezes that spinner.
+    private static let startingArcPath: CGPath = {
+        let center = Metrics.glyphBox / 2
+        let path = CGMutablePath()
+        path.addArc(
+            center: CGPoint(x: center, y: center),
+            radius: Metrics.ringRadius,
+            startAngle: .pi / 2,
+            endAngle: 0,
+            clockwise: true
+        )
+        return path
+    }()
+
     /// 270° arc with its gap at the top, so the static Reduce Motion rendering
-    /// still reads as "in progress" next to idle's closed ring.
-    private static let arcPath: CGPath = {
+    /// still reads as "in progress" next to idle's closed ring and starting's
+    /// short tick.
+    private static let workingArcPath: CGPath = {
         let center = Metrics.glyphBox / 2
         let path = CGMutablePath()
         path.addArc(
@@ -93,7 +120,7 @@ final class AgentStatusBadgeView: NSView {
             ring.bounds = CGRect(x: 0, y: 0, width: Metrics.glyphBox, height: Metrics.glyphBox)
         }
         ringLayer.path = Self.ringPath
-        arcLayer.path = Self.arcPath
+        arcLayer.path = Self.workingArcPath
 
         imageView.imageScaling = .scaleProportionallyDown
         imageView.isHidden = true
@@ -270,10 +297,17 @@ final class AgentStatusBadgeView: NSView {
 
             switch phase {
             case .created:
+                // Faint closed track plus a 90° tick. A dashed 8-dot ring at
+                // this size read as a broken system spinner.
                 ringLayer.isHidden = false
-                ringLayer.lineDashPattern = [0.1, 3.51]
-                ringLayer.lineWidth = Metrics.ringWidth
-                ringLayer.strokeColor = NSColor.secondaryLabelColor.cgColor
+                ringLayer.lineDashPattern = nil
+                ringLayer.lineWidth = 1.3
+                ringLayer.strokeColor = NSColor.tertiaryLabelColor.cgColor
+                arcLayer.isHidden = false
+                arcKind = .starting
+                arcLayer.path = Self.startingArcPath
+                arcLayer.lineWidth = Metrics.ringWidth
+                arcLayer.strokeColor = NSColor.secondaryLabelColor.cgColor
                 countLabel.textColor = .secondaryLabelColor
             case .working:
                 ringLayer.isHidden = false
@@ -283,6 +317,9 @@ final class AgentStatusBadgeView: NSView {
                 ringLayer.strokeColor = progress
                     .withAlphaComponent(isDark ? 0.32 : 0.25).cgColor
                 arcLayer.isHidden = false
+                arcKind = .working
+                arcLayer.path = Self.workingArcPath
+                arcLayer.lineWidth = Metrics.ringWidth
                 arcLayer.strokeColor = progress.cgColor
                 countLabel.textColor = progress
             case .blocked:
@@ -395,3 +432,18 @@ struct AgentStatusBadgeRepresentable: NSViewRepresentable {
         view.apply(phase: rollup.phase, count: rollup.count)
     }
 }
+
+#if DEBUG
+extension AgentStatusBadgeView {
+    var debugRingHasDash: Bool {
+        guard let pattern = ringLayer.lineDashPattern else { return false }
+        return !pattern.isEmpty
+    }
+
+    var debugUsesStartingArc: Bool { arcKind == .starting && !arcLayer.isHidden }
+    var debugUsesWorkingArc: Bool { arcKind == .working && !arcLayer.isHidden }
+    var debugArcHidden: Bool { arcLayer.isHidden }
+    var debugRingHidden: Bool { ringLayer.isHidden }
+    var debugSpinnerRunning: Bool { arcLayer.animation(forKey: Self.spinKey) != nil }
+}
+#endif

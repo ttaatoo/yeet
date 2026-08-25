@@ -50,7 +50,9 @@ extern "C" {
 #define KERO_CELL_WIDE_SPACER (1u << 8)
 #define KERO_CELL_SELECTED (1u << 9)
 
-/// Bits returned by `kero_alacritty_mode`.
+/// Bits returned by `kero_alacritty_mode`. The getter reads the last mode
+/// snapshot published after a parser batch; it does not wait for the terminal
+/// lock.
 #define KERO_MODE_APP_CURSOR (1u << 0)
 #define KERO_MODE_APP_KEYPAD (1u << 1)
 #define KERO_MODE_ALT_SCREEN (1u << 2)
@@ -115,6 +117,15 @@ typedef struct {
   size_t display_offset;
   size_t total_lines;
   size_t screen_lines;
+  /// Stable identity of each viewport row (`rows` entries): the absolute
+  /// line index counted from the oldest retained line. Lets the renderer
+  /// keep its row-instance cache across a scroll, where only the rows whose
+  /// id changed need rebuilding. Valid under the same rules as `cells`.
+  const uint64_t *row_ids;
+  /// Bumped whenever retained lines are dropped or re-indexed (history trim
+  /// at the scrollback cap, resize) or packing inputs change (theme). A
+  /// renderer holding cached rows from another generation must discard them.
+  uint64_t row_generation;
 } KeroSnapshot;
 
 typedef struct {
@@ -181,6 +192,9 @@ int32_t kero_alacritty_child_pid(KeroTerminal *handle);
 /// shell that launched it. Falls back to the shell's own PID.
 int32_t kero_alacritty_foreground_pid(KeroTerminal *handle);
 
+/// Queues user input. The PTY worker clears selection, returns to the live
+/// prompt, and then queues the bytes in order; the call does not wait for the
+/// terminal lock.
 void kero_alacritty_write(KeroTerminal *handle, const uint8_t *bytes, size_t len);
 /// Writes protocol input without moving the user's scrollback viewport.
 void kero_alacritty_write_control(KeroTerminal *handle, const uint8_t *bytes, size_t len);
@@ -190,25 +204,53 @@ void kero_alacritty_resolve_clipboard(KeroTerminal *handle, uint64_t request_id,
                                       const uint8_t *bytes, size_t len, bool approved);
 void kero_alacritty_resize(KeroTerminal *handle, uint16_t columns, uint16_t rows,
                            uint16_t cell_width, uint16_t cell_height);
-/// Scrolls by `delta` lines, positive toward older output.
+/// Scrolls by `delta` lines, positive toward older output. Acquires the term
+/// lock per call; render-path scroll should ride
+/// `kero_alacritty_begin_frame`'s `pending_scroll` instead.
 void kero_alacritty_scroll(KeroTerminal *handle, int32_t delta);
-/// Puts the viewport `offset` lines above the live prompt.
-void kero_alacritty_scroll_to_offset(KeroTerminal *handle, size_t offset);
 void kero_alacritty_set_theme(KeroTerminal *handle, const KeroTheme *theme);
 /// Updates the default cursor unless the terminal application selected its own style.
 void kero_alacritty_set_cursor_style(KeroTerminal *handle, uint8_t shape, bool blinking);
 
 /// `kind`: 0 simple, 1 semantic (word), 2 line — single, double, triple click.
-void kero_alacritty_selection_start(KeroTerminal *handle, int32_t line, size_t column,
+/// Returns false when the terminal is busy; the UI caller should retry.
+bool kero_alacritty_selection_start(KeroTerminal *handle, int32_t line, size_t column,
                                     uint32_t kind, bool right_half);
-void kero_alacritty_selection_update(KeroTerminal *handle, int32_t line, size_t column,
+/// Returns false when the terminal is busy; the UI caller should retry.
+bool kero_alacritty_selection_update(KeroTerminal *handle, int32_t line, size_t column,
                                      bool right_half);
-void kero_alacritty_select_all(KeroTerminal *handle);
+/// Returns false when the terminal is busy; the UI caller should retry.
+bool kero_alacritty_select_all(KeroTerminal *handle);
+/// Returns false when busy or when no selection was present.
+bool kero_alacritty_clear_selection(KeroTerminal *handle);
+/// Queues selection clearing on the PTY worker without moving the viewport.
+void kero_alacritty_clear_selection_async(KeroTerminal *handle);
+/// Returns false when the terminal is busy.
 bool kero_alacritty_has_selection(KeroTerminal *handle);
+/// Selection state: BUSY when the terminal lock is unavailable, EMPTY when
+/// the lock was acquired and no selection range exists, PRESENT when a range
+/// exists. Selection text may still be empty; read it with selection_text.
+#define KERO_SELECTION_BUSY 0u
+#define KERO_SELECTION_EMPTY 1u
+#define KERO_SELECTION_PRESENT 2u
+uint32_t kero_alacritty_selection_state(KeroTerminal *handle);
 
 /// Copies into `buffer`, returning bytes written — or the length required when
-/// `buffer` is NULL or `capacity` is too small.
+/// `buffer` is NULL or `capacity` is too small. Returns zero when busy.
 size_t kero_alacritty_selection_text(KeroTerminal *handle, uint8_t *buffer, size_t capacity);
+
+/// Result kinds published by the asynchronous find worker.
+#define KERO_FIND_RESULT_BEGIN 1u
+#define KERO_FIND_RESULT_STEP 2u
+#define KERO_FIND_RESULT_END 3u
+#define KERO_FIND_RESULT_INVALIDATED 4u
+
+typedef struct {
+  uint64_t generation;
+  uint32_t kind;
+  size_t total;
+  intptr_t selected;
+} KeroFindResult;
 
 /// Whole buffer (or scrollback alone) as a styled VT stream, same length
 /// protocol. ANSI attributes, truecolor, hyperlinks and combining marks are
@@ -218,7 +260,8 @@ size_t kero_alacritty_buffer_text(KeroTerminal *handle, bool scrollback_only, ui
 
 /// OSC 8 hyperlink or recognized plain-text URL under one viewport cell. Also
 /// writes its inclusive cell bounds when `range` is non-NULL. The URL uses the
-/// same length protocol as selection text; zero means neither kind was found.
+/// same length protocol as selection text; zero means neither kind was found
+/// or the terminal is busy.
 size_t kero_alacritty_url_at(KeroTerminal *handle, int32_t line, size_t column,
                              KeroURLRange *range, uint8_t *buffer, size_t capacity);
 
@@ -232,6 +275,19 @@ intptr_t kero_alacritty_find_step(KeroTerminal *handle, bool forward);
 
 void kero_alacritty_find_end(KeroTerminal *handle);
 
+/// Queues find work on the PTY owner. These calls do not take the terminal
+/// lock or scan scrollback on the caller's thread. `generation` must be
+/// non-zero and increases for each host action.
+bool kero_alacritty_find_begin_async(KeroTerminal *handle, const char *needle,
+                                     uint64_t generation);
+bool kero_alacritty_find_step_async(KeroTerminal *handle, bool forward, uint64_t generation);
+bool kero_alacritty_find_end_async(KeroTerminal *handle, uint64_t generation);
+
+/// Reads the newest worker result without taking the terminal lock. Returns
+/// false while no result is ready and leaves `out` unchanged. The host drops
+/// results whose generation is older than its current request.
+bool kero_alacritty_find_poll(KeroTerminal *handle, KeroFindResult *out);
+
 void kero_alacritty_clear(KeroTerminal *handle);
 
 /// Nothing changed; the host can drop the frame entirely.
@@ -241,34 +297,63 @@ void kero_alacritty_clear(KeroTerminal *handle);
 /// Everything changed — a resize, a screen swap, a scroll.
 #define KERO_DAMAGE_FULL 2u
 
-typedef struct {
-  uint32_t kind;
-  /// Viewport row indices, owned by the handle and valid only until the next
-  /// call on it. Empty unless `kind` is KERO_DAMAGE_PARTIAL.
-  const size_t *rows;
-  size_t rows_len;
-} KeroDamage;
+/// Per-frame verdicts from `kero_alacritty_begin_frame`.
+#define KERO_FRAME_SKIP 0u
+#define KERO_FRAME_CURSOR 1u
+#define KERO_FRAME_DIRTY 2u
+#define KERO_FRAME_FULL 3u
+/// The terminal or Kitty graphics mutex was busy; retry the same host intent next frame.
+#define KERO_FRAME_BUSY 4u
 
-/// Which viewport rows changed since the last call, resetting damage as it
-/// goes. A wakeup only means bytes arrived — ask this before paying for a
-/// snapshot, and rebuild only the rows it names. Selection is not in the
-/// emulator's grid damage; this unions the previous and current selected
-/// viewport rows so a drag can rebuild those lines only.
-void kero_alacritty_take_damage(KeroTerminal *handle, KeroDamage *out);
+typedef struct {
+  /// `KERO_FRAME_*`. The snapshots are filled for CURSOR, DIRTY, and FULL;
+  /// SKIP and BUSY leave the previous snapshots untouched.
+  uint32_t kind;
+  /// Viewport rows that changed, owned by the handle. Empty unless DIRTY.
+  const size_t *dirty_rows;
+  size_t dirty_rows_len;
+  /// Cumulative number of frame attempts that found a frame lock busy.
+  uint64_t busy_count;
+  /// Time spent attempting both non-blocking frame locks, in nanoseconds.
+  uint64_t lock_wait_ns;
+  /// Time spent collecting damage and terminal metadata, in nanoseconds.
+  uint64_t snapshot_ns;
+  /// Time spent packing rows after metadata collection, in nanoseconds.
+  uint64_t build_ns;
+  /// Number of rows actually packed during this frame.
+  size_t packed_rows;
+  KeroSnapshot snapshot;
+  KeroKittySnapshot kitty;
+} KeroFrame;
+
+/// One locked region per frame: applies pending host scroll (`pending_scroll`
+/// line delta, positive toward older output; or `pending_target` absolute
+/// display offset, which wins when >= 0), drains the emulator's damage, and
+/// fills the snapshot to draw. `force_full` covers host-side changes the
+/// emulator cannot see (resize, theme, selection, focus); `cursor_only` asks
+/// for cursor fields alone when nothing else changed. The PTY parse thread
+/// holds the term lock in multi-millisecond bursts under heavy output, so the
+/// host accumulates scroll intent and makes one non-blocking attempt to acquire
+/// both frame locks per frame instead of acquiring the lock per scroll event.
+/// `KERO_FRAME_BUSY` leaves the intent unapplied; the host must retry it on the
+/// next frame.
+void kero_alacritty_request_frame(KeroTerminal *handle);
+void kero_alacritty_cancel_frame_request(KeroTerminal *handle);
+void kero_alacritty_begin_frame(KeroTerminal *handle, int32_t pending_scroll,
+                                int64_t pending_target, bool force_full,
+                                bool cursor_only, KeroFrame *out);
 
 /// Whether a DEC synchronized update is still being buffered.
 bool kero_alacritty_synchronized_update(KeroTerminal *handle);
 
-/// Fills `out` with the visible grid. Always a full refill.
+/// Fills `out` with the visible grid. Always a full refill. Out-of-loop
+/// readers only (scrollbar geometry, link hit-testing, automation reads);
+/// the render loop uses `kero_alacritty_begin_frame`.
 void kero_alacritty_snapshot(KeroTerminal *handle, KeroSnapshot *out);
 
-/// Like `kero_alacritty_snapshot`, but only walks the named viewport rows.
-/// `dirty_rows` NULL: full refill. Non-NULL with `dirty_rows_len` 0: cursor
-/// fields only; cells are left as they are. Non-empty: refill those rows.
-/// Resize, an empty cell buffer, or a display_offset change still refill
-/// the whole grid.
-void kero_alacritty_snapshot_rows(KeroTerminal *handle, KeroSnapshot *out,
-                                  const size_t *dirty_rows, size_t dirty_rows_len);
+/// Attempts a full visible-grid refill without waiting for the terminal lock.
+/// Returns false when busy and leaves `out` unchanged.
+bool kero_alacritty_try_snapshot(KeroTerminal *handle, KeroSnapshot *out);
 
 /// Fills `out` with visible Kitty image placements.
 void kero_alacritty_kitty_snapshot(KeroTerminal *handle, KeroKittySnapshot *out);
