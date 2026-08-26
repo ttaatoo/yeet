@@ -35,9 +35,17 @@ Debug 构建使用 `~/.config/yeet-dev/config.toml`。若 Yeet 目录还不存�
 
 字符串——默认 `"Yeet Dark"` 和 `"Yeet Light"`
 
-两种外观各自使用的配色主题。它会重绘终端、编辑器和 diff。深色窗口装饰（项目列表和“文件 / Git”检查器）使用比终端画布略亮一档的暖近黑纯色面板，选中行带橙色标记，这样交换侧边栏后两列仍然一致。浅色窗口装饰沿用当前浅色主题的纯色面板。`"Default Dark"` 和 `"Default Light"` 仍会解析为 Yeet Dark 和 Yeet Light。
+两种外观各自使用的配色主题。它会重绘终端、编辑器和 diff。深色窗口装饰（项目列表和“文件 / Git”检查器）使用比终端画布略亮一档的暖近黑纯色面板，这样交换侧边栏后两列仍然一致。浅色窗口装饰沿用当前浅色主题的纯色面板。`"Default Dark"` 和 `"Default Light"` 仍会解析为 Yeet Dark 和 Yeet Light。选中项目条和 agent 指示器跟随 `chrome-accent`，不跟随目录主题。
 
 设置窗口列出两个终端后端共同支持的精选主题。手写名称必须与列表里的显示名完全一致，包括大小写；否则会回退到对应的默认主题。
+
+### `chrome-accent`
+
+`"coral"` · `"vivid-purple"`——默认 `"coral"`
+
+设置 → 颜色 → 强调色里的窗口装饰强调色族。Coral 是吉祥物的橙与薄荷色。Vivid Purple 使用亮紫色选中条和绿色指示器；被阻塞的 agent 仍用珊瑚红，以免和紫色选中条混在一起。这不会改终端调色板或光标颜色。
+
+默认的 Coral 不会写入文件。未知值回退到 Coral。
 
 ### `toolbar.visibility`
 
@@ -157,6 +165,7 @@ Powerline 分隔符和图标字形也能正常显示。
 theme = "dark"
 theme-dark = "Catppuccin Mocha"
 theme-light = "Catppuccin Latte"
+chrome-accent = "vivid-purple"
 font-family = "IBM Plex Mono"
 font-size = 14
 sidebar.font-size = 13

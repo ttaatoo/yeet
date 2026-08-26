@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 
 /// OSC 9;4 progress report states.
 enum TerminalProgressState {
@@ -25,6 +26,7 @@ final class KeroTerminalProgressBarView: NSView {
     private var progress: Int?
     private var lastProgressValue: Int?
     private var reportTimer: Timer?
+    private var themeObservation: AnyCancellable?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -34,6 +36,10 @@ final class KeroTerminalProgressBarView: NSView {
         trackLayer.isHidden = true
         layer?.addSublayer(trackLayer)
         layer?.addSublayer(barLayer)
+        themeObservation = Theme.observeChanges { [weak self] in
+            guard let self else { return }
+            self.apply(state: self.state, progress: self.progress)
+        }
     }
 
     @available(*, unavailable)

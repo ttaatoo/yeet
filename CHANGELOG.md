@@ -15,6 +15,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Settings → Colors has an Accent picker: Coral (the current orange and mint) or Vivid Purple. It recolors the selected-project stripe and agent indicator; blocked agents stay coral-red so they do not match the purple stripe.
+
 ## [0.1.54]
 
 - Agent and project status is clearer: starting agents use a short arc, finished or interrupted Grok turns stop the spinner, project metadata stays aligned, and split-pane status bars remain inside the focus ring.

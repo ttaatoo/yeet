@@ -51,13 +51,25 @@ string — defaults `"Yeet Dark"` and `"Yeet Light"`
 The color theme for each appearance. A theme recolors terminal panes, the
 editor, and diffs. Dark chrome (the project list and the Files/Git inspector)
 is a solid warm near-black panel one step lighter than the terminal canvas,
-with an orange selection mark, so the two sidebars match after a swap. Light
-chrome stays a solid panel from the selected light theme. `"Default Dark"` and
-`"Default Light"` still resolve to Yeet Dark and Yeet Light.
+so the two sidebars match after a swap. Light chrome stays a solid panel from
+the selected light theme. `"Default Dark"` and `"Default Light"` still resolve
+to Yeet Dark and Yeet Light. The selected-project stripe and agent indicator
+follow `chrome-accent`, not the catalog theme.
 
 Settings lists the curated theme catalog. A hand-written name must match one
 of those display names exactly, including case, or Yeet falls back to the
 corresponding default.
+
+### `chrome-accent`
+
+`"coral"` · `"vivid-purple"` — default `"coral"`
+
+The window-chrome accent family in Settings → Colors → Accent. Coral is the
+mascot orange and mint. Vivid Purple uses a bright purple stripe and a green
+indicator; blocked agents stay coral-red so they do not match the selected
+stripe. This does not change terminal palettes or cursor colors.
+
+Omitted when Coral. An unknown value falls back to Coral.
 
 ### `toolbar.visibility`
 
@@ -205,6 +217,7 @@ The human workflow is described in
 theme = "dark"
 theme-dark = "Catppuccin Mocha"
 theme-light = "Catppuccin Latte"
+chrome-accent = "vivid-purple"
 font-family = "IBM Plex Mono"
 font-size = 14
 sidebar.font-size = 13

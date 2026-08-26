@@ -100,6 +100,11 @@ struct SettingsView: View {
                         Text(name).tag(name)
                     }
                 }
+                Picker("Accent", selection: $settings.chromeAccent) {
+                    ForEach(ChromeAccent.allCases) { family in
+                        Text(family.title).tag(family)
+                    }
+                }
             }
 
             Section("Font") {
@@ -329,6 +334,7 @@ struct SettingsView: View {
                         && settings.theme == .system
                         && settings.themeDark == Theme.defaultDarkThemeName
                         && settings.themeLight == Theme.defaultLightThemeName
+                        && settings.chromeAccent == .coral
                         && settings.toolbarVisibility == AppSettings.defaultToolbarVisibility
                         && !settings.swapSidebars
                         && !settings.wrapLines

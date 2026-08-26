@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 /// Keeps the traffic-light buttons aligned with the app's 38pt header bar:
@@ -44,6 +45,7 @@ struct WindowChromeAccessor: NSViewRepresentable {
     final class Coordinator {
         private weak var window: NSWindow?
         private var observers: [NSObjectProtocol] = []
+        private var themeObservation: AnyCancellable?
         private let onAttach: (NSWindow) -> Void
         private var attachQueued = false
 
@@ -72,6 +74,10 @@ struct WindowChromeAccessor: NSViewRepresentable {
             // surface that opts into moving the window.
             window.isMovable = false
             fillWindowCorners(window)
+            themeObservation = Theme.observeChanges { [weak self] in
+                guard let self, let window = self.window else { return }
+                self.fillWindowCorners(window)
+            }
             reposition()
             // The initial system layout can land after us; catch up.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.reposition() }

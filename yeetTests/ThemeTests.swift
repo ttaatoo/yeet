@@ -7,7 +7,21 @@ import AppKit
 import XCTest
 @testable import yeet
 
+@MainActor
 final class ThemeTests: XCTestCase {
+    override func setUp() async throws {
+        try await super.setUp()
+        Theme.reloadChromeAccent(.coral)
+    }
+
+    override func tearDown() async throws {
+        Theme.reloadChromeAccent(.coral)
+        Theme.reloadSelection(
+            light: Theme.defaultLightThemeName,
+            dark: Theme.defaultDarkThemeName
+        )
+        try await super.tearDown()
+    }
     func testYeetDarkUsesWarmCanvasMintCursorAndOrangeSelection() {
         let theme = Theme.defaultDarkDefinition
         XCTAssertEqual(theme.name, "Yeet Dark")
@@ -85,7 +99,84 @@ final class ThemeTests: XCTestCase {
         assertColor(resolved(Theme.chromeHeader, appearance: dark), "161412")
         assertColor(resolved(Theme.chromeAccent, appearance: dark), Theme.accentHex)
         assertColor(resolved(Theme.chromeProgress, appearance: dark), Theme.progressHex)
+        assertColor(resolved(Theme.chromeAttention, appearance: dark), Theme.accentHex)
         assertColor(resolved(Theme.chromeSelected, appearance: dark), "2A2420")
+    }
+
+    func testCoralLightChromeUsesMascotOrangeAndDeepMint() {
+        let light = NSAppearance(named: .aqua)!
+        assertColor(resolved(Theme.chromeAccent, appearance: light), Theme.accentHex)
+        assertColor(resolved(Theme.chromeProgress, appearance: light), Theme.progressLightHex)
+        assertColor(resolved(Theme.chromeAttention, appearance: light), Theme.accentHex)
+    }
+
+    func testVividPurpleDarkChromeUsesPurpleGreenAndCoralAttention() {
+        Theme.reloadChromeAccent(.vividPurple)
+        XCTAssertEqual(Theme.selectedChromeAccent, .vividPurple)
+
+        let dark = NSAppearance(named: .darkAqua)!
+        assertColor(resolved(Theme.chromeAccent, appearance: dark), "D55FDE")
+        assertColor(resolved(Theme.chromeProgress, appearance: dark), "89CA78")
+        assertColor(resolved(Theme.chromeAttention, appearance: dark), "EF596F")
+        assertColor(Theme.sidebarFill(dark: true), "161412")
+        XCTAssertNotEqual(
+            resolved(Theme.chromeAccent, appearance: dark).usingColorSpace(.sRGB)?.redComponent,
+            resolved(Theme.chromeAttention, appearance: dark).usingColorSpace(.sRGB)?.redComponent
+        )
+    }
+
+    func testVividPurpleLightChromeUsesDeeperPurpleGreenAndCoralAttention() {
+        Theme.reloadChromeAccent(.vividPurple)
+
+        let light = NSAppearance(named: .aqua)!
+        assertColor(resolved(Theme.chromeAccent, appearance: light), "9A27B0")
+        assertColor(resolved(Theme.chromeProgress, appearance: light), "2F7A40")
+        assertColor(resolved(Theme.chromeAttention, appearance: light), "BE5046")
+    }
+
+    func testChromeAccentIgnoresCatalogThemeSelection() {
+        Theme.reloadSelection(light: "Nord Light", dark: "Nord")
+        Theme.reloadChromeAccent(.coral)
+
+        let dark = NSAppearance(named: .darkAqua)!
+        let light = NSAppearance(named: .aqua)!
+        assertColor(resolved(Theme.chromeAccent, appearance: dark), Theme.accentHex)
+        assertColor(resolved(Theme.chromeProgress, appearance: dark), Theme.progressHex)
+        assertColor(resolved(Theme.chromeAccent, appearance: light), Theme.accentHex)
+        assertColor(resolved(Theme.chromeProgress, appearance: light), Theme.progressLightHex)
+    }
+
+    func testChromeAccentTomlValues() {
+        XCTAssertEqual(ChromeAccent.coral.rawValue, "coral")
+        XCTAssertEqual(ChromeAccent.vividPurple.rawValue, "vivid-purple")
+        XCTAssertEqual(ChromeAccent(rawValue: "vivid-purple"), .vividPurple)
+        XCTAssertEqual(ChromeAccent(rawValue: "coral"), .coral)
+        XCTAssertNil(ChromeAccent(rawValue: "C678DD"))
+        XCTAssertNil(ChromeAccent(rawValue: "vividPurple"))
+        XCTAssertNil(ChromeAccent(rawValue: "vivid_purple"))
+    }
+
+    func testChromeAccentTOMLRoundTrip() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("yeet-chrome-accent.toml")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try #"chrome-accent = "vivid-purple""#.write(
+            to: url, atomically: true, encoding: .utf8
+        )
+        let vivid = try XCTUnwrap(TOML.parse(at: url))
+        XCTAssertEqual(
+            ChromeAccent(rawValue: vivid["chrome-accent"]?.string ?? ""),
+            .vividPurple
+        )
+
+        try #"theme-dark = "Nord""#.write(to: url, atomically: true, encoding: .utf8)
+        let omitted = try XCTUnwrap(TOML.parse(at: url))
+        XCTAssertNil(omitted["chrome-accent"]?.string)
+        XCTAssertEqual(
+            omitted["chrome-accent"]?.string.flatMap(ChromeAccent.init(rawValue:)) ?? .coral,
+            .coral
+        )
     }
 
     private func resolved(_ color: NSColor, appearance: NSAppearance) -> NSColor {
