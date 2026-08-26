@@ -7,6 +7,112 @@ import XCTest
 @testable import yeet
 
 final class AlacrittyTerminalViewFrameTests: XCTestCase {
+    func testHiddenRenderingCursorKeepsIndependentIMEAnchor() {
+        var cache = AlacrittyCursorCache()
+
+        cache.update(
+            line: -1,
+            column: -1,
+            imeLine: 2,
+            imeColumn: 4,
+            shape: 0,
+            color: 0
+        )
+
+        XCTAssertNil(cache.position)
+        XCTAssertEqual(
+            cache.imePosition,
+            AlacrittyCursorPosition(line: 2, column: 4, shape: 0, color: 0)
+        )
+
+        cache.update(
+            line: -1,
+            column: -1,
+            imeLine: -1,
+            imeColumn: -1,
+            shape: 0,
+            color: 0
+        )
+        XCTAssertNil(cache.imePosition)
+    }
+
+    @MainActor
+    func testFirstRectUsesIMEAnchorWhenRenderingCursorIsHidden() {
+        let view = AlacrittyTerminalView(
+            frame: NSRect(x: 37, y: 29, width: 320, height: 200)
+        )
+        let contentView = NSView(
+            frame: NSRect(x: 0, y: 0, width: 500, height: 400)
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 120, width: 500, height: 400),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.setFrame(
+            NSRect(x: 100, y: 120, width: 500, height: 400),
+            display: false
+        )
+        window.contentView = contentView
+        contentView.addSubview(view)
+        view.layoutSubtreeIfNeeded()
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+
+        var cache = AlacrittyCursorCache()
+        cache.update(
+            line: -1,
+            column: -1,
+            imeLine: 2,
+            imeColumn: 4,
+            shape: 0,
+            color: 0
+        )
+        view.setCursorCacheForTesting(cache)
+
+        let metrics = AlacrittyMetrics(
+            family: AppSettings.shared.fontFamily,
+            size: CGFloat(AppSettings.shared.fontSize),
+            fontThicken: AppSettings.shared.fontThicken
+        )
+        let expectedLocal = NSRect(
+            x: 10 + 4 * metrics.cellWidth,
+            y: view.bounds.maxY - 8 - 3 * metrics.cellHeight,
+            width: metrics.cellWidth,
+            height: metrics.cellHeight
+        )
+        let expected = window.convertToScreen(view.convert(expectedLocal, to: nil))
+
+        XCTAssertEqual(
+            view.firstRect(
+                forCharacterRange: NSRange(location: 0, length: 0),
+                actualRange: nil
+            ),
+            expected
+        )
+
+        cache.update(
+            line: -1,
+            column: -1,
+            imeLine: -1,
+            imeColumn: -1,
+            shape: 0,
+            color: 0
+        )
+        view.setCursorCacheForTesting(cache)
+        XCTAssertEqual(
+            view.firstRect(
+                forCharacterRange: NSRange(location: 0, length: 0),
+                actualRange: nil
+            ),
+            .zero
+        )
+    }
+
     func testPresentationPolicyKeepsBenchmarkMetalActiveWithoutChangingDefault() {
         let normal = AlacrittyPresentationPolicy(benchmarkMode: false)
         XCTAssertTrue(normal.shouldKeepMetalLayerActive(
@@ -564,10 +670,21 @@ final class AlacrittyTerminalViewFrameTests: XCTestCase {
     func testCursorCacheUsesTheLastAcceptedFramePosition() {
         var cache = AlacrittyCursorCache()
 
-        cache.update(line: 7, column: 11, shape: 2, color: 0x00FF00)
+        cache.update(
+            line: 7,
+            column: 11,
+            imeLine: 7,
+            imeColumn: 11,
+            shape: 2,
+            color: 0x00FF00
+        )
 
         XCTAssertEqual(
             cache.position,
+            AlacrittyCursorPosition(line: 7, column: 11, shape: 2, color: 0x00FF00)
+        )
+        XCTAssertEqual(
+            cache.imePosition,
             AlacrittyCursorPosition(line: 7, column: 11, shape: 2, color: 0x00FF00)
         )
     }

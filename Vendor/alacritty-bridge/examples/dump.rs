@@ -108,6 +108,8 @@ fn main() {
         screen_lines: 0,
         row_ids: std::ptr::null(),
         row_generation: 0,
+        ime_cursor_line: -1,
+        ime_cursor_column: -1,
     };
     unsafe { kero_alacritty_snapshot(handle, &mut snapshot) };
 
