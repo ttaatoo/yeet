@@ -15,6 +15,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+## [0.1.55]
+
 - Settings → Colors has an Accent picker: Coral (the current orange and mint) or Vivid Purple. It recolors the selected-project stripe and agent indicator; blocked agents stay coral-red so they do not match the purple stripe.
 - IME candidate windows and inline composition stay on the insertion point when a terminal program hides its cursor.
 
