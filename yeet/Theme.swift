@@ -35,8 +35,71 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
-/// Publishes when the selected terminal themes change, so views painting with
-/// `Theme` colors repaint without waiting for an appearance flip.
+/// Window-chrome accent family. Independent of the terminal catalog theme:
+/// Coral is the mascot orange + mint; Vivid Purple is One Dark Pro Vivid
+/// purple + green, with a coral-red attention color so selected and blocked
+/// stay distinct. Persisted as `chrome-accent` (`coral`, `vivid-purple`).
+enum ChromeAccent: String, CaseIterable, Identifiable, Sendable {
+    case coral
+    case vividPurple = "vivid-purple"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .coral:
+            return String(
+                localized: "Coral",
+                comment: "Chrome accent family named for the Yeet mascot orange."
+            )
+        case .vividPurple:
+            return String(
+                localized: "Vivid Purple",
+                comment: "Chrome accent family using One Dark Pro Vivid purple."
+            )
+        }
+    }
+
+    /// Hex tokens (no `#`) for one appearance.
+    struct Tokens: Sendable {
+        let accent: String
+        let indicator: String
+        let attention: String
+    }
+
+    func tokens(dark: Bool) -> Tokens {
+        switch (self, dark) {
+        case (.coral, true):
+            return Tokens(
+                accent: Theme.accentHex,
+                indicator: Theme.progressHex,
+                attention: Theme.accentHex
+            )
+        case (.coral, false):
+            return Tokens(
+                accent: Theme.accentHex,
+                indicator: Theme.progressLightHex,
+                attention: Theme.accentHex
+            )
+        case (.vividPurple, true):
+            return Tokens(
+                accent: "D55FDE",
+                indicator: "89CA78",
+                attention: "EF596F"
+            )
+        case (.vividPurple, false):
+            return Tokens(
+                accent: "9A27B0",
+                indicator: "2F7A40",
+                attention: "BE5046"
+            )
+        }
+    }
+}
+
+/// Publishes when the selected terminal themes or chrome accent family
+/// change, so views painting with `Theme` colors repaint without waiting
+/// for an appearance flip.
 final class ThemeChanges: nonisolated ObservableObject {}
 
 /// App colors, sourced from the catalog themes the user selected in Settings
@@ -44,9 +107,9 @@ final class ThemeChanges: nonisolated ObservableObject {}
 /// sessions consume the definitions directly via `terminal(dark:)`. The
 /// editor, diffs, and pane surfaces follow that palette. Dark sidebar chrome
 /// is a hard-coded warm near-black frame one step above the Yeet Dark canvas,
-/// with the mascot orange accent, so the project list and Files/Git inspector
-/// match after a sidebar swap; light sidebar chrome keeps the selected
-/// light theme's solid fill.
+/// so the project list and Files/Git inspector match after a sidebar swap;
+/// light sidebar chrome keeps the selected light theme's solid fill. Accent
+/// stripe, folder icon, and agent chrome follow the selected `ChromeAccent`.
 enum Theme {
     nonisolated static let defaultDarkThemeName = "Yeet Dark"
     nonisolated static let defaultLightThemeName = "Yeet Light"
@@ -56,11 +119,12 @@ enum Theme {
     nonisolated static let legacyDefaultDarkThemeName = "Default Dark"
     nonisolated static let legacyDefaultLightThemeName = "Default Light"
 
-    /// Mascot body; selected rows, focus, and blocked-agent chrome.
+    /// Mascot body; Yeet Dark / Yeet Light selection and Coral chrome.
     nonisolated static let accentHex = "FF4D2E"
-    /// Mascot prompt; cursor, in-progress / finished chrome, review counts.
+    /// Mascot prompt; Yeet Dark cursor and Coral dark indicator chrome.
     nonisolated static let progressHex = "7DFFB3"
-    /// Deeper mint for light chrome, where `#7DFFB3` fails contrast.
+    /// Deeper mint for light Coral chrome and the Yeet Light cursor, where
+    /// `#7DFFB3` fails contrast.
     nonisolated static let progressLightHex = "0F8A5B"
 
     @MainActor static let changes = ThemeChanges()
@@ -200,6 +264,12 @@ enum Theme {
         initialState: (light: defaultLightDefinition, dark: defaultDarkDefinition)
     )
 
+    /// Selected chrome accent family. Independent of the terminal catalog
+    /// pair in `selection`.
+    private nonisolated static let chromeAccentFamily = OSAllocatedUnfairLock(
+        initialState: ChromeAccent.coral
+    )
+
     /// A Yeet built-in or catalog theme by name.
     nonisolated static func definition(named name: String) -> TerminalThemeDefinition? {
         if isDefaultLightName(name) { return defaultLightDefinition }
@@ -239,6 +309,26 @@ enum Theme {
         }
         afterViewUpdate { changes.objectWillChange.send() }
         return true
+    }
+
+    /// Pushes the chrome accent family. Called by `AppSettings` on startup
+    /// and whenever the Accent picker changes.
+    @MainActor
+    static func reloadChromeAccent(_ accent: ChromeAccent) {
+        chromeAccentFamily.withLock { $0 = accent }
+        afterViewUpdate { changes.objectWillChange.send() }
+    }
+
+    /// AppKit chrome that snapshots `cgColor` should sink this so a Colors
+    /// change repaints without an appearance flip.
+    @MainActor
+    static func observeChanges(_ receive: @escaping () -> Void) -> AnyCancellable {
+        changes.objectWillChange.sink { _ in receive() }
+    }
+
+    /// The selected chrome accent family, mirrored out of `AppSettings`.
+    nonisolated static var selectedChromeAccent: ChromeAccent {
+        chromeAccentFamily.withLock { $0 }
     }
 
     /// The selected terminal theme for one appearance.
@@ -301,21 +391,22 @@ enum Theme {
         }
     }
 
-    /// Mascot orange on dark chrome, where the project row already tints the
-    /// selected folder. Light keeps the selected terminal theme's accent.
+    /// Selected-project stripe, folder icon, and other selected chrome.
+    /// Follows the Accent family in Settings, not the catalog theme.
     static var chromeAccent: NSColor {
-        appearanceDynamic { isDark in
-            isDark ? hexColor(YeetDarkChrome.accent) : terminal(dark: false).accentNSColor
-        }
+        chromeDynamic { $0.accent }
     }
 
-    /// Mint on dark chrome; deeper mint on light. Used for in-progress and
-    /// finished agent chrome, the cursor's sibling in the window, and the
-    /// pending-review file count.
+    /// In-progress / finished agent chrome and the pending-review file count.
+    /// Mint on Coral; vivid green on Vivid Purple.
     static var chromeProgress: NSColor {
-        appearanceDynamic { isDark in
-            isDark ? hexColor(progressHex) : hexColor(progressLightHex)
-        }
+        chromeDynamic { $0.indicator }
+    }
+
+    /// Blocked-agent chrome. Coral reuses the mascot orange; Vivid Purple
+    /// uses coral-red so selected and error stay distinct.
+    static var chromeAttention: NSColor {
+        chromeDynamic { $0.attention }
     }
 
     /// Hairline separators outside the chrome columns (session tab bar,
@@ -372,6 +463,18 @@ enum Theme {
         }
     }
 
+    /// Dynamic color that keys on appearance and the selected chrome
+    /// accent family.
+    private nonisolated static func chromeDynamic(
+        _ token: @escaping @Sendable (ChromeAccent.Tokens) -> String
+    ) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let family = chromeAccentFamily.withLock { $0 }
+            return hexColor(token(family.tokens(dark: isDark)))
+        }
+    }
+
     private nonisolated static func hexColor(_ hex: String) -> NSColor {
         let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
         guard digits.count == 6, let value = Int(digits, radix: 16) else {
@@ -400,7 +503,6 @@ private enum YeetDarkChrome {
     static let divider = "2C2926"
     static let hover = "1E1C1A"
     static let selected = "2A2420"
-    static let accent = Theme.accentHex
 }
 
 /// UI-facing colors for a terminal theme definition. The definition stores

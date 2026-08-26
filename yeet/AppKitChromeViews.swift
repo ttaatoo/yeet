@@ -87,6 +87,7 @@ final class AppKitSidebarProjectRowView: NSView, NSTextFieldDelegate {
 
     private weak var project: Project?
     private var projectObservation: AnyCancellable?
+    private var themeObservation: AnyCancellable?
     private var index = 0
     private var fontSize = AppSettings.defaultSidebarFontSize
     private var isSelected = false
@@ -181,6 +182,10 @@ final class AppKitSidebarProjectRowView: NSView, NSTextFieldDelegate {
 
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
+
+        themeObservation = Theme.observeChanges { [weak self] in
+            self?.scheduleRefresh()
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -743,6 +748,7 @@ enum AppKitPaneActivityBarStyle: Equatable {
 final class AppKitPaneActivityBarView: NSView {
     private weak var session: TerminalSession?
     private var observation: AnyCancellable?
+    private var themeObservation: AnyCancellable?
     private var refreshQueued = false
     private let activityLayer = CALayer()
 
@@ -751,6 +757,9 @@ final class AppKitPaneActivityBarView: NSView {
         wantsLayer = true
         layer?.addSublayer(activityLayer)
         setAccessibilityElement(false)
+        themeObservation = Theme.observeChanges { [weak self] in
+            self?.scheduleRefresh()
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -798,7 +807,7 @@ final class AppKitPaneActivityBarView: NSView {
         let style = AppKitPaneActivityBarStyle.style(for: session?.agentStatus?.phase)
         let color: NSColor? = switch style {
         case .progress: Theme.chromeProgress
-        case .attention: Theme.chromeAccent
+        case .attention: Theme.chromeAttention
         case .hidden: nil
         }
         activityLayer.backgroundColor = color?.cgColor
@@ -827,3 +836,13 @@ struct AppKitPaneActivityBarRepresentable: NSViewRepresentable {
         }
     }
 }
+
+#if DEBUG
+extension AppKitSidebarProjectRowView {
+    var debugSelectionStripeColor: CGColor? { selectionStripe.backgroundColor }
+}
+
+extension AppKitPaneActivityBarView {
+    var debugActivityColor: CGColor? { activityLayer.backgroundColor }
+}
+#endif

@@ -161,6 +161,35 @@ final class AppKitChromePresentationTests: XCTestCase {
         )
     }
 
+    func testSidebarRowRepaintsSelectionStripeWhenChromeAccentChanges() async {
+        Theme.reloadChromeAccent(.coral)
+        let project = Project(fallbackName: "workspace", createInitialSession: false)
+        let row = AppKitSidebarProjectRowView(frame: NSRect(x: 0, y: 0, width: 240, height: 40))
+        row.update(
+            project: project,
+            index: 0,
+            isSelected: true,
+            isDragging: false,
+            fontSize: AppSettings.defaultSidebarFontSize,
+            onSelect: {},
+            onClose: {},
+            onDrag: { _ in },
+            onDragEnded: {}
+        )
+
+        let coral = row.debugSelectionStripeColor
+        XCTAssertNotNil(coral)
+
+        Theme.reloadChromeAccent(.vividPurple)
+        await Self.drainMainQueue(times: 2)
+
+        let purple = row.debugSelectionStripeColor
+        XCTAssertNotNil(purple)
+        XCTAssertNotEqual(coral, purple)
+
+        Theme.reloadChromeAccent(.coral)
+    }
+
     func testSidebarRowRefreshesAfterPublishedProjectValueIsWritten() async {
         let project = Project(fallbackName: "workspace", createInitialSession: false)
         let row = AppKitSidebarProjectRowView(frame: NSRect(x: 0, y: 0, width: 240, height: 40))
@@ -184,6 +213,16 @@ final class AppKitChromePresentationTests: XCTestCase {
         }
 
         XCTAssertEqual(row.accessibilityLabel(), "renamed")
+    }
+
+    private static func drainMainQueue(times: Int) async {
+        for _ in 0..<times {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async {
+                    continuation.resume()
+                }
+            }
+        }
     }
 
     private static func keyEvent(keyCode: UInt16, characters: String) -> NSEvent {

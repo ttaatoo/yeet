@@ -177,9 +177,10 @@ final class AppSettings: nonisolated ObservableObject {
         }
     }
 
-    /// Color theme names, one per appearance; the terminal, window chrome,
-    /// and editor all derive from them. `Theme` keeps the resolved
-    /// definitions (kero built-ins plus the ghostty catalog).
+    /// Color theme names, one per appearance; the terminal, editor, and
+    /// diffs derive from them. Chrome accent is `chromeAccent`. `Theme`
+    /// keeps the resolved definitions (kero built-ins plus the ghostty
+    /// catalog).
     @Published var themeDark: String {
         didSet {
             reloadThemeSelection()
@@ -190,6 +191,15 @@ final class AppSettings: nonisolated ObservableObject {
     @Published var themeLight: String {
         didSet {
             reloadThemeSelection()
+            save()
+        }
+    }
+
+    /// Window-chrome accent family. Independent of `themeDark` / `themeLight`.
+    /// Persisted as `chrome-accent`; omitted when Coral (the default).
+    @Published var chromeAccent: ChromeAccent {
+        didSet {
+            Theme.reloadChromeAccent(chromeAccent)
             save()
         }
     }
@@ -334,6 +344,8 @@ final class AppSettings: nonisolated ObservableObject {
             dark: false,
             fallback: Theme.defaultLightThemeName
         )
+        chromeAccent = toml["chrome-accent"]?.string.flatMap(ChromeAccent.init(rawValue:))
+            ?? .coral
         fontFamily = toml["font-family"]?.string ?? ""
         let size = toml["font-size"]?.double ?? Self.defaultFontSize
         fontSize = Self.fontSizeRange.contains(size) ? size : Self.defaultFontSize
@@ -372,6 +384,7 @@ final class AppSettings: nonisolated ObservableObject {
         globalHotkey = Self.parseGlobalHotkey(toml)
         applyAppearance()
         reloadThemeSelection()
+        Theme.reloadChromeAccent(chromeAccent)
         // didSet does not run during init (same as applyAppearance).
         registerGlobalHotkey()
         if existing == nil { save() }
@@ -420,6 +433,7 @@ final class AppSettings: nonisolated ObservableObject {
         theme = .system
         themeDark = Theme.defaultDarkThemeName
         themeLight = Theme.defaultLightThemeName
+        chromeAccent = .coral
         toolbarVisibility = Self.defaultToolbarVisibility
         swapSidebars = false
         cursorShape = .block
@@ -489,6 +503,9 @@ final class AppSettings: nonisolated ObservableObject {
         }
         if themeLight != Theme.defaultLightThemeName {
             lines.append("theme-light = \(TOML.quote(themeLight))")
+        }
+        if chromeAccent != .coral {
+            lines.append("chrome-accent = \(TOML.quote(chromeAccent.rawValue))")
         }
         if !fontFamily.isEmpty {
             lines.append("font-family = \(TOML.quote(fontFamily))")

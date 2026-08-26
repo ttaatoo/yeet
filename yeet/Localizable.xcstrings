@@ -573,6 +573,22 @@
         }
       }
     },
+    "Accent" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクセント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "强调色"
+          }
+        }
+      }
+    },
     "Add a Git remote before publishing this branch" : {
       "localizations" : {
         "ja" : {
@@ -1942,6 +1958,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "复制 URL"
+          }
+        }
+      }
+    },
+    "Coral" : {
+      "comment" : "Chrome accent family named for the Yeet mascot orange.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コーラル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "珊瑚橙"
           }
         }
       }
@@ -8016,6 +8049,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用所选内容查找"
+          }
+        }
+      }
+    },
+    "Vivid Purple" : {
+      "comment" : "Chrome accent family using One Dark Pro Vivid purple.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ビビッドパープル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鲜艳紫"
           }
         }
       }

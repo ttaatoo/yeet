@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 /// Native, allocation-light agent status chrome reused by panes, tabs, and
@@ -43,6 +44,7 @@ final class AgentStatusBadgeView: NSView {
     private let countLabel = NSTextField(labelWithString: "")
     private var accessibilityObserver: NSObjectProtocol?
     private var occlusionObserver: NSObjectProtocol?
+    private var themeObservation: AnyCancellable?
 
     private var phase: KeroAgentPhase?
     private var count = 0
@@ -139,6 +141,10 @@ final class AgentStatusBadgeView: NSView {
 
         setAccessibilityElement(true)
         setAccessibilityRole(.staticText)
+
+        themeObservation = Theme.observeChanges { [weak self] in
+            self?.refreshStateAppearance()
+        }
 
         accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
@@ -324,14 +330,14 @@ final class AgentStatusBadgeView: NSView {
                 countLabel.textColor = progress
             case .blocked:
                 capsuleLayer.isHidden = false
-                let accent = Theme.chromeAccent
-                capsuleLayer.backgroundColor = accent
+                let attention = Theme.chromeAttention
+                capsuleLayer.backgroundColor = attention
                     .withAlphaComponent(isDark ? 0.27 : 0.17).cgColor
                 showSymbol(
                     "exclamationmark.triangle.fill",
-                    pointSize: 10, weight: .semibold, tint: accent
+                    pointSize: 10, weight: .semibold, tint: attention
                 )
-                countLabel.textColor = accent
+                countLabel.textColor = attention
             case .done:
                 capsuleLayer.isHidden = false
                 let progress = Theme.chromeProgress
