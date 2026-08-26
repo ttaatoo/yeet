@@ -126,6 +126,11 @@ typedef struct {
   /// at the scrollback cap, resize) or packing inputs change (theme). A
   /// renderer holding cached rows from another generation must discard them.
   uint64_t row_generation;
+  /// Viewport-relative text-input anchor, or -1 when the live cursor is not
+  /// in the active viewport. Unlike cursor_line/cursor_column, this remains
+  /// populated when the terminal hides its rendering cursor.
+  intptr_t ime_cursor_line;
+  intptr_t ime_cursor_column;
 } KeroSnapshot;
 
 typedef struct {

@@ -407,9 +407,35 @@ struct AlacrittyCursorPosition: Equatable {
 
 struct AlacrittyCursorCache: Equatable {
     private(set) var position: AlacrittyCursorPosition?
+    /// The live terminal insertion point can still be useful to the IME when
+    /// the renderer hides its cursor (as full-screen TUIs often do). It is
+    /// independent from `position`, whose sentinel means "do not draw".
+    private(set) var imePosition: AlacrittyCursorPosition?
 
-    mutating func update(line: Int, column: Int, shape: UInt32, color: UInt32) {
-        position = AlacrittyCursorPosition(
+    mutating func update(
+        line: Int,
+        column: Int,
+        imeLine: Int,
+        imeColumn: Int,
+        shape: UInt32,
+        color: UInt32
+    ) {
+        position = Self.makePosition(
+            line: line, column: column, shape: shape, color: color
+        )
+        imePosition = Self.makePosition(
+            line: imeLine, column: imeColumn, shape: shape, color: color
+        )
+    }
+
+    private static func makePosition(
+        line: Int,
+        column: Int,
+        shape: UInt32,
+        color: UInt32
+    ) -> AlacrittyCursorPosition? {
+        guard line >= 0, column >= 0 else { return nil }
+        return AlacrittyCursorPosition(
             line: line, column: column, shape: shape, color: color
         )
     }
@@ -558,6 +584,13 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
     /// Cursor geometry from the last accepted frame. IME placement must not
     /// acquire the terminal lock while asking for this position.
     private var cursorCache = AlacrittyCursorCache()
+#if DEBUG
+    /// Test-only seam for exercising NSTextInputClient geometry without
+    /// starting a PTY or waiting for a render frame.
+    func setCursorCacheForTesting(_ cache: AlacrittyCursorCache) {
+        cursorCache = cache
+    }
+#endif
     /// Host-side cursor blink: reuse cached rows and only rebuild the cursor.
     private var needsCursorRedraw = false
     /// Forces the next frame regardless of emulator damage. Set for changes
@@ -1328,6 +1361,8 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
         cursorCache.update(
             line: frame.snapshot.cursor_line,
             column: frame.snapshot.cursor_column,
+            imeLine: frame.snapshot.ime_cursor_line,
+            imeColumn: frame.snapshot.ime_cursor_column,
             shape: frame.snapshot.cursor_shape,
             color: frame.snapshot.cursor_color
         )
@@ -3153,9 +3188,9 @@ extension AlacrittyTerminalView: NSTextInputClient {
 
     /// Places the IME candidate window under the cursor.
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
-        guard let window, let cursor = cursorCache.position else { return .zero }
-        let column = CGFloat(max(cursor.column, 0))
-        let line = CGFloat(max(cursor.line, 0))
+        guard let window, let cursor = cursorCache.imePosition else { return .zero }
+        let column = CGFloat(cursor.column)
+        let line = CGFloat(cursor.line)
         let local = NSRect(
             x: Self.padding.x + column * metrics.cellWidth,
             y: bounds.maxY - Self.padding.y - (line + 1) * metrics.cellHeight,
