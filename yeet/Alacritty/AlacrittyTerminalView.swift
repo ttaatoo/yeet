@@ -407,9 +407,35 @@ struct AlacrittyCursorPosition: Equatable {
 
 struct AlacrittyCursorCache: Equatable {
     private(set) var position: AlacrittyCursorPosition?
+    /// The live terminal insertion point can still be useful to the IME when
+    /// the renderer hides its cursor (as full-screen TUIs often do). It is
+    /// independent from `position`, whose sentinel means "do not draw".
+    private(set) var imePosition: AlacrittyCursorPosition?
 
-    mutating func update(line: Int, column: Int, shape: UInt32, color: UInt32) {
-        position = AlacrittyCursorPosition(
+    mutating func update(
+        line: Int,
+        column: Int,
+        imeLine: Int,
+        imeColumn: Int,
+        shape: UInt32,
+        color: UInt32
+    ) {
+        position = Self.makePosition(
+            line: line, column: column, shape: shape, color: color
+        )
+        imePosition = Self.makePosition(
+            line: imeLine, column: imeColumn, shape: shape, color: color
+        )
+    }
+
+    private static func makePosition(
+        line: Int,
+        column: Int,
+        shape: UInt32,
+        color: UInt32
+    ) -> AlacrittyCursorPosition? {
+        guard line >= 0, column >= 0 else { return nil }
+        return AlacrittyCursorPosition(
             line: line, column: column, shape: shape, color: color
         )
     }
@@ -558,6 +584,30 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
     /// Cursor geometry from the last accepted frame. IME placement must not
     /// acquire the terminal lock while asking for this position.
     private var cursorCache = AlacrittyCursorCache()
+#if DEBUG
+    /// Test-only seam for exercising NSTextInputClient geometry without
+    /// starting a PTY or waiting for a render frame.
+    func setCursorCacheForTesting(_ cache: AlacrittyCursorCache) {
+        cursorCache = cache
+    }
+
+    /// Copies IME and render cursor fields the same way an accepted frame does,
+    /// then refreshes the underlined preedit overlay from that snapshot.
+    func acceptSnapshotForTesting(_ snapshot: KeroSnapshot) {
+        acceptCursor(from: snapshot)
+        updateMarkedTextOverlay(snapshot: snapshot)
+    }
+
+    func cursorCacheForTesting() -> AlacrittyCursorCache { cursorCache }
+
+    func setMarkedTextForTesting(_ text: String) {
+        markedText = text
+    }
+
+    var markedTextOverlayFrameForTesting: NSRect? {
+        markedTextField.isHidden ? nil : markedTextField.frame
+    }
+#endif
     /// Host-side cursor blink: reuse cached rows and only rebuild the cursor.
     private var needsCursorRedraw = false
     /// Forces the next frame regardless of emulator damage. Set for changes
@@ -1325,12 +1375,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
             completePresentationRecovery()
             return true
         }
-        cursorCache.update(
-            line: frame.snapshot.cursor_line,
-            column: frame.snapshot.cursor_column,
-            shape: frame.snapshot.cursor_shape,
-            color: frame.snapshot.cursor_color
-        )
+        acceptCursor(from: frame.snapshot)
         let scale = window?.backingScaleFactor ?? 2
         metalLayer.device = metalDevice
         metalLayer.contentsScale = scale
@@ -1669,10 +1714,25 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
         CATransaction.commit()
     }
 
+    /// Copies render and IME anchors from an accepted snapshot. The render
+    /// sentinel can be -1 while the IME anchor is still in the live viewport.
+    private func acceptCursor(from snapshot: KeroSnapshot) {
+        cursorCache.update(
+            line: snapshot.cursor_line,
+            column: snapshot.cursor_column,
+            imeLine: snapshot.ime_cursor_line,
+            imeColumn: snapshot.ime_cursor_column,
+            shape: snapshot.cursor_shape,
+            color: snapshot.cursor_color
+        )
+    }
+
     private func updateMarkedTextOverlay(snapshot: KeroSnapshot) {
+        // Use the IME anchor, not the render cursor: TUIs often hide the
+        // drawn cursor while the insertion point is still in the viewport.
         guard !markedText.isEmpty,
-              snapshot.cursor_line >= 0,
-              snapshot.cursor_column >= 0
+              snapshot.ime_cursor_line >= 0,
+              snapshot.ime_cursor_column >= 0
         else {
             markedTextField.isHidden = true
             return
@@ -1694,9 +1754,9 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
             metrics.cellWidth
         )
         markedTextField.frame = NSRect(
-            x: Self.padding.x + CGFloat(snapshot.cursor_column) * metrics.cellWidth,
+            x: Self.padding.x + CGFloat(snapshot.ime_cursor_column) * metrics.cellWidth,
             y: bounds.height - Self.padding.y
-                - CGFloat(snapshot.cursor_line + 1) * metrics.cellHeight,
+                - CGFloat(snapshot.ime_cursor_line + 1) * metrics.cellHeight,
             width: width,
             height: metrics.cellHeight
         )
@@ -3153,9 +3213,9 @@ extension AlacrittyTerminalView: NSTextInputClient {
 
     /// Places the IME candidate window under the cursor.
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
-        guard let window, let cursor = cursorCache.position else { return .zero }
-        let column = CGFloat(max(cursor.column, 0))
-        let line = CGFloat(max(cursor.line, 0))
+        guard let window, let cursor = cursorCache.imePosition else { return .zero }
+        let column = CGFloat(cursor.column)
+        let line = CGFloat(cursor.line)
         let local = NSRect(
             x: Self.padding.x + column * metrics.cellWidth,
             y: bounds.maxY - Self.padding.y - (line + 1) * metrics.cellHeight,

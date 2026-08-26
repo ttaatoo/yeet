@@ -219,6 +219,11 @@ pub struct KeroSnapshot {
     /// renderer holding cached rows from another generation must discard
     /// them: the same id no longer names the same content.
     pub row_generation: u64,
+    /// Viewport-relative text-input anchor, or -1 when the live cursor is not
+    /// in the active viewport. Unlike `cursor_line`/`cursor_column`, this
+    /// remains populated when the terminal hides its rendering cursor.
+    pub ime_cursor_line: isize,
+    pub ime_cursor_column: isize,
 }
 
 /// Packed-row reuse across frames, keyed by absolute line index so that a
@@ -2899,6 +2904,8 @@ mod tests {
             screen_lines: 0,
             row_ids: std::ptr::null(),
             row_generation: 0,
+            ime_cursor_line: -1,
+            ime_cursor_column: -1,
         }
     }
 
@@ -2943,6 +2950,8 @@ mod tests {
         screen_lines: usize,
         row_ids: usize,
         row_generation: u64,
+        ime_cursor_line: isize,
+        ime_cursor_column: isize,
     }
 
     fn snapshot_fields(snapshot: &KeroSnapshot) -> SnapshotFields {
@@ -2963,6 +2972,8 @@ mod tests {
             screen_lines: snapshot.screen_lines,
             row_ids: snapshot.row_ids as usize,
             row_generation: snapshot.row_generation,
+            ime_cursor_line: snapshot.ime_cursor_line,
+            ime_cursor_column: snapshot.ime_cursor_column,
         }
     }
 
@@ -3382,6 +3393,27 @@ mod tests {
         assert_eq!(snap.ch(1, 0), ' ');
         assert_eq!(snap.out.cursor_line, 0);
         assert_eq!(snap.out.cursor_column, 2);
+        assert_eq!(snap.out.ime_cursor_line, 0);
+        assert_eq!(snap.out.ime_cursor_column, 2);
+    }
+
+    #[test]
+    fn hidden_cursor_keeps_ime_anchor_only_in_live_viewport() {
+        let mut term = parse(b"one\r\ntwo\r\nthree\r\nfour");
+        write_vt(&mut term, b"\x1b[?25l");
+        let mut snap = SnapshotState::new();
+        snap.fill(&term, None);
+
+        assert_eq!(snap.out.cursor_line, -1);
+        assert_eq!(snap.out.cursor_column, -1);
+        assert_eq!(snap.out.ime_cursor_line, 2);
+        assert_eq!(snap.out.ime_cursor_column, 4);
+
+        term.scroll_display(Scroll::Delta(1));
+        snap.fill(&term, Some(&[]));
+
+        assert_eq!(snap.out.ime_cursor_line, -1);
+        assert_eq!(snap.out.ime_cursor_column, -1);
     }
 
     #[test]
@@ -3606,6 +3638,8 @@ mod tests {
         assert_eq!(snap.ch(1, 0), ' ');
         assert_eq!(snap.out.cursor_line, 0);
         assert_eq!(snap.out.cursor_column, 9);
+        assert_eq!(snap.out.ime_cursor_line, 0);
+        assert_eq!(snap.out.ime_cursor_column, 9);
         assert_ne!(snap.out.cursor_column, before_column);
     }
 
@@ -4157,6 +4191,15 @@ fn write_snapshot_out<L: EventListener>(
     } else {
         (cursor.point.line.0 as isize, cursor.point.column.0 as isize)
     };
+    let (ime_cursor_line, ime_cursor_column) = if content.display_offset == 0
+        && cursor.point.line.0 >= 0
+        && (cursor.point.line.0 as usize) < screen_lines
+        && cursor.point.column.0 < columns
+    {
+        (cursor.point.line.0 as isize, cursor.point.column.0 as isize)
+    } else {
+        (-1, -1)
+    };
 
     *out = KeroSnapshot {
         cells: cells.as_ptr(),
@@ -4183,6 +4226,8 @@ fn write_snapshot_out<L: EventListener>(
         screen_lines,
         row_ids: row_ids.as_ptr(),
         row_generation,
+        ime_cursor_line,
+        ime_cursor_column,
     };
 }
 
