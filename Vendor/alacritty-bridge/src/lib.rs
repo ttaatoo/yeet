@@ -3393,6 +3393,8 @@ mod tests {
         assert_eq!(snap.ch(1, 0), ' ');
         assert_eq!(snap.out.cursor_line, 0);
         assert_eq!(snap.out.cursor_column, 2);
+        assert_eq!(snap.out.ime_cursor_line, 0);
+        assert_eq!(snap.out.ime_cursor_column, 2);
     }
 
     #[test]
@@ -3636,6 +3638,8 @@ mod tests {
         assert_eq!(snap.ch(1, 0), ' ');
         assert_eq!(snap.out.cursor_line, 0);
         assert_eq!(snap.out.cursor_column, 9);
+        assert_eq!(snap.out.ime_cursor_line, 0);
+        assert_eq!(snap.out.ime_cursor_column, 9);
         assert_ne!(snap.out.cursor_column, before_column);
     }
 

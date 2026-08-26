@@ -590,6 +590,23 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
     func setCursorCacheForTesting(_ cache: AlacrittyCursorCache) {
         cursorCache = cache
     }
+
+    /// Copies IME and render cursor fields the same way an accepted frame does,
+    /// then refreshes the underlined preedit overlay from that snapshot.
+    func acceptSnapshotForTesting(_ snapshot: KeroSnapshot) {
+        acceptCursor(from: snapshot)
+        updateMarkedTextOverlay(snapshot: snapshot)
+    }
+
+    func cursorCacheForTesting() -> AlacrittyCursorCache { cursorCache }
+
+    func setMarkedTextForTesting(_ text: String) {
+        markedText = text
+    }
+
+    var markedTextOverlayFrameForTesting: NSRect? {
+        markedTextField.isHidden ? nil : markedTextField.frame
+    }
 #endif
     /// Host-side cursor blink: reuse cached rows and only rebuild the cursor.
     private var needsCursorRedraw = false
@@ -1358,14 +1375,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
             completePresentationRecovery()
             return true
         }
-        cursorCache.update(
-            line: frame.snapshot.cursor_line,
-            column: frame.snapshot.cursor_column,
-            imeLine: frame.snapshot.ime_cursor_line,
-            imeColumn: frame.snapshot.ime_cursor_column,
-            shape: frame.snapshot.cursor_shape,
-            color: frame.snapshot.cursor_color
-        )
+        acceptCursor(from: frame.snapshot)
         let scale = window?.backingScaleFactor ?? 2
         metalLayer.device = metalDevice
         metalLayer.contentsScale = scale
@@ -1704,10 +1714,25 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
         CATransaction.commit()
     }
 
+    /// Copies render and IME anchors from an accepted snapshot. The render
+    /// sentinel can be -1 while the IME anchor is still in the live viewport.
+    private func acceptCursor(from snapshot: KeroSnapshot) {
+        cursorCache.update(
+            line: snapshot.cursor_line,
+            column: snapshot.cursor_column,
+            imeLine: snapshot.ime_cursor_line,
+            imeColumn: snapshot.ime_cursor_column,
+            shape: snapshot.cursor_shape,
+            color: snapshot.cursor_color
+        )
+    }
+
     private func updateMarkedTextOverlay(snapshot: KeroSnapshot) {
+        // Use the IME anchor, not the render cursor: TUIs often hide the
+        // drawn cursor while the insertion point is still in the viewport.
         guard !markedText.isEmpty,
-              snapshot.cursor_line >= 0,
-              snapshot.cursor_column >= 0
+              snapshot.ime_cursor_line >= 0,
+              snapshot.ime_cursor_column >= 0
         else {
             markedTextField.isHidden = true
             return
@@ -1729,9 +1754,9 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
             metrics.cellWidth
         )
         markedTextField.frame = NSRect(
-            x: Self.padding.x + CGFloat(snapshot.cursor_column) * metrics.cellWidth,
+            x: Self.padding.x + CGFloat(snapshot.ime_cursor_column) * metrics.cellWidth,
             y: bounds.height - Self.padding.y
-                - CGFloat(snapshot.cursor_line + 1) * metrics.cellHeight,
+                - CGFloat(snapshot.ime_cursor_line + 1) * metrics.cellHeight,
             width: width,
             height: metrics.cellHeight
         )
