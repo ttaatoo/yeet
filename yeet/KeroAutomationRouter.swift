@@ -43,6 +43,9 @@ enum KeroAutomationRouter {
                 "current_terminal_id": .string(callerTerminalID.uuidString),
                 "reads_mark_seen": .bool(false),
                 "split_focus_default": .bool(false),
+                "methods": .array(
+                    KeroAutomationCapability.methods.map(KeroJSONValue.string)
+                ),
             ]))
 
         case "pane.current":
@@ -96,6 +99,9 @@ enum KeroAutomationRouter {
 
         case "agent.report":
             return reportAgent(request, caller: caller)
+
+        case "agent.wait":
+            return await waitForAgent(request, caller: caller)
 
         default:
             return failure(
@@ -353,6 +359,62 @@ enum KeroAutomationRouter {
         session.sendCommand("\r")
         session.markAutomationAgentPrompted()
         return success(request, paneSnapshot(target, caller: caller))
+    }
+
+    /// Waits for a provider-reported or process-recognized phase. Observes
+    /// `$agentStatus` and sleeps off the main actor; terminal text is never
+    /// classified, and `Thread.sleep` is never used here.
+    private static func waitForAgent(
+        _ request: KeroAutomationRequest,
+        caller: PaneContext
+    ) async -> KeroAutomationResponse {
+        let spec: KeroAgentWait.Spec
+        switch KeroAgentWait.parse(request.params) {
+        case .success(let value):
+            spec = value
+        case .failure(let error):
+            return failure(request, "invalid_params", error.message)
+        }
+
+        // Same project-scoped resolver as `agent.get`. A guessed pane or
+        // alias in another window never appears in this search set.
+        guard let target = targetAgent(request, caller: caller),
+              let session = target.session
+        else {
+            return failure(
+                request, "agent_not_found",
+                "No matching agent exists in this project."
+            )
+        }
+
+        let observation = KeroAgentWait.phaseUpdates(from: session)
+        defer { observation.subscription.cancel() }
+        let outcome = await KeroAgentWait.race(
+            phases: spec.phases,
+            timeout: .milliseconds(spec.timeoutMS),
+            updates: observation.stream
+        )
+        switch outcome {
+        case .matched:
+            guard let current = targetAgent(request, caller: caller) else {
+                return failure(
+                    request, "agent_not_found",
+                    "No matching agent exists in this project."
+                )
+            }
+            return success(request, paneSnapshot(current, caller: caller))
+        case .disappeared:
+            return failure(
+                request, "agent_not_found",
+                "No matching agent exists in this project."
+            )
+        case .timedOut:
+            return failure(
+                request,
+                "wait_timeout",
+                KeroAgentWait.timeoutMessage(phases: spec.phases)
+            )
+        }
     }
 
     private static func reportAgent(

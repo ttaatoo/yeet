@@ -116,6 +116,27 @@ struct KeroAutomationResponse: Codable, Sendable {
     }
 }
 
+/// Socket methods advertised by `protocol.info`. Additive discovery so a
+/// client can see that `agent.wait` is first-class, not a CLI poll.
+enum KeroAutomationCapability {
+    static let methods: [String] = [
+        "protocol.info",
+        "pane.current",
+        "pane.list",
+        "pane.get",
+        "pane.split",
+        "pane.run",
+        "pane.send",
+        "pane.read",
+        "agent.list",
+        "agent.get",
+        "agent.start",
+        "agent.prompt",
+        "agent.report",
+        "agent.wait",
+    ]
+}
+
 enum KeroAutomationWireError: Error, CustomStringConvertible {
     case message(String)
 
@@ -297,6 +318,14 @@ final class KeroAutomationSocketServer: @unchecked Sendable {
             )
             return
         }
+
+        // Request accept/read stays on the short default. Only the response
+        // for `agent.wait` can last up to timeout_ms; lift SO_RCVTIMEO /
+        // SO_SNDTIMEO so that connection survives until the router replies.
+        try? Self.configureSocket(
+            client,
+            timeout: KeroAgentWait.socketTimeout(for: request)
+        )
 
         handler(request) { [weak self] response in
             guard let self else {
