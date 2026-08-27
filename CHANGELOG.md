@@ -15,6 +15,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- `yeet +agent wait` and `yeet +agent prompt --wait` wait inside Yeet for a provider-reported or recognized agent state instead of polling from the CLI. A timeout is the structured error `wait_timeout`.
+
 ## [0.1.55]
 
 - Settings → Colors has an Accent picker: Coral (the current orange and mint) or Vivid Purple. It recolors the selected-project stripe and agent indicator; blocked agents stay coral-red so they do not match the purple stripe.
