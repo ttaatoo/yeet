@@ -388,7 +388,7 @@ enum KeroAutomationRouter {
         }
 
         let observation = KeroAgentWait.phaseUpdates(from: session)
-        defer { observation.subscription.cancel() }
+        defer { observation.cancel() }
         let outcome = await KeroAgentWait.race(
             phases: spec.phases,
             timeout: .milliseconds(spec.timeoutMS),

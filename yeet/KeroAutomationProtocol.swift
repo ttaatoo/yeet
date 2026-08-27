@@ -119,7 +119,7 @@ struct KeroAutomationResponse: Codable, Sendable {
 /// Socket methods advertised by `protocol.info`. Additive discovery so a
 /// client can see that `agent.wait` is first-class, not a CLI poll.
 enum KeroAutomationCapability {
-    static let methods: [String] = [
+    nonisolated static let methods: [String] = [
         "protocol.info",
         "pane.current",
         "pane.list",

@@ -10,16 +10,16 @@ import Foundation
 /// that call it. Targeting stays project-scoped in the router (`targetAgent`);
 /// this type only parses states/timeouts and races published phase updates.
 enum KeroAgentWait {
-    static let defaultTimeoutMS = 120_000
-    static let minimumTimeoutMS = 100
-    static let maximumTimeoutMS = 3_600_000
+    nonisolated static let defaultTimeoutMS = 120_000
+    nonisolated static let minimumTimeoutMS = 100
+    nonisolated static let maximumTimeoutMS = 3_600_000
     /// Accept/read of the request stays short. Only a wait response uses the
     /// full `timeout_ms` budget.
-    static let requestSocketTimeout: TimeInterval = 2
+    nonisolated static let requestSocketTimeout: TimeInterval = 2
     /// Headroom so the client can still read `wait_timeout` after the wait
     /// itself expires.
-    static let transportMargin: TimeInterval = 5
-    static let defaultPhases: Set<KeroAgentPhase> = [.idle, .done, .blocked]
+    nonisolated static let transportMargin: TimeInterval = 5
+    nonisolated static let defaultPhases: Set<KeroAgentPhase> = [.idle, .done, .blocked]
 
     struct Spec: Equatable, Sendable {
         var phases: Set<KeroAgentPhase>
@@ -92,7 +92,7 @@ enum KeroAgentWait {
 
     /// Immediate decision for a published phase. `nil` means keep waiting.
     /// Terminal text is never consulted.
-    static func finished(
+    nonisolated static func finished(
         _ phase: KeroAgentPhase?,
         phases: Set<KeroAgentPhase>
     ) -> Outcome? {
@@ -100,18 +100,19 @@ enum KeroAgentWait {
         return phases.contains(phase) ? .matched : nil
     }
 
-    static func timeoutMessage(phases: Set<KeroAgentPhase>) -> String {
+    nonisolated static func timeoutMessage(phases: Set<KeroAgentPhase>) -> String {
         let names = phases.map(\.rawValue).sorted().joined(separator: ", ")
         return "Timed out waiting for agent state \(names)."
     }
 
-    static func socketTimeout(timeoutMS: Int) -> TimeInterval {
+    nonisolated static func socketTimeout(timeoutMS: Int) -> TimeInterval {
         Double(timeoutMS) / 1_000 + transportMargin
     }
 
     /// Client and accepted-server sockets use this after the request is on
-    /// the wire. Non-wait methods keep the short default.
-    static func socketTimeout(for request: KeroAutomationRequest) -> TimeInterval {
+    /// the wire. Non-wait methods keep the short default. The socket worker
+    /// is not main-actor isolated.
+    nonisolated static func socketTimeout(for request: KeroAutomationRequest) -> TimeInterval {
         guard request.method == "agent.wait" else { return requestSocketTimeout }
         let timeoutMS = request.params["timeout_ms"]?.intValue ?? defaultTimeoutMS
         guard (minimumTimeoutMS...maximumTimeoutMS).contains(timeoutMS) else {
@@ -122,27 +123,25 @@ enum KeroAgentWait {
 
     /// Subscribes on the caller's actor (the router is main-actor) so Combine
     /// delivery of `@Published agentStatus` stays on the thread that publishes
-    /// it. The caller must retain `subscription` for the wait. The first value
+    /// it. The caller must invoke `cancel` when the wait ends. The first value
     /// is the current phase.
-    @MainActor
     static func phaseUpdates(from session: TerminalSession) -> (
         stream: AsyncStream<KeroAgentPhase?>,
-        subscription: AnyCancellable
+        cancel: () -> Void
     ) {
         let (stream, continuation) = AsyncStream<KeroAgentPhase?>.makeStream()
         let sink = session.$agentStatus.sink { status in
             continuation.yield(status?.phase)
         }
-        let subscription = AnyCancellable {
+        return (stream, {
             sink.cancel()
             continuation.finish()
-        }
-        return (stream, subscription)
+        })
     }
 
     /// Races published phase updates against `timeout`. The timeout sleep is
     /// not main-actor isolated, so a long wait does not hitch AppKit.
-    static func race(
+    nonisolated static func race(
         phases: Set<KeroAgentPhase>,
         timeout: Duration,
         updates: AsyncStream<KeroAgentPhase?>
