@@ -295,6 +295,23 @@ final class GitStatusModel: nonisolated ObservableObject {
         return directories
     }
 
+    /// Git paths are byte-oriented, while Swift strings compare canonically
+    /// equivalent Unicode spellings as equal. Keep the original entries for
+    /// Git operations, but merge their file-tree projection deterministically
+    /// instead of trapping when two paths compare equal as dictionary keys.
+    nonisolated static func fileDecorations(
+        for entries: [Entry]
+    ) -> [String: FileDecoration] {
+        Dictionary(
+            entries.map { ($0.path, Self.fileDecoration(for: $0)) },
+            uniquingKeysWith: { current, candidate in
+                candidate.directoryPriority > current.directoryPriority
+                    ? candidate
+                    : current
+            }
+        )
+    }
+
     func sync(root: String) {
         changeBatch.perform {
             if root != rootPath {
@@ -1199,9 +1216,7 @@ final class GitStatusModel: nonisolated ObservableObject {
             entry.repositoryRoot = result.topLevel
             return entry
         }
-        fileDecorations = Dictionary(
-            uniqueKeysWithValues: entries.map { ($0.path, Self.fileDecoration(for: $0)) }
-        )
+        fileDecorations = Self.fileDecorations(for: entries)
         directoryDecorations = Self.rolledUpDirectoryDecorations(fileDecorations)
         ignoredPaths = result.ignoredPaths
         ignoredDirectories = result.ignoredPaths.compactMap { path in
@@ -2003,7 +2018,7 @@ final class GitStatusModel: nonisolated ObservableObject {
         return count
     }
 
-    private static func fileDecoration(for entry: Entry) -> FileDecoration {
+    private nonisolated static func fileDecoration(for entry: Entry) -> FileDecoration {
         let statuses = [entry.staged, entry.unstaged]
         if entry.isConflict || statuses.contains("U") { return .conflict }
         if statuses.contains("?") { return .untracked }

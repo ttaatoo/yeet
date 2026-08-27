@@ -15,6 +15,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Restoring a Git project no longer crashes Yeet when its status contains duplicate or Unicode-equivalent paths.
+
 ## [0.1.55]
 
 - Settings → Colors has an Accent picker: Coral (the current orange and mint) or Vivid Purple. It recolors the selected-project stripe and agent indicator; blocked agents stay coral-red so they do not match the purple stripe.

@@ -67,6 +67,39 @@ final class GitPorcelainTests: XCTestCase {
         XCTAssertEqual(dirs["docs"], .untracked)
     }
 
+    func testFileDecorationsMergeDuplicatePathsByPriority() {
+        let entries = [
+            GitStatusModel.Entry(path: "src/app.swift", staged: "M", unstaged: "."),
+            GitStatusModel.Entry(
+                path: "src/app.swift", staged: "U", unstaged: "U", isConflict: true
+            ),
+        ]
+
+        let decorations = GitStatusModel.fileDecorations(for: entries)
+
+        XCTAssertEqual(decorations.count, 1)
+        XCTAssertEqual(decorations["src/app.swift"], .conflict)
+    }
+
+    func testFileDecorationsMergeCanonicallyEquivalentPathsByPriority() {
+        let composedPath = "caf\u{e9}.txt"
+        let decomposedPath = "cafe\u{301}.txt"
+        XCTAssertEqual(composedPath, decomposedPath)
+        XCTAssertNotEqual(
+            Array(composedPath.unicodeScalars), Array(decomposedPath.unicodeScalars)
+        )
+        let entries = [
+            GitStatusModel.Entry(path: composedPath, staged: "M", unstaged: "."),
+            GitStatusModel.Entry(path: decomposedPath, staged: ".", unstaged: "D"),
+        ]
+
+        let decorations = GitStatusModel.fileDecorations(for: entries)
+
+        XCTAssertEqual(decorations.count, 1)
+        XCTAssertEqual(decorations[composedPath], .deleted)
+        XCTAssertEqual(decorations[decomposedPath], .deleted)
+    }
+
     func testShouldReuseCachedGitDetailsSameRootHeadAndLimit() {
         let key = GitStatusModel.GitDetailsCacheKey(
             repositoryRoot: "/repo",
