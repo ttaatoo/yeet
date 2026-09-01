@@ -16,6 +16,8 @@ an editor, and a diff viewer. Existing SwiftUI code is legacy; AppKit is the UI 
   affected modules.
 - Run the full test suite only for a large refactor or a change to a core module.
 - Before completion, build and run the app, then exercise the changed behavior.
+- Git inspector changes: `yeetTests/GitInspectorE2ETests`, `GitPorcelainTests`,
+  `FileTreeModelTests`. Data-path timings: `scripts/bench-git-inspector.sh`.
 
 ## Conventions
 
