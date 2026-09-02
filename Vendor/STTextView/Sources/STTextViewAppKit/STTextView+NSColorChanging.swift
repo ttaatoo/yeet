@@ -3,7 +3,7 @@
 
 import AppKit
 
-extension STTextView: NSColorChanging {
+extension STTextView: @MainActor NSColorChanging {
 
     public func changeColor(_ colorPanel: NSColorPanel?) {
         guard isEditable, let colorPanel else {

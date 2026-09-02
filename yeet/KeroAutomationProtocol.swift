@@ -9,7 +9,7 @@ import Foundation
 /// JSON values used by the local automation protocol. Keeping the wire model
 /// concrete avoids accepting arbitrary Foundation object graphs at the app
 /// boundary and lets both the app and bundled CLI share one Codable contract.
-enum KeroJSONValue: Codable, Equatable, Sendable {
+nonisolated enum KeroJSONValue: Codable, Equatable, Sendable {
     case string(String)
     case number(Double)
     case bool(Bool)
@@ -80,7 +80,7 @@ enum KeroJSONValue: Codable, Equatable, Sendable {
     }
 }
 
-struct KeroAutomationRequest: Codable, Sendable {
+nonisolated struct KeroAutomationRequest: Codable, Sendable {
     let version: Int
     let id: String
     let method: String
@@ -89,23 +89,23 @@ struct KeroAutomationRequest: Codable, Sendable {
     let params: [String: KeroJSONValue]
 }
 
-struct KeroAutomationErrorPayload: Codable, Sendable {
+nonisolated struct KeroAutomationErrorPayload: Codable, Sendable {
     let code: String
     let message: String
 }
 
-struct KeroAutomationResponse: Codable, Sendable {
+nonisolated struct KeroAutomationResponse: Codable, Sendable {
     let version: Int
     let id: String
     let ok: Bool
     let result: KeroJSONValue?
     let error: KeroAutomationErrorPayload?
 
-    static func success(id: String, result: KeroJSONValue) -> Self {
+    nonisolated static func success(id: String, result: KeroJSONValue) -> Self {
         Self(version: 1, id: id, ok: true, result: result, error: nil)
     }
 
-    static func failure(id: String, code: String, message: String) -> Self {
+    nonisolated static func failure(id: String, code: String, message: String) -> Self {
         Self(
             version: 1,
             id: id,
@@ -117,8 +117,9 @@ struct KeroAutomationResponse: Codable, Sendable {
 }
 
 /// Socket methods advertised by `protocol.info`. Additive discovery so a
-/// client can see that `agent.wait` is first-class, not a CLI poll.
-enum KeroAutomationCapability {
+/// client can see that `agent.wait` and recognizing `agent.start` are
+/// first-class, not CLI polls.
+nonisolated enum KeroAutomationCapability {
     nonisolated static let methods: [String] = [
         "protocol.info",
         "pane.current",
@@ -137,7 +138,7 @@ enum KeroAutomationCapability {
     ]
 }
 
-enum KeroAutomationWireError: Error, CustomStringConvertible {
+nonisolated enum KeroAutomationWireError: Error, CustomStringConvertible {
     case message(String)
 
     var description: String {
@@ -151,13 +152,13 @@ enum KeroAutomationWireError: Error, CustomStringConvertible {
 /// socket. Each connection carries one request and one response. That keeps
 /// failure recovery simple for short-lived CLI processes and bounds memory
 /// before any request reaches Kero's main actor.
-final class KeroAutomationSocketServer: @unchecked Sendable {
+nonisolated final class KeroAutomationSocketServer: @unchecked Sendable {
     typealias Handler = @Sendable (
         KeroAutomationRequest,
         @escaping @Sendable (KeroAutomationResponse) -> Void
     ) -> Void
 
-    private static let maximumMessageBytes = 1_048_576
+    private nonisolated static let maximumMessageBytes = 1_048_576
 
     let path: String
     private let listener: Int32
@@ -320,8 +321,9 @@ final class KeroAutomationSocketServer: @unchecked Sendable {
         }
 
         // Request accept/read stays on the short default. Only the response
-        // for `agent.wait` can last up to timeout_ms; lift SO_RCVTIMEO /
-        // SO_SNDTIMEO so that connection survives until the router replies.
+        // for `agent.wait` / recognizing `agent.start` can last up to
+        // timeout_ms; lift SO_RCVTIMEO / SO_SNDTIMEO so that connection
+        // survives until the router replies.
         try? Self.configureSocket(
             client,
             timeout: KeroAgentWait.socketTimeout(for: request)
@@ -501,7 +503,7 @@ final class KeroAutomationSocketServer: @unchecked Sendable {
 }
 
 extension JSONEncoder {
-    fileprivate static var keroAutomation: JSONEncoder {
+    nonisolated fileprivate static var keroAutomation: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return encoder

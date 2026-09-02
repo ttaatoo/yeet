@@ -2,6 +2,7 @@
     import XCTest
     @testable import STTextViewAppKit
 
+    @MainActor
     class TextViewTests: XCTestCase {
 
         func testInitialSelection() {

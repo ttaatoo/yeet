@@ -8,7 +8,7 @@ import Foundation
 /// Filesystem calls that must not hang the UI on a dead volume. Matches the
 /// Git runner's idea of a bounded wait: the work still runs on a helper
 /// thread, but the caller gives up after `timeout`.
-enum TimedFileIO {
+nonisolated enum TimedFileIO {
     /// Same order of magnitude as a Git status snapshot, so a wedged NFS
     /// mount cannot pin the file tree forever. `nonisolated` because the
     /// project defaults every type to the main actor, and the directory
@@ -75,7 +75,7 @@ enum TimedFileIO {
 
     private nonisolated static func run<T>(
         timeout: TimeInterval,
-        _ work: @escaping () -> T
+        _ work: @escaping @Sendable () -> T
     ) -> T? {
         let box = Box<T>()
         let done = DispatchSemaphore(value: 0)
@@ -89,7 +89,7 @@ enum TimedFileIO {
         return box.value
     }
 
-    private final class Box<T>: @unchecked Sendable {
+    private nonisolated final class Box<T>: @unchecked Sendable {
         var value: T?
     }
 }

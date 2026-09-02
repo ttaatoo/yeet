@@ -48,11 +48,15 @@ final class STSelectionHighlightView: NSView {
         updateBackgroundColor()
 
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
-            self?.updateBackgroundColor()
+            MainActor.assumeIsolated {
+                self?.updateBackgroundColor()
+            }
         }
 
         NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
-            self?.updateBackgroundColor()
+            MainActor.assumeIsolated {
+                self?.updateBackgroundColor()
+            }
         }
     }
 

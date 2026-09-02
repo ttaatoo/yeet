@@ -218,9 +218,9 @@ final class RecentCommitsNSView: NSView {
         NotificationCenter.default.removeObserver(self)
     }
 
-    /// The history view lives inside the Git panel's existing SwiftUI scroll
-    /// view. Observe its native clip view so reaching the last couple of rows
-    /// requests another page without adding a SwiftUI sentinel or button.
+    /// The history view lives inside the Git panel's AppKit scroll view.
+    /// Observe its native clip view so reaching the last couple of rows
+    /// requests another page without adding a sentinel or button.
     private func updateScrollObservation() {
         let clipView = enclosingScrollView?.contentView
         guard observedClipView !== clipView else { return }

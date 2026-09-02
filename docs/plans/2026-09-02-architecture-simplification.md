@@ -177,3 +177,16 @@ Before the smoke, Debug defaults and configuration were backed up under `/tmp/ye
 - A source rollback is not a saved-data rollback. Before using an older build with newly written state, preserve the current layout and history together and restore a matching pre-change backup where available. The smoke backup contains only Debug defaults/configuration; it is not a production data backup.
 - Recovery copies preserve rejected data for inspection; they are not automatic conversion of retired formats. Old Kero/Kerox installations are left untouched.
 - A full AppKit migration, terminal-event redesign, additional terminal backends, unrelated Git-inspector work from `origin/main`, release publishing, and performance tuning remain outside the approved five cuts.
+
+## PR #24 merge follow-up, 2026-09-03
+
+The conflict-resolution request brings `main` at `c1868e6` into the PR branch without rewriting either branch's commits.
+
+- Keep main's native Files/Git inspector, terminal restore bounds, concurrency changes, and release resource checks. Keep the PR's persistence owner. Do not restore retired compatibility paths.
+- `WorkspaceInspectorView` now observes the selected Project directly. It refreshes after the Project setter finishes and replaces the subscription when selection changes. The removed SwiftUI `ProjectInspectorView` is not restored.
+- Keep all distinct Git and file-tree test cases from both branches. Use the PR's shared fixtures and timeout helper. Regenerate the package lock for main's local Neon and STTextKitPlus packages.
+- Add two AppKit regression tests for file focus and project-directory changes without a manager notification.
+
+Local verification passed: 166 focused Swift tests, then 294 full Swift tests with no failures or skips; 100 Rust tests; Web typecheck/build; signed Debug and arm64 Release builds; plist/script/diff checks. The Debug app showed the expected Files/Git/Info panels, Git modification status, and file-selection highlight. Debug defaults were restored and compared with the pre-test export; configuration and the absent history sidecar were unchanged.
+
+The full Swift result is `/tmp/yeet-pr24-merge/Logs/Test/Test-yeet-2026.09.03_01-09-56-+0800.xcresult`. Logs are `/tmp/yeet-pr24-full-tests.log`, `/tmp/yeet-pr24-rust-tests.log`, `/tmp/yeet-pr24-web-build.log`, and `/tmp/yeet-pr24-release-build.log`. These checks do not claim standalone Release resource-benchmark, packaging, notarization, or remote CI success.

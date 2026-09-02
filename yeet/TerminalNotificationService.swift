@@ -7,6 +7,10 @@ import AppKit
 import Foundation
 import UserNotifications
 
+nonisolated private struct NotificationSettingsTransfer: @unchecked Sendable {
+    let value: UNNotificationSettings
+}
+
 /// Delivers terminal notification requests through macOS Notification Center.
 /// Authorization is intentionally deferred until a terminal first asks to
 /// notify, rather than prompting at app launch. Each request carries the
@@ -29,8 +33,9 @@ final class TerminalNotificationService: NSObject, UNUserNotificationCenterDeleg
         // and delivered notifications can play audio — no prompt when already
         // authorized.
         center.getNotificationSettings { [weak self] settings in
+            let settings = NotificationSettingsTransfer(value: settings)
             DispatchQueue.main.async {
-                self?.upgradeSoundAuthorizationIfNeeded(settings)
+                self?.upgradeSoundAuthorizationIfNeeded(settings.value)
             }
         }
     }
@@ -44,9 +49,10 @@ final class TerminalNotificationService: NSObject, UNUserNotificationCenterDeleg
 
     private func checkAuthorization(for message: String, sessionID: UUID?) {
         center.getNotificationSettings { [weak self] settings in
+            let settings = NotificationSettingsTransfer(value: settings)
             DispatchQueue.main.async {
                 self?.handle(
-                    settings,
+                    settings.value,
                     message: message,
                     sessionID: sessionID
                 )

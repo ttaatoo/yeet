@@ -45,28 +45,56 @@ enum SidebarTypography {
         weight: Font.Weight = .regular,
         design: Font.Design = .default
     ) -> Font {
+        Font(nsFont(family: family, size: size, weight: weight, design: design))
+    }
+
+    /// AppKit counterpart of `font(family:size:weight:design:)`. Files/Git
+    /// inspector rows paint with NSFont so a SwiftUI environment is not required.
+    static func nsFont(
+        family: String,
+        size: CGFloat,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default
+    ) -> NSFont {
+        let nsWeight = nsFontWeightValue(weight)
         if family.isEmpty {
-            return .system(size: size, weight: weight, design: design)
+            if design == .monospaced {
+                return .monospacedSystemFont(ofSize: size, weight: nsWeight)
+            }
+            return .systemFont(ofSize: size, weight: nsWeight)
         }
 
-        let nsWeight = nsFontWeight(weight)
-        if let nsFont = NSFontManager.shared.font(
+        if let matched = NSFontManager.shared.font(
             withFamily: family,
             traits: fontTraits(weight),
-            weight: nsWeight,
+            weight: nsFontWeight(weight),
             size: size
         ) {
-            return Font(nsFont)
+            return matched
         }
 
         // Bundled JetBrains Mono is registered for this process; family
         // lookup can still miss it before faces have been enumerated.
         if family == TerminalFont.bundledFamily {
-            return Font(TerminalFont.resolve(family: family, size: size))
-                .weight(weight)
+            return TerminalFont.resolve(family: family, size: size)
         }
 
-        return .custom(family, size: size).weight(weight)
+        return NSFont(name: family, size: size) ?? .systemFont(ofSize: size, weight: nsWeight)
+    }
+
+    private static func nsFontWeightValue(_ weight: Font.Weight) -> NSFont.Weight {
+        switch weight {
+        case .ultraLight: return .ultraLight
+        case .thin: return .thin
+        case .light: return .light
+        case .regular: return .regular
+        case .medium: return .medium
+        case .semibold: return .semibold
+        case .bold: return .bold
+        case .heavy: return .heavy
+        case .black: return .black
+        default: return .regular
+        }
     }
 
     private static func nsFontWeight(_ weight: Font.Weight) -> Int {

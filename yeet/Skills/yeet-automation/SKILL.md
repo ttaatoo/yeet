@@ -82,7 +82,14 @@ Follow this sequence:
 
    `start` returns once Yeet recognizes the requested foreground process. Its
    state is `created`; Yeet does not inspect the CLI screen or wait for a
-   provider-specific ready prompt.
+   provider-specific ready prompt. Pass `--worktree` (socket param
+   `worktree: true`) to give that pane its own git worktree and branch so
+   parallel agents do not share one dirty tree. The same alias reuses the
+   existing `yeet/agent/<alias>` checkout, including leftover dirty files from
+   the last run. A new alias creates a new worktree. Files and Git follow that
+   checkout. Discarding and merging stay in the Git panel; Yeet does not
+   auto-merge. The default is the shared project checkout. Git failures
+   return a structured error and do not declare the agent.
 
 5. Send a bounded task with acceptance criteria. Do not add Yeet lifecycle
    commands to the task; supported provider integrations report state directly:
@@ -125,7 +132,9 @@ Do not answer an interactive approval or credential prompt on the user's
 behalf; report the blocker instead.
 
 Reuse the same alias for follow-up prompts only while that recognized agent is
-still running. Use a new alias for a new worker.
+still running. Use a new alias for a new worker. With `--worktree`, starting
+again under the same alias reattaches `yeet/agent/<alias>`, including leftover
+dirty files; pick a new alias for a new worktree.
 
 ## Lifecycle and result reads
 
@@ -142,6 +151,13 @@ agent disappears (`agent_not_found`), or `timeout_ms` elapses (`wait_timeout`).
 Default states are `idle`, `done`, and `blocked`; default `timeout_ms` is
 120000 (100–3600000). Clients must keep that socket open for the whole
 interval. Yeet never classifies terminal text to end the wait.
+
+`yeet +agent start` is the `agent.start` socket method, not a CLI poll of
+`agent.get`. Yeet holds the connection until it recognizes the launched
+process, the agent disappears, or `timeout_ms` elapses (`wait_timeout`).
+Default `timeout_ms` is 30000 (3000–300000). Clients must keep that socket
+open for the whole interval. Yeet never classifies terminal text to end the
+wait.
 
 Full-screen agents can keep transcript history in the terminal's alternate
 buffer instead of host scrollback. After `wait` reaches `idle` or `done`, use an

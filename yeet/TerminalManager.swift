@@ -135,6 +135,19 @@ final class TerminalManager: nonisolated ObservableObject {
     private let windowCloseGuard = WorkspaceWindowCloseGuard()
     private static var didReopenWindows = false
 
+    /// Loads a fixed restore input for the standalone Release resource check.
+    /// The benchmark runs in its own process, before any workspace manager has
+    /// read the user's persisted state.
+    static func prepareResourceBenchRestore(
+        snapshot: SessionSnapshot,
+        histories: [String: String]
+    ) {
+        precondition(registry.isEmpty && !hasLoadedStore)
+        hasLoadedStore = true
+        pendingRestores = [snapshot]
+        pendingHistories = histories
+    }
+
     init() {
         if !Self.hasLoadedStore {
             Self.hasLoadedStore = true

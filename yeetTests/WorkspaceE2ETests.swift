@@ -24,6 +24,29 @@ final class WorkspaceE2ETests: XCTestCase {
         )
         defer { session.terminate() }
 
+        // A terminal starts only after AppKit attaches it at a stable pane
+        // size. Exercise the production lifecycle instead of creating a PTY
+        // for a detached, zero-sized test view.
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        let host = NSView(frame: window.contentView?.bounds ?? .zero)
+        window.contentView = host
+        let surface = session.surface
+        surface.frame = host.bounds
+        host.addSubview(surface)
+        window.orderFront(nil)
+        surface.setSurfaceVisible(true)
+        defer {
+            surface.removeFromSuperview()
+            window.contentView = nil
+            window.close()
+        }
+
         let text = try await waitUntil(timeout: 8) {
             session.surface.readVisibleText(maxLines: 8, maxColumns: 80)
         } satisfies: { $0?.contains("YEET_E2E_OK") == true }
@@ -103,6 +126,32 @@ final class WorkspaceE2ETests: XCTestCase {
         XCTAssertTrue(git.changedEntries.isEmpty)
     }
 
+    func testPanelRootFollowsLinkedAgentWorktree() throws {
+        let repo = try makeTempGitRepository(prefix: "yeet-e2e-wt")
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let checkout = try KeroAgentWorktree.prepare(alias: "iso", cwd: repo.path).get()
+        defer {
+            _ = KeroAgentWorktree.remove(path: checkout.path, in: repo.path)
+            try? FileManager.default.removeItem(atPath: checkout.path)
+        }
+        XCTAssertTrue(GitRepositoryLocator.isLinkedWorktree(checkout.path))
+
+        let project = Project(fallbackName: "e2e-wt", createInitialSession: false)
+        let shared = project.panelRoot(followingSessionAt: repo.path)
+        XCTAssertEqual(shared.source, .shell)
+
+        let (root, source) = project.panelRoot(
+            followingSessionAt: repo.path,
+            foregroundAt: checkout.path
+        )
+        XCTAssertEqual(
+            (root as NSString).standardizingPath,
+            (checkout.path as NSString).standardizingPath
+        )
+        XCTAssertEqual(source, .foreground(isWorktree: true))
+    }
+
     func testPaneSplitThenRemoveCollapses() {
         let first = Pane(content: .file(FileTab(path: "/tmp/yeet-e2e-a.swift")))
         let second = Pane(content: .file(FileTab(path: "/tmp/yeet-e2e-b.swift")))
@@ -127,6 +176,29 @@ private extension WorkspaceE2ETests {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    func makeTempGitRepository(prefix: String) throws -> URL {
+        let directory = try makeTempDirectory(prefix: prefix)
+        let initGit = GitStatusModel.runGit(["init", "-b", "main"], in: directory.path)
+        XCTAssertEqual(initGit.status, 0, initGit.stderr)
+        try "init\n".write(
+            to: directory.appendingPathComponent("README.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        XCTAssertEqual(GitStatusModel.runGit(["add", "README.md"], in: directory.path).status, 0)
+        let commit = GitStatusModel.runGit(
+            [
+                "-c", "user.name=Yeet Test",
+                "-c", "user.email=yeet@test.local",
+                "-c", "commit.gpgsign=false",
+                "commit", "-m", "init",
+            ],
+            in: directory.path
+        )
+        XCTAssertEqual(commit.status, 0, commit.stderr)
         return directory
     }
 

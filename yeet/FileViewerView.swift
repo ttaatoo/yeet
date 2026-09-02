@@ -76,7 +76,7 @@ final class FileTab: nonisolated ObservableObject, nonisolated Identifiable {
             let data = await Task.detached(priority: .userInitiated) {
                 Self.readData(path: expectedPath)
             }.value
-            await self?.applyInitialLoad(
+            self?.applyInitialLoad(
                 Self.loadedContent(path: expectedPath, data: data),
                 path: expectedPath
             )

@@ -26,6 +26,10 @@ import STPluginNeon
 import STTextKitPlus
 import STTextView
 import SwiftTreeSitter
+
+private struct TokenProviderCompletion: @unchecked Sendable {
+    let call: (Result<TokenApplication, Error>) -> Void
+}
 import TreeSitterClient
 
 /// STTextView plugin that drives Neon's tree-sitter highlighter.
@@ -152,8 +156,11 @@ final class SyntaxHighlightCoordinator {
     /// must not re-convert the NSTextRange after storage has already changed.
     private var pendingPreEditRange: NSRange?
     private var prevViewportRange: NSTextRange?
+    /// The text view owns this coordinator. Keep its content manager weak while
+    /// a background query compile is pending so the editor can still close.
+    private weak var textContentManager: NSTextContentManager?
 
-    private struct InjectionParseJob: @unchecked Sendable {
+    private nonisolated struct InjectionParseJob: @unchecked Sendable {
         let key: InjectionCacheKey
         let parser: OpaquePointer
         let query: SwiftTreeSitter.Query
@@ -171,6 +178,7 @@ final class SyntaxHighlightCoordinator {
         self.language = language
         self.highlightsData = highlightsData
         self.injectionsData = injectionsData
+        textContentManager = textView.textContentManager
         tsLanguage = Language(language: language.parser)
 
         // Weak throughout: this coordinator is reachable from the text view
@@ -199,7 +207,7 @@ final class SyntaxHighlightCoordinator {
             // a real capture on the same range. Swift captures comments as
             // `@comment @spell`; letting `spell` through (it resolves to the
             // plain fallback, applied after `comment`) turned comments black.
-            guard let textView, !Self.ignoredCaptures.contains(neonToken.name) else {
+            guard textView != nil, !Self.ignoredCaptures.contains(neonToken.name) else {
                 return nil
             }
             // Color only. Writing `.font` into text storage (even the same font)
@@ -289,7 +297,9 @@ final class SyntaxHighlightCoordinator {
         DispatchQueue.global(qos: .userInitiated).async {
             let query = try? SwiftTreeSitter.Query(language: tsLanguage, data: data)
             DispatchQueue.main.async { [weak self] in
-                guard let self, let query else { return }
+                guard let self, let query, let textContentManager = self.textContentManager else {
+                    return
+                }
                 HighlightQueryCache.store(query, for: language)
                 self.finishInstall(highlightsQuery: query, textContentManager: textContentManager)
             }
@@ -351,15 +361,16 @@ final class SyntaxHighlightCoordinator {
         }
 
         highlighter?.tokenProvider = { [weak self] range, completion in
+            let completion = TokenProviderCompletion(call: completion)
             guard let self, let tsClient = self.tsClient else {
-                completion(.success(.noChange))
+                completion.call(.success(.noChange))
                 return
             }
 
             tsClient.executeHighlightsQuery(highlightsQuery, in: range, textProvider: textProvider) { baseResult in
                 switch baseResult {
                 case .failure(let error):
-                    completion(.failure(error))
+                    completion.call(.failure(error))
                 case .success(let baseRanges):
                     let baseTokens = baseRanges.map { Neon.Token(name: $0.name, range: $0.range) }
                     tsClient.executeInjectionsQuery(injectionsQuery, in: range, textProvider: textProvider) { injectionResult in
@@ -372,7 +383,7 @@ final class SyntaxHighlightCoordinator {
                         let (cached, jobs) = self.injectionWork(for: injections, textProvider: textProvider)
                         let known = baseTokens + cached
                         guard !jobs.isEmpty else {
-                            completion(.success(TokenApplication(tokens: Self.clip(known, to: range), range: range)))
+                            completion.call(.success(TokenApplication(tokens: Self.clip(known, to: range), range: range)))
                             return
                         }
                         let generation = self.injectionCacheGeneration
@@ -387,17 +398,17 @@ final class SyntaxHighlightCoordinator {
                             }
                             DispatchQueue.main.async { [weak self] in
                                 guard let self else {
-                                    completion(.success(.noChange))
+                                    completion.call(.success(.noChange))
                                     return
                                 }
                                 guard self.injectionCacheGeneration == generation else {
-                                    completion(.success(.noChange))
+                                    completion.call(.success(.noChange))
                                     return
                                 }
                                 for (key, tokens) in parsed {
                                     self.injectionTokenCache[key] = tokens
                                 }
-                                completion(.success(TokenApplication(
+                                completion.call(.success(TokenApplication(
                                     tokens: Self.clip(known + extra, to: range),
                                     range: range
                                 )))
@@ -493,9 +504,13 @@ final class SyntaxHighlightCoordinator {
         pendingInjectionCompiles.insert(language)
 
         let data = SyntaxHighlighting.highlightsData(for: language)
-        let parser = language.parser
+        // Grammar pointers live for the process. Pass the address because
+        // OpaquePointer is not Sendable, then rebuild it on the worker queue.
+        let parserAddress = UInt(bitPattern: language.parser)
         DispatchQueue.global(qos: .userInitiated).async {
-            let query = try? SwiftTreeSitter.Query(language: Language(language: parser), data: data)
+            let query = OpaquePointer(bitPattern: parserAddress).flatMap { parser in
+                try? SwiftTreeSitter.Query(language: Language(language: parser), data: data)
+            }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.pendingInjectionCompiles.remove(language)

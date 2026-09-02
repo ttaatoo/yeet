@@ -6,7 +6,7 @@
 import Foundation
 
 /// Terminal color theme definition with hex color strings.
-struct TerminalThemeDefinition {
+nonisolated struct TerminalThemeDefinition {
     let name: String
     let isDark: Bool
     let background: String
@@ -42,12 +42,12 @@ struct TerminalThemeDefinition {
 }
 
 /// Catalog of built-in terminal themes.
-enum TerminalThemeCatalog {
+nonisolated enum TerminalThemeCatalog {
     /// All available themes across both light and dark appearances.
-    static let allThemes: [TerminalThemeDefinition] = darkThemes + lightThemes
+    nonisolated static let allThemes: [TerminalThemeDefinition] = darkThemes + lightThemes
     
     /// Look up a theme by exact name match.
-    static func theme(named name: String) -> TerminalThemeDefinition? {
+    nonisolated static func theme(named name: String) -> TerminalThemeDefinition? {
         allThemes.first { $0.name == name }
     }
     

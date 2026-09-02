@@ -3,8 +3,8 @@
 //  yeetTests
 //
 //  Locks the flattened file-tree snapshot that the inspector Files tab
-//  renders. Git decorations are applied on top of this list; a later Git
-//  panel rewrite must not change which paths the tree shows.
+//  renders. Git decorations are applied on top of this list; the AppKit
+//  Files panel must not change which paths the tree shows.
 
 import XCTest
 @testable import yeet

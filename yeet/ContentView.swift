@@ -164,9 +164,10 @@ private struct SelectedProjectWorkspace<EmptyState: View>: View {
     let emptyState: () -> EmptyState
 
     private var commandCompletionSequences: [UUID: UInt64] {
-        Dictionary(uniqueKeysWithValues: project.sessions.map {
-            ($0.id, $0.commandLifecycle.completionSequence)
-        })
+        Dictionary(
+            project.sessions.map { ($0.id, $0.commandLifecycle.completionSequence) },
+            uniquingKeysWith: { _, later in later }
+        )
     }
 
     private var paneLayerIsOpaque: Bool {
@@ -324,6 +325,7 @@ struct ContentView: View {
     @StateObject private var fileTree = FileTreeModel()
     @StateObject private var info = SessionInfoModel()
     @StateObject private var tabSplitDrag = TabSplitDragCoordinator()
+    @AppStorage("rightSidebarWidth") private var inspectorWidth: Double = InspectorMetrics.defaultWidth
 
     var body: some View {
         HStack(spacing: 0) {
@@ -421,15 +423,14 @@ struct ContentView: View {
     @ViewBuilder
     private var inspectorSidebar: some View {
         if manager.isPanelVisible {
-            WorkspaceInspectorHost {
-                RightSidebarView(
-                    manager: manager,
-                    git: git,
-                    fileTree: fileTree,
-                    info: info,
-                    placement: settings.swapSidebars ? .leading : .trailing
-                )
-            }
+            WorkspaceInspectorHost(
+                manager: manager,
+                git: git,
+                fileTree: fileTree,
+                info: info,
+                width: $inspectorWidth,
+                placement: settings.swapSidebars ? .leading : .trailing
+            )
         }
     }
 
@@ -923,7 +924,7 @@ private final class ToolbarContextMenuMonitorView: NSView {
         self.eventMonitor = nil
     }
 
-    deinit {
+    isolated deinit {
         if let eventMonitor {
             NSEvent.removeMonitor(eventMonitor)
         }

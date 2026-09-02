@@ -623,7 +623,8 @@ enum KeroAutomationCommandLine {
         var paneID: String?
         var kind: String?
         var focus = false
-        var timeoutMS = 30_000
+        var worktree = false
+        var timeoutMS = KeroAgentWait.startDefaultTimeoutMS
         var extra: [String] = []
         var index = 1
         while index < arguments.count {
@@ -637,6 +638,8 @@ enum KeroAutomationCommandLine {
             case "--kind": kind = try value(after: &index, in: arguments, option: "--kind")
             case "--focus": focus = true
             case "--no-focus": focus = false
+            case "--worktree": worktree = true
+            case "--no-worktree": worktree = false
             case "--timeout": timeoutMS = try integerValue(
                 after: &index, in: arguments, option: "--timeout"
             )
@@ -647,7 +650,9 @@ enum KeroAutomationCommandLine {
         guard let kind else {
             throw CLIError.message("`yeet +agent start` requires --kind.")
         }
-        guard (3_000...300_000).contains(timeoutMS) else {
+        guard (KeroAgentWait.startMinimumTimeoutMS...KeroAgentWait.startMaximumTimeoutMS)
+            .contains(timeoutMS)
+        else {
             throw CLIError.message("Agent start timeout must be between 3000 and 300000 milliseconds.")
         }
         var params = targetParams(paneID: paneID)
@@ -655,14 +660,14 @@ enum KeroAutomationCommandLine {
         params["kind"] = .string(kind)
         params["focus"] = .bool(focus)
         params["argv"] = .array(extra.map(KeroJSONValue.string))
-        let launched = try connection.automationRequest(method: "agent.start", params: params)
-        return try pollAgentStarted(
-            target: stableTarget(
-                from: launched,
-                fallback: AgentTarget(alias: alias, paneID: paneID)
-            ),
-            timeoutMS: timeoutMS,
-            connection: connection
+        params["timeout_ms"] = .number(Double(timeoutMS))
+        if worktree {
+            params["worktree"] = .bool(true)
+        }
+        return try connection.automationRequest(
+            method: "agent.start",
+            params: params,
+            timeout: KeroAgentWait.socketTimeout(timeoutMS: timeoutMS)
         )
     }
 
@@ -791,36 +796,6 @@ enum KeroAutomationCommandLine {
             params: params,
             timeout: KeroAgentWait.socketTimeout(timeoutMS: timeoutMS)
         )
-    }
-
-    private static func pollAgentStarted(
-        target: AgentTarget,
-        timeoutMS: Int,
-        connection: AppConnection
-    ) throws -> KeroJSONValue {
-        let deadline = Date().addingTimeInterval(Double(timeoutMS) / 1_000)
-        repeat {
-            do {
-                let result = try connection.automationRequest(
-                    method: "agent.get", params: target.params
-                )
-                if let agent = result.objectValue?["agent"]?.objectValue,
-                   agent["authority"]?.stringValue != KeroAgentStateAuthority.command.rawValue,
-                   case .number? = agent["process_id"] {
-                    return result
-                }
-            } catch let error as CLIError {
-                guard case .message(let message) = error,
-                      message.hasPrefix("agent_not_found:") else {
-                    throw error
-                }
-                throw CLIError.message(
-                    "agent_not_running: The launched agent exited before Yeet recognized it."
-                )
-            }
-            Thread.sleep(forTimeInterval: 0.1)
-        } while Date() < deadline
-        throw CLIError.message("Timed out waiting for Yeet to recognize the launched agent.")
     }
 
     // MARK: - Parsing
@@ -1020,7 +995,7 @@ enum KeroAutomationCommandLine {
         Usage:
           yeet +agent list
           yeet +agent get ALIAS | --pane ID | --current
-          yeet +agent start ALIAS --kind KIND [--pane ID] [--focus] [--timeout MS] [-- agent-arguments...]
+          yeet +agent start ALIAS --kind KIND [--pane ID] [--focus] [--worktree] [--timeout MS] [-- agent-arguments...]
           yeet +agent prompt ALIAS --text TEXT [--wait] [--timeout MS]
           yeet +agent read ALIAS [--lines N] [--columns N]
           yeet +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]
@@ -1030,12 +1005,17 @@ enum KeroAutomationCommandLine {
         Supported kinds: codex, claude, gemini, grok, opencode, cursor-agent,
         aider, amp, and pi. Agent start requires an existing available shell and
         never creates layout; it returns after Yeet recognizes the launched process.
+        `--worktree` gives that pane its own git worktree and branch; the default
+        is the shared project checkout. Discarding and merging stay in the Git
+        panel. Git failures return a structured error and do not declare the agent.
         Guarded prompts accept agents in created, working, idle, or done. While
         an agent is working, its CLI decides whether input steers the active
         turn or queues it. Use +pane send only when raw input is intentional.
-        `wait` and `prompt --wait` call Yeet's `agent.wait` method and stay
-        connected until a requested state matches, the agent disappears, or
-        the timeout returns `wait_timeout`.
+        `start` calls Yeet's `agent.start` method and stays connected until
+        Yeet recognizes the launched process, the agent disappears, or the
+        timeout returns `wait_timeout`. `wait` and `prompt --wait` call
+        `agent.wait` and stay connected until a requested state matches, the
+        agent disappears, or the timeout returns `wait_timeout`.
         Yeet never infers lifecycle from rendered terminal text. After Yeet
         submits a prompt, only a provider-native hook or plugin can advance it
         to blocked, idle, or done. A reported idle background agent appears as

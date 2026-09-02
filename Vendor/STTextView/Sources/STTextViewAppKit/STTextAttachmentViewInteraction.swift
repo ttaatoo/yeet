@@ -5,6 +5,7 @@ import AppKit
 import STTextViewCommon
 
 /// Protocol for attachment views to communicate with their containing text view
+@MainActor
 @objc
 public protocol STTextAttachmentViewInteracting {
     /// Called when the attachment view is clicked or interacted with
@@ -15,6 +16,7 @@ public protocol STTextAttachmentViewInteracting {
 }
 
 /// Helper class to bridge attachment view interactions to text view delegates
+@MainActor
 public class STTextAttachmentViewInteractionBridge: NSObject {
     weak var textView: STTextView?
     weak var attachment: NSTextAttachment?
@@ -93,7 +95,8 @@ public extension NSView {
     }
 }
 
+@MainActor
 private enum AssociatedKeys {
-    static var interactionBridge = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)
-    static var tapGesture = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)
+    static let interactionBridge = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)
+    static let tapGesture = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)
 }

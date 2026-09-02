@@ -8,4 +8,8 @@ if ScrollBench.shouldRun {
     ScrollBench.main()
 }
 
+if ResourceBench.shouldRun {
+    ResourceBench.main()
+}
+
 keroApp.main()

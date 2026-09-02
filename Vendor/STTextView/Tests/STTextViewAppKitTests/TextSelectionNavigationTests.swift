@@ -2,6 +2,7 @@
     import XCTest
     @testable import STTextViewAppKit
 
+    @MainActor
     final class TextSelectionNavigationTests: XCTestCase {
         func testMoveLeft() {
             let textView = STTextView()

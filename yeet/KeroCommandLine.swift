@@ -48,16 +48,16 @@ enum CLIError: Error, CustomStringConvertible {
     }
 }
 
-private var cursesActiveAtExit = false
+nonisolated(unsafe) private var cursesActiveAtExit = false
 
-private func restoreTerminalAtExit() {
+nonisolated private func restoreTerminalAtExit() {
     guard cursesActiveAtExit else { return }
     _ = curs_set(1)
     _ = endwin()
     cursesActiveAtExit = false
 }
 
-private func installExitHandlers() {
+nonisolated private func installExitHandlers() {
     atexit(restoreTerminalAtExit)
     signal(SIGTERM) { signal in
         exit(128 + signal)
@@ -197,9 +197,10 @@ final class AppConnection {
         )
         let response: KeroAutomationResponse
         do {
-            // `agent.wait` can hold the connection for timeout_ms. The 5s
-            // default would otherwise surface as a hung or transport error.
-            let exchangeTimeout = method == "agent.wait"
+            // `agent.wait` and recognizing `agent.start` can hold the
+            // connection for timeout_ms. The 5s default would otherwise
+            // surface as a hung or transport error.
+            let exchangeTimeout = method == "agent.wait" || method == "agent.start"
                 ? max(timeout, KeroAgentWait.socketTimeout(for: request))
                 : timeout
             response = try KeroAutomationSocketServer.exchange(
@@ -233,6 +234,7 @@ private final class ThemeBrowser {
     private var query = ""
     private var didPreview = false
     private var didSave = false
+    private var terminalWindow: OpaquePointer?
 
     init(
         connection: AppConnection,
@@ -428,16 +430,18 @@ private final class ThemeBrowser {
     }
 
     private func enterTerminalUI() throws {
-        guard initscr() != nil else {
+        guard let terminalWindow = initscr() else {
             throw CLIError.message(String(localized: "Could not initialize the interactive terminal."))
         }
+        self.terminalWindow = terminalWindow
         cursesActiveAtExit = true
 
         guard raw() != ERR,
               noecho() != ERR,
-              keypad(stdscr, true) == OK
+              keypad(terminalWindow, true) == OK
         else {
             restoreTerminalAtExit()
+            self.terminalWindow = nil
             throw CLIError.message(String(localized: "Could not enter interactive terminal mode."))
         }
 
@@ -446,12 +450,13 @@ private final class ThemeBrowser {
         // only needs structured keyboard input, not a full widget framework.
         _ = set_escdelay(25)
         _ = curs_set(0)
-        _ = wrefresh(stdscr)
-        _ = untouchwin(stdscr)
+        _ = wrefresh(terminalWindow)
+        _ = untouchwin(terminalWindow)
     }
 
     private func leaveTerminalUI() {
         restoreTerminalAtExit()
+        terminalWindow = nil
     }
 
     private enum Key {
@@ -469,7 +474,8 @@ private final class ThemeBrowser {
     }
 
     private func readKey() -> Key {
-        let code = wgetch(stdscr)
+        guard let terminalWindow else { return .cancel }
+        let code = wgetch(terminalWindow)
         switch code {
         case ERR:
             return .cancel
@@ -503,9 +509,9 @@ private final class ThemeBrowser {
             // keypad() has already translated recognized escape sequences.
             // If another decoded value remains, this was an Option/Alt chord
             // or an unknown sequence rather than a standalone Escape.
-            wtimeout(stdscr, 0)
-            let continuation = wgetch(stdscr)
-            wtimeout(stdscr, -1)
+            wtimeout(terminalWindow, 0)
+            let continuation = wgetch(terminalWindow)
+            wtimeout(terminalWindow, -1)
             guard continuation == ERR else {
                 _ = flushinp()
                 return .none

@@ -202,7 +202,9 @@ private class STTextInsertionIndicatorOld: NSView, STInsertionPointIndicatorProt
         }
 
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            self?.isHidden.toggle()
+            MainActor.assumeIsolated {
+                self?.isHidden.toggle()
+            }
         }
     }
 
@@ -224,4 +226,3 @@ private class STTextInsertionIndicatorOld: NSView, STInsertionPointIndicatorProt
         }
     }
 }
-

@@ -408,7 +408,7 @@ final class AlacrittyFind {
         resultsInvalidated = false
     }
 
-    deinit {
+    isolated deinit {
         cancel()
     }
 

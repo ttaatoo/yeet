@@ -436,7 +436,7 @@ enum TerminalHistorySerializer {
 /// belonging to sessions that no longer exist are pruned automatically.
 /// Encode and I/O run on a serial queue. Layout-only autosaves do not call
 /// this store; a history capture writes a new generation.
-final class TerminalHistoryStore {
+nonisolated final class TerminalHistoryStore {
     /// Debug builds keep their state under `yeet-dev`, matching `AppSettings`
     /// and the separate `sh.yeet.dev` bundle id, so a dev build never clobbers
     /// an installed production build's history or official Kero's.

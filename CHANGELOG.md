@@ -21,6 +21,25 @@ the original feature bullet instead of adding separate entries for them.
 - Yeet no longer copies Kero/Kerox settings or terminal history, accepts old
   built-in theme names, or removes old `kero-automation` installations.
 
+## [0.1.60]
+
+- Restoring terminal sessions no longer can make Yeet stop responding or use excessive memory after an update.
+
+## [0.1.59]
+
+- Switching between the Files, Git, and Info inspector no longer freezes Yeet after an upgrade.
+
+## [0.1.58]
+
+- `yeet +agent start` waits inside Yeet for process recognition instead of polling from the CLI.
+- Starting an agent can use its own git worktree so parallel agents do not share one dirty tree.
+- The Files and Git inspector is native AppKit.
+- Discarding a Git file with duplicate or Unicode-equivalent paths no longer crashes.
+
+## [0.1.57]
+
+- Restoring a Git project no longer crashes Yeet when its status contains duplicate or Unicode-equivalent paths.
+
 ## [0.1.56]
 
 - `yeet +agent wait` and `yeet +agent prompt --wait` wait inside Yeet for a provider-reported or recognized agent state instead of polling from the CLI. A timeout is the structured error `wait_timeout`.

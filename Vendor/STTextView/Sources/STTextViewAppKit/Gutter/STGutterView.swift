@@ -371,6 +371,7 @@ private func adjustGutterFont(_ font: NSFont) -> NSFont {
 
 // MARK: - NSViewInvalidating
 
+@MainActor
 private extension NSViewInvalidating where Self == STGutterView.Invalidations.Markers {
     static var markers: STGutterView.Invalidations.Markers {
         STGutterView.Invalidations.Markers()
@@ -381,8 +382,10 @@ private extension NSViewInvalidating where Self == STGutterView.Invalidations.Ma
     }
 }
 
+@MainActor
 private extension STGutterView.Invalidations {
-    struct Markers: NSViewInvalidating {
+    @MainActor
+    struct Markers: @MainActor NSViewInvalidating {
         func invalidate(view: NSView) {
             guard let view = view as? STGutterView else {
                 return
@@ -392,7 +395,8 @@ private extension STGutterView.Invalidations {
         }
     }
 
-    struct Background: NSViewInvalidating {
+    @MainActor
+    struct Background: @MainActor NSViewInvalidating {
         func invalidate(view: NSView) {
             guard let view = view as? STGutterView else {
                 return

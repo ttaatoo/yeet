@@ -239,8 +239,9 @@ final class GlobalHotKeySettingsView: NSView {
                 object: name == NSWindow.didResignKeyNotification ? window : nil,
                 queue: .main
             ) { [weak self] _ in
+                guard let self else { return }
                 assumeMainActor {
-                    self?.stopRecording()
+                    self.stopRecording()
                 }
             })
         }

@@ -4,7 +4,7 @@
 import AppKit
 import STTextViewCommon
 
-extension STTextView: NSTextInputClient {
+extension STTextView: @MainActor NSTextInputClient {
 
     @objc public func selectedRange() -> NSRange {
         if let selectionTextRange = textLayoutManager.textSelections.last?.textRanges.last {
@@ -227,6 +227,7 @@ extension STTextView: NSTextInputClient {
 }
 
 
+@MainActor
 private extension UndoManager? {
     func withoutUndoRegistration(_ action: () -> Void) {
         let temporaryDisableUndoRegistration = self?.isUndoRegistrationEnabled == true

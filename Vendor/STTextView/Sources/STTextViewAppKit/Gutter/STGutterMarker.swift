@@ -2,6 +2,7 @@
 //  https://github.com/krzyzanowskim/STTextView/blob/main/LICENSE.md
 import Cocoa
 
+@MainActor
 public struct STGutterMarker: Equatable {
     /// Line number
     public let lineNumber: Int

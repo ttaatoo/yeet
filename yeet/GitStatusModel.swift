@@ -295,6 +295,47 @@ final class GitStatusModel: nonisolated ObservableObject {
         return directories
     }
 
+    /// Git paths are byte-oriented, while Swift strings compare canonically
+    /// equivalent Unicode spellings as equal. Keep the original entries for
+    /// Git operations, but merge their file-tree projection deterministically
+    /// instead of trapping when two paths compare equal as dictionary keys.
+    nonisolated static func fileDecorations(
+        for entries: [Entry]
+    ) -> [String: FileDecoration] {
+        Dictionary(
+            entries.map { ($0.path, Self.fileDecoration(for: $0)) },
+            uniquingKeysWith: { current, candidate in
+                candidate.directoryPriority > current.directoryPriority
+                    ? candidate
+                    : current
+            }
+        )
+    }
+
+    /// Paths whose on-disk fingerprints must stay unchanged while a discard
+    /// confirmation is open. Git operations still use `Entry.path` / `origPath`
+    /// bytes; this list is only the fingerprint map's keys.
+    nonisolated static func discardFingerprintPaths(for entry: Entry) -> [String] {
+        var paths = [entry.path]
+        if entry.isWorktreeRename, let original = entry.origPath {
+            paths.append(original)
+        }
+        return paths
+    }
+
+    /// A rename's `path` and `origPath` can collide as Swift dictionary keys
+    /// (NFC vs NFD, or an exact duplicate). Keep one fingerprint instead of
+    /// trapping; the original entry is left intact for Git operations.
+    nonisolated static func discardFingerprints<Fingerprint>(
+        for entry: Entry,
+        fingerprint: (String) -> Fingerprint
+    ) -> [String: Fingerprint] {
+        let pairs = discardFingerprintPaths(for: entry).map { path in
+            (path, fingerprint(path))
+        }
+        return Dictionary(pairs, uniquingKeysWith: { current, _ in current })
+    }
+
     func sync(root: String) {
         changeBatch.perform {
             if root != rootPath {
@@ -1199,9 +1240,7 @@ final class GitStatusModel: nonisolated ObservableObject {
             entry.repositoryRoot = result.topLevel
             return entry
         }
-        fileDecorations = Dictionary(
-            uniqueKeysWithValues: entries.map { ($0.path, Self.fileDecoration(for: $0)) }
-        )
+        fileDecorations = Self.fileDecorations(for: entries)
         directoryDecorations = Self.rolledUpDirectoryDecorations(fileDecorations)
         ignoredPaths = result.ignoredPaths
         ignoredDirectories = result.ignoredPaths.compactMap { path in
@@ -1390,10 +1429,11 @@ final class GitStatusModel: nonisolated ObservableObject {
     /// this from Swift's cooperative executor at once, and dispatching the
     /// readers back onto the shared pool can starve every pipe drain.
     nonisolated static func runGit(
-        _ args: [String], in dir: String, timeout: TimeInterval? = nil
+        _ args: [String], in dir: String, timeout: TimeInterval? = nil,
+        executable: String = "/usr/bin/git"
     ) -> (status: Int32, stdout: String, stderr: String) {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
         process.currentDirectoryURL = URL(fileURLWithPath: dir, isDirectory: true)
         var env = ProcessInfo.processInfo.environment
@@ -2003,7 +2043,7 @@ final class GitStatusModel: nonisolated ObservableObject {
         return count
     }
 
-    private static func fileDecoration(for entry: Entry) -> FileDecoration {
+    private nonisolated static func fileDecoration(for entry: Entry) -> FileDecoration {
         let statuses = [entry.staged, entry.unstaged]
         if entry.isConflict || statuses.contains("U") { return .conflict }
         if statuses.contains("?") { return .untracked }
