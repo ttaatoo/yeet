@@ -212,7 +212,6 @@ final class WorkspaceStateStoreTests: XCTestCase {
             XCTAssertTrue(store.load().snapshots.isEmpty)
             let histories = ["history-1": "saved terminal output"]
             store.save(snapshots: [snapshot()], histories: histories)
-            store.waitForPendingWrites()
             let capture = store.load()
             XCTAssertNotNil(capture.generation)
             let bytes = try Data(contentsOf: historyURL)
@@ -222,7 +221,6 @@ final class WorkspaceStateStoreTests: XCTestCase {
             )
 
             store.saveLayout([snapshot(directory: "/tmp/renamed")])
-            store.waitForPendingWrites()
 
             let reopened = WorkspaceStateStore(defaults: defaults, historyURL: historyURL).load()
             XCTAssertEqual(reopened.histories, histories)
@@ -244,8 +242,6 @@ final class WorkspaceStateStoreTests: XCTestCase {
                     histories: ["history-1": "capture \(index)", "history-2": "other window"]
                 )
             }
-            store.waitForPendingWrites()
-
             let reopened = WorkspaceStateStore(defaults: defaults, historyURL: historyURL).load()
             XCTAssertEqual(reopened.snapshots.count, 2)
             XCTAssertEqual(reopened.snapshots.first?.projects.first?.customDirectory, "/tmp/4")
@@ -257,16 +253,16 @@ final class WorkspaceStateStoreTests: XCTestCase {
         }
     }
 
-    func testFullSaveWithNoHistoryRemovesTheSidecar() throws {
+    func testFullSaveWithNoHistoryKeepsOnlyTheLayoutCheckpoint() throws {
         try withStore { store, _, historyURL in
             store.save(snapshots: [snapshot()], histories: ["history-1": "output"])
-            store.waitForPendingWrites()
             XCTAssertTrue(FileManager.default.fileExists(atPath: historyURL.path))
 
             store.save(snapshots: [snapshot()], histories: [:])
-            store.waitForPendingWrites()
 
-            XCTAssertFalse(FileManager.default.fileExists(atPath: historyURL.path))
+            let archive = try TerminalHistoryStore.decode(Data(contentsOf: historyURL))
+            XCTAssertTrue(archive.histories.isEmpty)
+            XCTAssertNotNil(archive.layout)
             XCTAssertTrue(store.load().histories.isEmpty)
             XCTAssertEqual(store.load().snapshots.count, 1)
         }
@@ -287,7 +283,6 @@ final class WorkspaceStateStoreTests: XCTestCase {
             XCTAssertEqual(legacy.histories, histories)
 
             store.save(snapshots: legacy.snapshots, histories: legacy.histories)
-            store.waitForPendingWrites()
             let reopened = WorkspaceStateStore(defaults: defaults, historyURL: historyURL).load()
             XCTAssertNotNil(reopened.generation)
             XCTAssertEqual(reopened.histories, histories)
@@ -298,7 +293,6 @@ final class WorkspaceStateStoreTests: XCTestCase {
     func testFailedLayoutEncodeKeepsThePreviousAggregate() throws {
         try withStore { store, defaults, historyURL in
             store.save(snapshots: [snapshot()], histories: ["history-1": "valid"])
-            store.waitForPendingWrites()
             let previousLayout = defaults.data(forKey: "sessionSnapshot")
             let previousHistory = try Data(contentsOf: historyURL)
             var invalid = snapshot()
@@ -309,11 +303,110 @@ final class WorkspaceStateStoreTests: XCTestCase {
             )
 
             store.save(snapshots: [invalid], histories: ["history-1": "invalid"])
-            store.waitForPendingWrites()
 
             XCTAssertEqual(defaults.data(forKey: "sessionSnapshot"), previousLayout)
             XCTAssertEqual(try Data(contentsOf: historyURL), previousHistory)
             XCTAssertEqual(store.load().histories, ["history-1": "valid"])
+        }
+    }
+
+    func testFailedHistoryWriteKeepsThePreviousAggregate() throws {
+        try withStore { store, defaults, historyURL in
+            store.save(snapshots: [snapshot()], histories: ["history-1": "saved output"])
+            let previousLayout = defaults.data(forKey: "sessionSnapshot")
+            let previousGeneration = SessionStore.load(defaults: defaults).generation
+            let previousHistory = try Data(contentsOf: historyURL)
+            let savedHistoryURL = historyURL.appendingPathExtension("saved")
+            try FileManager.default.moveItem(at: historyURL, to: savedHistoryURL)
+            // A directory at the file destination makes the real atomic write
+            // fail without depending on the test runner's user permissions.
+            try FileManager.default.createDirectory(
+                at: historyURL, withIntermediateDirectories: false
+            )
+
+            XCTAssertFalse(store.save(
+                snapshots: [snapshot(directory: "/tmp/not-saved")],
+                histories: ["history-1": "not saved"]
+            ))
+
+            XCTAssertEqual(defaults.data(forKey: "sessionSnapshot"), previousLayout)
+            XCTAssertEqual(try Data(contentsOf: savedHistoryURL), previousHistory)
+            try FileManager.default.removeItem(at: historyURL)
+            try FileManager.default.moveItem(at: savedHistoryURL, to: historyURL)
+            let reopened = WorkspaceStateStore(defaults: defaults, historyURL: historyURL).load()
+            XCTAssertEqual(reopened.histories, ["history-1": "saved output"])
+            XCTAssertEqual(reopened.snapshots.first?.projects.first?.customDirectory, "/tmp/repo")
+
+            store.saveLayout([snapshot(directory: "/tmp/layout-only")])
+            XCTAssertEqual(SessionStore.load(defaults: defaults).generation, previousGeneration)
+            XCTAssertEqual(store.load().histories, ["history-1": "saved output"])
+        }
+    }
+
+    func testInterruptedLayoutPublicationRestoresTheCommittedCheckpoint() throws {
+        for histories in [["history-1": "committed transcript"], [:]] {
+            try withStore { store, defaults, historyURL in
+                XCTAssertTrue(store.save(
+                    snapshots: [snapshot()], histories: ["history-1": "older transcript"]
+                ))
+                let previousLayout = try XCTUnwrap(defaults.data(forKey: "sessionSnapshot"))
+                XCTAssertTrue(store.save(
+                    snapshots: [snapshot(directory: "/tmp/committed")], histories: histories
+                ))
+                let committedHistory = try TerminalHistoryStore.decode(Data(contentsOf: historyURL))
+                // This is the on-disk state when the process stops after the
+                // atomic sidecar write but before UserDefaults is updated.
+                defaults.set(previousLayout, forKey: "sessionSnapshot")
+
+                let reopened = WorkspaceStateStore(defaults: defaults, historyURL: historyURL)
+                let restored = reopened.load()
+                XCTAssertEqual(restored.generation, committedHistory.generation)
+                XCTAssertEqual(restored.histories, histories)
+                XCTAssertEqual(restored.snapshots.first?.projects.first?.customDirectory, "/tmp/committed")
+                XCTAssertEqual(SessionStore.load(defaults: defaults).generation, restored.generation)
+
+                reopened.saveLayout([snapshot(directory: "/tmp/renamed")])
+                let nextLaunch = WorkspaceStateStore(defaults: defaults, historyURL: historyURL).load()
+                XCTAssertEqual(nextLaunch.histories, histories)
+                XCTAssertEqual(nextLaunch.snapshots.first?.projects.first?.customDirectory, "/tmp/renamed")
+            }
+        }
+    }
+
+    func testMissingLayoutRestoresTheCommittedCheckpoint() throws {
+        try withStore { store, defaults, historyURL in
+            XCTAssertTrue(store.save(
+                snapshots: [snapshot()], histories: ["history-1": "first transcript"]
+            ))
+            defaults.removeObject(forKey: "sessionSnapshot")
+
+            let restored = WorkspaceStateStore(defaults: defaults, historyURL: historyURL).load()
+            XCTAssertEqual(restored.snapshots.count, 1)
+            XCTAssertEqual(restored.histories, ["history-1": "first transcript"])
+            XCTAssertEqual(SessionStore.load(defaults: defaults).generation, restored.generation)
+        }
+    }
+
+    func testCheckpointWithTheWrongGenerationDoesNotReplaceLayout() throws {
+        try withStore { store, defaults, historyURL in
+            XCTAssertTrue(store.save(
+                snapshots: [snapshot()], histories: ["history-1": "original transcript"]
+            ))
+            let previousLayout = defaults.data(forKey: "sessionSnapshot")
+            let mismatchedHistory = try TerminalHistoryStore.encode(
+                ["history-1": "unmatched transcript"], generation: "history",
+                layout: SessionStore.encode([snapshot(directory: "/tmp/wrong")], generation: "other")
+            )
+            try mismatchedHistory.write(to: historyURL, options: .atomic)
+
+            let restored = WorkspaceStateStore(defaults: defaults, historyURL: historyURL).load()
+            XCTAssertEqual(defaults.data(forKey: "sessionSnapshot"), previousLayout)
+            XCTAssertEqual(restored.snapshots.first?.projects.first?.customDirectory, "/tmp/repo")
+            XCTAssertTrue(restored.histories.isEmpty)
+            XCTAssertEqual(
+                try Data(contentsOf: historyURL.appendingPathExtension("recovery")),
+                mismatchedHistory
+            )
         }
     }
 
@@ -330,7 +423,6 @@ final class WorkspaceStateStoreTests: XCTestCase {
         XCTAssertTrue(history.load().histories.isEmpty)
 
         history.save(["history-1": "replacement"], generation: "new")
-        history.waitForPendingWrites()
         XCTAssertEqual(try Data(contentsOf: url), corrupt)
     }
 
@@ -345,7 +437,6 @@ final class WorkspaceStateStoreTests: XCTestCase {
             XCTAssertTrue(store.load().histories.isEmpty)
 
             store.save(snapshots: [snapshot()], histories: [:])
-            store.waitForPendingWrites()
 
             XCTAssertEqual(defaults.data(forKey: "sessionSnapshotRecovery"), rejected)
             let recoveryURL = historyURL.appendingPathExtension("recovery")
@@ -366,7 +457,6 @@ final class WorkspaceStateStoreTests: XCTestCase {
         let historyURL = directory.appendingPathComponent("history.json")
         let store = WorkspaceStateStore(defaults: defaults, historyURL: historyURL)
         defer {
-            store.waitForPendingWrites()
             defaults.removePersistentDomain(forName: suite)
             try? FileManager.default.removeItem(at: directory)
         }

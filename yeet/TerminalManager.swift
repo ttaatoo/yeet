@@ -994,7 +994,6 @@ final class TerminalManager: nonisolated ObservableObject {
             // Last window: keep its snapshot and scrollback saved and queued so
             // reopening (or relaunching) restores them.
             WorkspaceStateStore.shared.save(snapshots: [window.snapshot], histories: window.histories)
-            WorkspaceStateStore.shared.waitForPendingWrites()
             Self.pendingRestores = [window.snapshot]
             Self.pendingHistories = window.histories
         }
@@ -1020,11 +1019,6 @@ final class TerminalManager: nonisolated ObservableObject {
             WorkspaceStateStore.shared.save(snapshots: snapshots, histories: histories)
         } else {
             WorkspaceStateStore.shared.saveLayout(snapshots)
-        }
-        // Quit and language-relaunch capture while windows are live and
-        // must finish the sidecar write before the process continues.
-        if captureTerminalHistory {
-            WorkspaceStateStore.shared.waitForPendingWrites()
         }
     }
 

@@ -310,7 +310,7 @@ enum SessionStore {
     ) -> Bool {
         do {
             let data = try encode(windows, generation: generation)
-            defaults.set(data, forKey: key)
+            commit(data, defaults: defaults)
             return true
         } catch {
             // A failed encode must be visible: silent success at quit would
@@ -318,6 +318,12 @@ enum SessionStore {
             NSLog("SessionStore: failed to encode snapshot: \(error)")
             return false
         }
+    }
+
+    /// Publishes a layout that the workspace owner has already encoded and
+    /// saved with its history. Do not re-encode after changing the sidecar.
+    static func commit(_ data: Data, defaults: UserDefaults) {
+        defaults.set(data, forKey: key)
     }
 
     static func load(defaults: UserDefaults = .standard) -> Loaded {

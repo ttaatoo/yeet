@@ -26,9 +26,18 @@ final class WorkspaceStateStore {
     }
 
     func load() -> Aggregate {
-        history.waitForPendingWrites()
-        let layout = SessionStore.load(defaults: defaults)
+        var layout = SessionStore.load(defaults: defaults)
         let loadedHistory = history.load()
+        if layout.generation != loadedHistory.generation,
+           let checkpoint = loadedHistory.layout,
+           let capturedLayout = try? SessionStore.decode(checkpoint),
+           capturedLayout.generation == loadedHistory.generation {
+            // The sidecar is the full-save commit point. A crash can leave
+            // UserDefaults at the preceding generation; restore the layout
+            // written atomically with this transcript instead of dropping it.
+            layout = capturedLayout
+            SessionStore.commit(checkpoint, defaults: defaults)
+        }
         if !loadedHistory.histories.isEmpty,
            layout.windows.isEmpty || layout.generation != loadedHistory.generation {
             // The layout may have been rejected and copied to its recovery
@@ -61,23 +70,28 @@ final class WorkspaceStateStore {
         )
     }
 
+    @discardableResult
     func save(
         snapshots: [SessionSnapshot], histories: [String: String]
-    ) {
+    ) -> Bool {
         let generation = UUID().uuidString
-        guard SessionStore.save(
-            snapshots, generation: generation, defaults: defaults
-        ) else { return }
-        history.save(histories, generation: generation)
+        let layout: Data
+        do {
+            layout = try SessionStore.encode(snapshots, generation: generation)
+        } catch {
+            NSLog("WorkspaceStateStore: failed to encode layout: \(error)")
+            return false
+        }
+        guard history.save(histories, generation: generation, layout: layout) else {
+            return false
+        }
+        SessionStore.commit(layout, defaults: defaults)
         currentGeneration = generation
+        return true
     }
 
     /// Saves layout changes without rewriting the large history sidecar.
     func saveLayout(_ snapshots: [SessionSnapshot]) {
         SessionStore.save(snapshots, generation: currentGeneration, defaults: defaults)
-    }
-
-    func waitForPendingWrites() {
-        history.waitForPendingWrites()
     }
 }

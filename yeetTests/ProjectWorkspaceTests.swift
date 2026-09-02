@@ -42,7 +42,24 @@ final class ProjectWorkspaceTests: XCTestCase {
         XCTAssertFalse(sessionProject.hasSelectedBrowser)
     }
 
-    func testRecursiveRestorePassesHistoryKeysToEachTerminal() {
+    func testRecursiveRestorePassesHistoryAndKeysToEachTerminal() throws {
+        let settings = AppSettings.shared
+        let previousRestore = settings.restoreTerminalHistory
+        let previousConfig: Data?
+        if FileManager.default.fileExists(atPath: AppSettings.configURL.path) {
+            previousConfig = try Data(contentsOf: AppSettings.configURL)
+        } else {
+            previousConfig = nil
+        }
+        settings.restoreTerminalHistory = true
+        defer {
+            settings.restoreTerminalHistory = previousRestore
+            if let previousConfig {
+                try? previousConfig.write(to: AppSettings.configURL, options: .atomic)
+            } else {
+                try? FileManager.default.removeItem(at: AppSettings.configURL)
+            }
+        }
         let project = Project(fallbackName: "restore", createInitialSession: false)
         let first = SessionSnapshot.ProjectSnapshot.PaneSnapshot(
             content: .session(workingDirectory: "/tmp", agentKind: nil, agentSessionID: nil),
@@ -76,6 +93,10 @@ final class ProjectWorkspaceTests: XCTestCase {
         defer { project.terminateAll() }
 
         XCTAssertEqual(tab.sessions.map(\.historyKey), ["first-history", "second-history"])
+        XCTAssertEqual(
+            tab.sessions.map { $0.serializedHistory(captureLive: false) },
+            ["first transcript", "second transcript"]
+        )
     }
 
     func testMenuCapabilitiesFollowFocusWithinOneSplitTab() {

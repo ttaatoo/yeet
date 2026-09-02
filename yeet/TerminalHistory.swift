@@ -434,8 +434,9 @@ enum TerminalHistorySerializer {
 ///
 /// Each save rewrites the whole file from the live set of sessions, so keys
 /// belonging to sessions that no longer exist are pruned automatically.
-/// Encode and I/O run on a serial queue. Layout-only autosaves do not call
-/// this store; a history capture writes a new generation.
+/// Full saves finish before returning so the workspace owner can publish the
+/// matching layout only after the history is on disk. Layout-only autosaves
+/// do not call this store.
 nonisolated final class TerminalHistoryStore {
     /// Debug builds keep their state under `yeet-dev`, matching `AppSettings`
     /// and the separate `sh.yeet.dev` bundle id, so a dev build never clobbers
@@ -453,91 +454,69 @@ nonisolated final class TerminalHistoryStore {
         return destDir.appendingPathComponent("terminal-history.json")
     }()
 
-    private final class Writer: @unchecked Sendable {
-        let lock = NSLock()
-        var generation: UInt64 = 0
-    }
-
     private let fileURL: URL
-    private let writer = Writer()
-    private let ioQueueKey = DispatchSpecificKey<UInt8>()
-    private let ioQueue: DispatchQueue
     private var preservesUnreadableHistory = false
 
     init(fileURL: URL = defaultFileURL) {
         self.fileURL = fileURL
-        let queue = DispatchQueue(label: "sh.yeet.terminal-history")
-        queue.setSpecific(key: ioQueueKey, value: 1)
-        ioQueue = queue
     }
 
     private struct Archive: Codable {
         let generation: String
         let histories: [String: String]
+        /// The workspace owner uses this checkpoint if the process stops
+        /// after this atomic write but before publishing the layout.
+        let layout: Data?
     }
 
     struct Loaded {
         let generation: String?
         let histories: [String: String]
+        var layout: Data? = nil
     }
 
-    func save(_ histories: [String: String], generation: String) {
+    @discardableResult
+    func save(
+        _ histories: [String: String], generation: String, layout: Data? = nil
+    ) -> Bool {
         // A failed recovery copy must not be followed by an autosave that
         // destroys the only remaining bytes. Retry on the next launch.
-        guard !preservesUnreadableHistory else { return }
-        let writer = writer
-        let fileURL = fileURL
-        writer.lock.lock()
-        writer.generation += 1
-        let token = writer.generation
-        writer.lock.unlock()
-        ioQueue.async {
-            guard let encoded = try? Self.encode(histories, generation: generation) else {
-                NSLog("TerminalHistoryStore: failed to encode history")
-                return
-            }
-
-            writer.lock.lock()
-            let stale = token != writer.generation
-            writer.lock.unlock()
-            guard !stale else { return }
-            Self.writeSidecar(encoded, to: fileURL)
+        guard !preservesUnreadableHistory else { return false }
+        do {
+            let encoded = try Self.encode(histories, generation: generation, layout: layout)
+            try Self.writeSidecar(encoded, to: fileURL)
+            return true
+        } catch {
+            NSLog("TerminalHistoryStore: failed to save history: \(error)")
+            return false
         }
     }
 
-    /// Blocks until every previously enqueued save has finished. Quit,
-    /// language-relaunch, and last-window close wait so the sidecar is on
-    /// disk before the process continues. Must not be called from `ioQueue`.
-    func waitForPendingWrites() {
-        // A sync wait from this queue would deadlock; callers are MainActor.
-        guard DispatchQueue.getSpecific(key: ioQueueKey) == nil else { return }
-        ioQueue.sync {}
-    }
-
-    /// Empty bytes remove the sidecar when no session has history.
-    static func encode(_ histories: [String: String], generation: String) throws -> Data {
-        guard !histories.isEmpty else { return Data() }
+    /// A checkpoint is retained even with no history, so an interrupted save
+    /// cannot bring back the preceding layout and its transcript.
+    static func encode(
+        _ histories: [String: String], generation: String, layout: Data? = nil
+    ) throws -> Data {
+        guard !histories.isEmpty || layout != nil else { return Data() }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        return try encoder.encode(Archive(generation: generation, histories: histories))
+        return try encoder.encode(Archive(
+            generation: generation, histories: histories, layout: layout
+        ))
     }
 
     /// Empty `Data` deletes the file so a later restore finds nothing rather
     /// than replaying stale output.
-    private static func writeSidecar(_ data: Data, to fileURL: URL) {
-        do {
-            if data.isEmpty {
-                if FileManager.default.fileExists(atPath: fileURL.path) {
-                    try FileManager.default.removeItem(at: fileURL)
-                }
-                return
+    private static func writeSidecar(_ data: Data, to fileURL: URL) throws {
+        if data.isEmpty {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
             }
-            try FileManager.default.createDirectory(
-                at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: fileURL, options: .atomic)
-        } catch {
-            NSLog("yeet: failed to write \(fileURL.path): \(error)")
+            return
         }
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: fileURL, options: .atomic)
     }
 
     func load() -> Loaded {
@@ -577,7 +556,10 @@ nonisolated final class TerminalHistoryStore {
 
     static func decode(_ data: Data) throws -> Loaded {
         if let archive = try? JSONDecoder().decode(Archive.self, from: data) {
-            return Loaded(generation: archive.generation, histories: archive.histories)
+            return Loaded(
+                generation: archive.generation, histories: archive.histories,
+                layout: archive.layout
+            )
         }
         // The supported unversioned workspace stores history as a plain map.
         let histories = try JSONDecoder().decode([String: String].self, from: data)
