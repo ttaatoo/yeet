@@ -18,8 +18,10 @@ the original feature bullet instead of adding separate entries for them.
 - Workspace restore accepts the recursive multi-window format used by
   v0.1.47 and later. Older single-window and column-based layouts are no
   longer restored.
-- Yeet no longer copies Kero/Kerox settings or terminal history, accepts old
-  built-in theme names, or removes old `kero-automation` installations.
+- Yeet no longer copies Kero/Kerox settings or terminal history, or removes
+  old `kero-automation` installations. The old `Default Dark` and
+  `Default Light` theme names are no longer accepted; use `Yeet Dark` and
+  `Yeet Light` in `config.toml`.
 
 ## [0.1.60]
 
