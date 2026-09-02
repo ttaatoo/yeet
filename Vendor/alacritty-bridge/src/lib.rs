@@ -51,6 +51,24 @@ use graphics_event_loop::{
 };
 use kitty_graphics::{KittyGraphicsScreen, KittyGraphicsSize, KittyGraphicsStore};
 
+/// Bounds for dimensions supplied by the FFI host.  A grid has one allocation
+/// per cell, so a transient AppKit layout size must never request unbounded
+/// memory from the terminal emulator.
+const MIN_TERMINAL_COLUMNS: u16 = 2;
+const MIN_TERMINAL_ROWS: u16 = 2;
+const MAX_TERMINAL_COLUMNS: u16 = 1_024;
+const MAX_TERMINAL_ROWS: u16 = 512;
+const MAX_TERMINAL_CELLS: u32 = 262_144;
+
+fn bounded_grid_size(columns: u16, rows: u16) -> (u16, u16) {
+    let columns = columns.clamp(MIN_TERMINAL_COLUMNS, MAX_TERMINAL_COLUMNS);
+    let rows = rows.clamp(MIN_TERMINAL_ROWS, MAX_TERMINAL_ROWS);
+    let maximum_rows_for_columns = (MAX_TERMINAL_CELLS / u32::from(columns))
+        .clamp(u32::from(MIN_TERMINAL_ROWS), u32::from(MAX_TERMINAL_ROWS))
+        as u16;
+    (columns, rows.min(maximum_rows_for_columns))
+}
+
 // MARK: - C types
 
 /// Event kinds pushed to Swift from the PTY thread. Swift bounces these onto
@@ -1250,12 +1268,13 @@ pub unsafe extern "C" fn kero_alacritty_new(
         return std::ptr::null_mut();
     };
     let config = &*config;
-    let columns = config.columns.max(1) as usize;
-    let screen_lines = config.rows.max(1) as usize;
+    let (config_columns, config_rows) = bounded_grid_size(config.columns, config.rows);
+    let columns = config_columns as usize;
+    let screen_lines = config_rows as usize;
 
     let window_size = WindowSize {
-        num_lines: config.rows.max(1),
-        num_cols: config.columns.max(1),
+        num_lines: config_rows,
+        num_cols: config_columns,
         cell_width: config.cell_width.max(1),
         cell_height: config.cell_height.max(1),
     };
@@ -1531,15 +1550,16 @@ pub unsafe extern "C" fn kero_alacritty_resize(
         return;
     }
     let terminal = &mut *handle;
+    let (columns, rows) = bounded_grid_size(columns, rows);
     let window_size = WindowSize {
-        num_lines: rows.max(1),
-        num_cols: columns.max(1),
+        num_lines: rows,
+        num_cols: columns,
         cell_width: cell_width.max(1),
         cell_height: cell_height.max(1),
     };
     let size = TermSize {
-        columns: columns.max(1) as usize,
-        screen_lines: rows.max(1) as usize,
+        columns: columns as usize,
+        screen_lines: rows as usize,
     };
     // Keep the terminal lock through the pre-invalidation and barrier enqueue.
     // A queued Find step can finish against the old geometry before this
@@ -3145,6 +3165,14 @@ mod tests {
             receiver.recv().unwrap(),
             GraphicsMsg::InvalidateFindWithGeneration(70)
         ));
+    }
+
+    #[test]
+    fn grid_size_caps_untrusted_ffi_dimensions() {
+        assert_eq!(bounded_grid_size(80, 24), (80, 24));
+        assert_eq!(bounded_grid_size(u16::MAX, u16::MAX), (1_024, 256));
+        assert_eq!(bounded_grid_size(1, u16::MAX), (2, 512));
+        assert_eq!(bounded_grid_size(0, 0), (2, 2));
     }
 
     #[test]

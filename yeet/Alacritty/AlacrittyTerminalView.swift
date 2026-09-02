@@ -120,6 +120,96 @@ struct AlacrittyFrameIntent: Equatable {
     }
 }
 
+/// A bounded terminal grid derived from AppKit layout geometry.
+///
+/// Auto Layout can transiently provide an invalid or enormous frame while a
+/// restored window is being attached.  The terminal emulator allocates one
+/// cell per row and column, so do not let an intermediate view size turn into
+/// an unbounded allocation.
+struct AlacrittyGridSize: Equatable {
+    /// Alacritty's parser assumes at least two cells in each axis. Keep the
+    /// host and FFI contracts aligned so a transient one-pixel view cannot
+    /// create an invalid emulator grid.
+    static let minimumColumns = 2
+    static let minimumRows = 2
+    /// Do not start or reflow restored history until AppKit has assigned a
+    /// pane that can actually display a terminal. This excludes zero- and
+    /// one-cell frames during window restoration without restricting normal
+    /// small panes.
+    static let minimumStableColumns = 20
+    static let minimumStableRows = 4
+    static let maximumColumns = 1_024
+    static let maximumRows = 512
+    static let maximumCellCount = 262_144
+
+    let columns: Int
+    let rows: Int
+
+    var isStableForBackend: Bool {
+        columns >= Self.minimumStableColumns && rows >= Self.minimumStableRows
+    }
+
+    /// A restored terminal can briefly inherit a nonsensical Auto Layout
+    /// frame. A real window can span two displays, but it must not grow far
+    /// beyond the largest available display before the emulator reallocates
+    /// every retained history row.
+    static func isPlausibleViewport(
+        _ viewportSize: CGSize,
+        within displaySize: CGSize
+    ) -> Bool {
+        guard viewportSize.width.isFinite,
+              viewportSize.height.isFinite,
+              displaySize.width.isFinite,
+              displaySize.height.isFinite,
+              viewportSize.width > 0,
+              viewportSize.height > 0,
+              displaySize.width > 0,
+              displaySize.height > 0
+        else {
+            return false
+        }
+
+        return viewportSize.width <= displaySize.width * 2
+            && viewportSize.height <= displaySize.height * 2
+    }
+
+    static func from(
+        viewportSize: CGSize,
+        cellSize: CGSize,
+        padding: CGPoint
+    ) -> Self {
+        guard viewportSize.width.isFinite,
+              viewportSize.height.isFinite,
+              cellSize.width.isFinite,
+              cellSize.height.isFinite,
+              cellSize.width > 0,
+              cellSize.height > 0
+        else {
+            return capped(columns: 0, rows: 0)
+        }
+
+        let usableWidth = viewportSize.width - padding.x * 2
+        let usableHeight = viewportSize.height - padding.y * 2
+        return capped(
+            columns: count(for: usableWidth / cellSize.width, limit: maximumColumns),
+            rows: count(for: usableHeight / cellSize.height, limit: maximumRows)
+        )
+    }
+
+    static func capped(columns: Int, rows: Int) -> Self {
+        let columns = min(max(columns, minimumColumns), maximumColumns)
+        let rows = min(max(rows, minimumRows), maximumRows)
+        let maximumRowsForColumns = max(minimumRows, maximumCellCount / columns)
+        return Self(columns: columns, rows: min(rows, maximumRowsForColumns))
+    }
+
+    private static func count(for value: CGFloat, limit: Int) -> Int {
+        guard value.isFinite, value > 1 else { return 0 }
+        guard value < CGFloat(limit) else { return limit }
+        return Int(value.rounded(.down))
+    }
+}
+
 enum AlacrittyFrameRetryPolicy {
     static let maxPresentationRecoveryAttempts = 5
     static let presentationRecoveryProbeDelayMilliseconds = 1_000
@@ -480,13 +570,19 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
     private static let scrollbackLines = 10_000
 
     private var handle: OpaquePointer?
+    /// Creation waits for attachment and a plausible pane frame. Restored
+    /// scrollback reflows into the initial grid, so starting at the old
+    /// synthetic 800x600 frame could multiply history before Auto Layout had
+    /// settled the real pane geometry.
+    private var pendingLaunch: TerminalLaunch?
+    private var backendStartScheduled = false
     /// Retained after detach so diagnostics can await a release that an
     /// earlier ordinary detach already started.
     private var backendReleaseTask: Task<Void, Never>?
     private var isDetached = false
     private let token = AlacrittyRegistry.shared.nextToken()
     private var metrics: AlacrittyMetrics
-    private var gridSize = (columns: 0, rows: 0)
+    private var gridSize = AlacrittyGridSize(columns: 0, rows: 0)
     private var markedText = ""
     private let markedTextField = NSTextField(labelWithString: "")
     private var isSurfaceVisible = false
@@ -662,8 +758,8 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
     }
 
     convenience init(launch: TerminalLaunch) {
-        self.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
-        start(launch: launch)
+        self.init(frame: .zero)
+        pendingLaunch = launch
     }
 
     isolated deinit {
@@ -682,8 +778,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
 
     // MARK: - Lifecycle
 
-    private func start(launch: TerminalLaunch) {
-        let size = gridSize(for: bounds.size)
+    private func start(launch: TerminalLaunch, size: AlacrittyGridSize) {
         gridSize = size
         var theme = AlacrittyTheme.current()
 
@@ -709,6 +804,43 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
         if handle == nil {
             NSLog("yeet: failed to start the Alacritty backend for \(launch.program)")
             return
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        scheduleBackendStart()
+    }
+
+    private func scheduleBackendStart() {
+        guard pendingLaunch != nil, !backendStartScheduled, !isDetached else { return }
+        backendStartScheduled = true
+        afterViewUpdate { [weak self] in
+            guard let self else { return }
+            self.backendStartScheduled = false
+            self.startBackendIfReady()
+        }
+    }
+
+    private func startBackendIfReady() {
+        guard !isDetached,
+              handle == nil,
+              let launch = pendingLaunch,
+              let size = gridSize(for: bounds.size),
+              size.isStableForBackend
+        else {
+            return
+        }
+        pendingLaunch = nil
+        start(launch: launch, size: size)
+        // The host can become visible in the layout pass that assigned this
+        // first stable frame. If so, it already attempted a frame before the
+        // backend existed; retry now that the emulator can produce one.
+        if handle != nil, isSurfaceVisible {
+            updateBackingLayerActivity(forceFrame: true)
+            updateActiveTimers()
+            updateFocusReport()
         }
     }
 
@@ -1043,13 +1175,32 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
         )
     }
 
-    private func gridSize(for size: CGSize) -> (columns: Int, rows: Int) {
-        let usableWidth = size.width - Self.padding.x * 2
-        let usableHeight = size.height - Self.padding.y * 2
-        return (
-            columns: max(1, Int(usableWidth / metrics.cellWidth)),
-            rows: max(1, Int(usableHeight / metrics.cellHeight))
+    private func gridSize(for size: CGSize) -> AlacrittyGridSize? {
+        guard let displaySize = maximumDisplaySize(),
+              AlacrittyGridSize.isPlausibleViewport(size, within: displaySize)
+        else {
+            return nil
+        }
+
+        return AlacrittyGridSize.from(
+            viewportSize: size,
+            cellSize: CGSize(width: metrics.cellWidth, height: metrics.cellHeight),
+            padding: Self.padding
         )
+    }
+
+    private func maximumDisplaySize() -> CGSize? {
+        var screens = NSScreen.screens
+        if let windowScreen = window?.screen {
+            screens.append(windowScreen)
+        }
+        let visibleSizes = screens.map(\.visibleFrame.size).filter {
+            $0.width.isFinite && $0.height.isFinite && $0.width > 0 && $0.height > 0
+        }
+        guard let first = visibleSizes.first else { return nil }
+        return visibleSizes.dropFirst().reduce(first) { largest, size in
+            CGSize(width: max(largest.width, size.width), height: max(largest.height, size.height))
+        }
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -1061,6 +1212,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
             setPresentationCoverVisible(true)
         }
         super.setFrameSize(newSize)
+        startBackendIfReady()
         synchronizeGridSize()
         // Padding remainder changes even when the number of rows/columns does
         // not, so a sub-cell resize still needs one host-side frame.
@@ -1072,7 +1224,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
     /// does not disturb a running TUI.
     private func synchronizeGridSize() {
         guard let handle else { return }
-        let size = gridSize(for: bounds.size)
+        guard let size = gridSize(for: bounds.size), size.isStableForBackend else { return }
         guard size != gridSize else { return }
         gridSize = size
         kero_alacritty_resize(
