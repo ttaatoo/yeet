@@ -172,6 +172,65 @@ final class KeroAgentWaitTests: XCTestCase {
         // resolver as agent.get. Wait has no project or window override.
     }
 
+    func testStartParamsDefaultToSharedCheckout() throws {
+        let spec = try KeroAgentWait.parseStart([:]).get()
+        XCTAssertEqual(spec.timeoutMS, 30_000)
+        XCTAssertFalse(spec.worktree)
+        let omitted = try KeroAgentWait.parseStart([
+            "timeout_ms": .number(12_000),
+            "alias": .string("tests"),
+        ]).get()
+        XCTAssertEqual(omitted.timeoutMS, 12_000)
+        XCTAssertFalse(omitted.worktree)
+        let explicitOff = try KeroAgentWait.parseStart([
+            "worktree": .bool(false),
+        ]).get()
+        XCTAssertFalse(explicitOff.worktree)
+        let nullWorktree = try KeroAgentWait.parseStart([
+            "worktree": .null,
+        ]).get()
+        XCTAssertFalse(nullWorktree.worktree)
+    }
+
+    func testStartParamsParseOptInWorktree() throws {
+        let spec = try KeroAgentWait.parseStart([
+            "worktree": .bool(true),
+            "timeout_ms": .number(8_000),
+        ]).get()
+        XCTAssertTrue(spec.worktree)
+        XCTAssertEqual(spec.timeoutMS, 8_000)
+    }
+
+    func testStartParamsRejectNonBooleanWorktree() {
+        switch KeroAgentWait.parseStart(["worktree": .string("true")]) {
+        case .success: XCTFail("string worktree must fail")
+        case .failure(let error):
+            XCTAssertEqual(error, .invalidParams("worktree must be a boolean."))
+        }
+        switch KeroAgentWait.parseStart(["worktree": .number(1)]) {
+        case .success: XCTFail("numeric worktree must fail")
+        case .failure: break
+        }
+        switch KeroAgentWait.parseStart(["worktree": .array([])]) {
+        case .success: XCTFail("array worktree must fail")
+        case .failure: break
+        }
+    }
+
+    func testStartParamsStillValidateTimeoutWhenWorktreeIsSet() {
+        switch KeroAgentWait.parseStart([
+            "worktree": .bool(true),
+            "timeout_ms": .number(2_999),
+        ]) {
+        case .success: XCTFail("worktree must not skip timeout bounds")
+        case .failure(let error):
+            XCTAssertEqual(
+                error,
+                .invalidParams("timeout_ms must be between 3000 and 300000.")
+            )
+        }
+    }
+
     func testStartTimeoutIgnoresProjectAndWindowSelectors() throws {
         let timeoutMS = try KeroAgentWait.parseStartTimeout([
             "alias": .string("other-window-agent"),

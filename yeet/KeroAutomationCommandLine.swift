@@ -623,6 +623,7 @@ enum KeroAutomationCommandLine {
         var paneID: String?
         var kind: String?
         var focus = false
+        var worktree = false
         var timeoutMS = KeroAgentWait.startDefaultTimeoutMS
         var extra: [String] = []
         var index = 1
@@ -637,6 +638,8 @@ enum KeroAutomationCommandLine {
             case "--kind": kind = try value(after: &index, in: arguments, option: "--kind")
             case "--focus": focus = true
             case "--no-focus": focus = false
+            case "--worktree": worktree = true
+            case "--no-worktree": worktree = false
             case "--timeout": timeoutMS = try integerValue(
                 after: &index, in: arguments, option: "--timeout"
             )
@@ -658,6 +661,9 @@ enum KeroAutomationCommandLine {
         params["focus"] = .bool(focus)
         params["argv"] = .array(extra.map(KeroJSONValue.string))
         params["timeout_ms"] = .number(Double(timeoutMS))
+        if worktree {
+            params["worktree"] = .bool(true)
+        }
         return try connection.automationRequest(
             method: "agent.start",
             params: params,
@@ -989,7 +995,7 @@ enum KeroAutomationCommandLine {
         Usage:
           yeet +agent list
           yeet +agent get ALIAS | --pane ID | --current
-          yeet +agent start ALIAS --kind KIND [--pane ID] [--focus] [--timeout MS] [-- agent-arguments...]
+          yeet +agent start ALIAS --kind KIND [--pane ID] [--focus] [--worktree] [--timeout MS] [-- agent-arguments...]
           yeet +agent prompt ALIAS --text TEXT [--wait] [--timeout MS]
           yeet +agent read ALIAS [--lines N] [--columns N]
           yeet +agent wait ALIAS [--state idle,done,blocked] [--timeout MS]
@@ -999,6 +1005,9 @@ enum KeroAutomationCommandLine {
         Supported kinds: codex, claude, gemini, grok, opencode, cursor-agent,
         aider, amp, and pi. Agent start requires an existing available shell and
         never creates layout; it returns after Yeet recognizes the launched process.
+        `--worktree` gives that pane its own git worktree and branch; the default
+        is the shared project checkout. Discarding and merging stay in the Git
+        panel. Git failures return a structured error and do not declare the agent.
         Guarded prompts accept agents in created, working, idle, or done. While
         an agent is working, its CLI decides whether input steers the active
         turn or queues it. Use +pane send only when raw input is intentional.

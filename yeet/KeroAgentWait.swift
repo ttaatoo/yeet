@@ -35,6 +35,13 @@ enum KeroAgentWait {
         var timeoutMS: Int
     }
 
+    /// `agent.start` timeout plus the opt-in worktree flag. Default is the
+    /// shared project checkout; isolation is never implied.
+    struct StartSpec: Equatable, Sendable {
+        var timeoutMS: Int
+        var worktree: Bool
+    }
+
     enum ParseError: Equatable, Error, Sendable {
         case invalidParams(String)
 
@@ -94,6 +101,24 @@ enum KeroAgentWait {
             minimum: startMinimumTimeoutMS,
             maximum: startMaximumTimeoutMS
         )
+    }
+
+    static func parseStart(_ params: [String: KeroJSONValue]) -> Result<StartSpec, ParseError> {
+        let worktree: Bool
+        if let value = params["worktree"], value != .null {
+            guard let flag = value.boolValue else {
+                return .failure(.invalidParams("worktree must be a boolean."))
+            }
+            worktree = flag
+        } else {
+            worktree = false
+        }
+        switch parseStartTimeout(params) {
+        case .success(let timeoutMS):
+            return .success(StartSpec(timeoutMS: timeoutMS, worktree: worktree))
+        case .failure(let error):
+            return .failure(error)
+        }
     }
 
     static func parsePhases(_ names: [String]) -> Result<Set<KeroAgentPhase>, ParseError> {

@@ -252,18 +252,19 @@ enum KeroAutomationRouter {
         }
     }
 
-    /// Declares the agent, sends the launch command, then waits for Yeet to
-    /// recognize the process. Same race as `agent.wait` over `$agentStatus`;
-    /// terminal text is never classified, and `Thread.sleep` is never used
-    /// here.
+    /// Optional worktree create/attach, then declare, launch, then wait for
+    /// Yeet to recognize the process. Same race as `agent.wait` over
+    /// `$agentStatus`; terminal text is never classified, and `Thread.sleep`
+    /// is never used here.
     private static func startAgent(
         _ request: KeroAutomationRequest,
         caller: PaneContext
     ) async -> KeroAutomationResponse {
         guard let target = targetPane(request, caller: caller),
-              let session = target.session else {
+              let initialSession = target.session else {
             return failure(request, "terminal_required", "The target pane is not a terminal.")
         }
+        var session = initialSession
         guard session.isShellAvailableForAutomation else {
             return failure(
                 request, "shell_busy",
@@ -309,16 +310,64 @@ enum KeroAutomationRouter {
                 "Agent arguments exceed the protocol limits or contain terminal control characters."
             )
         }
-        let timeoutMS: Int
-        switch KeroAgentWait.parseStartTimeout(request.params) {
+        let start: KeroAgentWait.StartSpec
+        switch KeroAgentWait.parseStart(request.params) {
         case .success(let value):
-            timeoutMS = value
+            start = value
         case .failure(let error):
             return failure(request, "invalid_params", error.message)
         }
 
+        // Worktree create/attach happens before declare so a git failure
+        // cannot leave a half-declared agent. Recognition wait stays after
+        // launch, same as a shared-checkout start.
+        var worktree: KeroAgentWorktree.Checkout?
+        if start.worktree {
+            let cwd = session.currentDirectoryPath
+            let prepared = await Task.detached {
+                KeroAgentWorktree.prepare(alias: alias, cwd: cwd)
+            }.value
+            switch prepared {
+            case .success(let checkout):
+                worktree = checkout
+            case .failure(let error):
+                return failure(request, error.code, error.message)
+            }
+            // Re-check after prepare: the pane or alias may have been taken
+            // during git. Do not auto-remove; leftover checkout is v1 and
+            // the operator deletes with `git worktree remove`.
+            guard let current = targetPane(request, caller: caller),
+                  let live = current.session else {
+                return failure(
+                    request, "terminal_required",
+                    "The target pane is not a terminal."
+                )
+            }
+            guard live.agentStatus == nil else {
+                return failure(
+                    request, "agent_already_declared",
+                    "This terminal already has an active or pending agent."
+                )
+            }
+            session = live
+            let taken = caller.project.sessions.contains {
+                $0.id != session.id && $0.agentStatus?.alias == alias
+            }
+            guard !taken else {
+                return failure(
+                    request, "alias_in_use",
+                    "Another agent in this project already uses alias \(alias)."
+                )
+            }
+        }
+
         session.declareAutomationAgent(alias: alias, kind: kind)
-        let command = ([kind.executable] + extra).map(shellQuote).joined(separator: " ")
+        let launch = ([kind.executable] + extra).map(shellQuote).joined(separator: " ")
+        // Same shell line as launch so the agent never starts in the shared
+        // checkout if chdir races the next prompt.
+        let command = worktree.map {
+            "cd \(shellQuote($0.path)) && \(launch)"
+        } ?? launch
         session.sendCommand(command + "\r")
         if request.params["focus"]?.boolValue == true {
             TerminalManager.revealSession(id: session.id)
@@ -327,7 +376,7 @@ enum KeroAutomationRouter {
         let observation = KeroAgentWait.statusUpdates(from: session)
         defer { observation.cancel() }
         let outcome = await KeroAgentWait.race(
-            timeout: .milliseconds(timeoutMS),
+            timeout: .milliseconds(start.timeoutMS),
             updates: observation.stream,
             finished: KeroAgentWait.recognized
         )
@@ -336,7 +385,7 @@ enum KeroAutomationRouter {
             guard let current = targetPane(request, caller: caller) else {
                 return failure(request, "pane_not_found", "No matching pane exists in this project.")
             }
-            return success(request, paneSnapshot(current, caller: caller))
+            return success(request, startSnapshot(current, caller: caller, worktree: worktree))
         case .disappeared:
             return failure(
                 request,
@@ -546,6 +595,25 @@ enum KeroAutomationRouter {
                 PaneContext(manager: manager, project: project, tab: tab, pane: $0)
             }
         }
+    }
+
+    private static func startSnapshot(
+        _ context: PaneContext,
+        caller: PaneContext,
+        worktree: KeroAgentWorktree.Checkout?
+    ) -> KeroJSONValue {
+        guard case .object(var object) = paneSnapshot(context, caller: caller) else {
+            return paneSnapshot(context, caller: caller)
+        }
+        if let worktree {
+            object["cwd"] = .string(worktree.path)
+            object["worktree"] = .object([
+                "path": .string(worktree.path),
+                "branch": .string(worktree.branch),
+                "attached": .bool(worktree.attached),
+            ])
+        }
+        return .object(object)
     }
 
     private static func paneSnapshot(
