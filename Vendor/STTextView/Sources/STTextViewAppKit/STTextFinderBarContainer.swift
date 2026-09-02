@@ -1,6 +1,7 @@
 import AppKit
 
-final class STTextFinderBarContainer: NSObject, NSTextFinderBarContainer {
+@MainActor
+final class STTextFinderBarContainer: NSObject, @MainActor NSTextFinderBarContainer {
 
     // Forward NSTextFinderBarContainer to enclosing NSScrollView (for now at least)
     weak var client: STTextView?

@@ -9,8 +9,8 @@ import Foundation
 /// and git panel do not repeat the same climb on every refresh. A dead
 /// volume must not hang the walk forever — each existence check is timed.
 enum GitRepositoryLocator {
-    private static let lock = NSLock()
-    private static var cache: [String: String?] = [:]
+    private nonisolated static let lock = NSLock()
+    private nonisolated(unsafe) static var cache: [String: String?] = [:]
 
     /// The directory of the nearest enclosing git repository: a `.git`
     /// directory in a normal checkout, or a `.git` file in a worktree.

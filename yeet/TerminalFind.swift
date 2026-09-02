@@ -7,7 +7,7 @@ import AppKit
 import Combine
 import Foundation
 
-enum TerminalSelectionAvailability: Equatable, Sendable {
+nonisolated enum TerminalSelectionAvailability: Equatable, Sendable {
     case busy
     case empty
     case selected

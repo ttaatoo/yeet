@@ -246,7 +246,7 @@ struct SourceTextEditor: NSViewRepresentable {
             }
         }
 
-        deinit {
+        isolated deinit {
             if let scrollObserver {
                 NotificationCenter.default.removeObserver(scrollObserver)
             }

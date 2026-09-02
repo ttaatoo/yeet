@@ -4,6 +4,7 @@
 import Foundation
 import AppKit
 
+@MainActor
 class STTextViewDelegateProxy: STTextViewDelegate {
     weak var source: STTextViewDelegate?
 

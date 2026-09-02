@@ -431,6 +431,7 @@ impl<T: EventListener> Handler for TrackingHandler<'_, T> {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn advance_text<T: EventListener>(
     tracker: &mut KittyGraphicsCursorTracker,
     parser: &mut ansi::Processor,

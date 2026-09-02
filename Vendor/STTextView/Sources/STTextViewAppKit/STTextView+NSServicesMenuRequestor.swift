@@ -11,7 +11,7 @@ import AppKit
 import UniformTypeIdentifiers
 import STTextViewCommon
 
-extension STTextView: NSServicesMenuRequestor {
+extension STTextView: @MainActor NSServicesMenuRequestor {
 
     /// The types this text view can read immediately from the pasteboard.
     @objc

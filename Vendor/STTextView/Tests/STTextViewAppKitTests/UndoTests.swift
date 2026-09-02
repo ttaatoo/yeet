@@ -2,6 +2,7 @@
     import XCTest
     @testable import STTextViewAppKit
 
+    @MainActor
     final class UndoTests: XCTestCase {
         func testInsertingAtEndAndUndo() {
             let textView = STTextView()

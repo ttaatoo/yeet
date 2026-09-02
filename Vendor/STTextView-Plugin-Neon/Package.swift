@@ -33,7 +33,7 @@ let package = Package(
             targets: ["STPluginNeon"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/kylemacomber/Neon", revision: "ce8d252"),
+        .package(path: "../Neon"),
         .package(url: "https://github.com/ChimeHQ/SwiftTreeSitter", from: "0.9.0")
     ],
     targets: [

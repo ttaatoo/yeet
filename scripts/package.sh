@@ -57,12 +57,16 @@ fi
 
 # Xcode 27 IDESwiftPackageCore abort-traps when it indexes more
 # Package.swift manifests than Package.resolved pins (12 vs 11 on
-# Release #3). Only these three Vendor manifests are intentional.
+# Release #3). Only these five Vendor manifests are intentional. Neon and
+# STTextKitPlus are local Swift 6 compatibility patches used by the two
+# existing wrapper packages.
 # Fail before xcodebuild if a nested one (e.g. a full Plugin-Neon
 # checkout) is present.
 extra_manifests="$(find "$ROOT/Vendor" -name Package.swift \
+  ! -path "$ROOT/Vendor/Neon/Package.swift" \
   ! -path "$ROOT/Vendor/STTextView/Package.swift" \
   ! -path "$ROOT/Vendor/STTextView-Plugin-Neon/Package.swift" \
+  ! -path "$ROOT/Vendor/STTextKitPlus/Package.swift" \
   ! -path "$ROOT/Vendor/TreeSitterTSX/Package.swift")"
 if [[ -n "$extra_manifests" ]]; then
   echo "error: extra Package.swift would crash Xcode 27 Resolve Package Graph:" >&2

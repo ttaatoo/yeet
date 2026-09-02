@@ -58,7 +58,7 @@ enum KeroAgentWait {
         case timedOut
     }
 
-    private static let statesMessage =
+    private nonisolated static let statesMessage =
         "states must be an array of created, working, blocked, done, idle, or unknown."
 
     static func parse(_ params: [String: KeroJSONValue]) -> Result<Spec, ParseError> {

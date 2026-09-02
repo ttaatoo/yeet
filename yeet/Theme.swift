@@ -39,7 +39,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 /// Coral is the mascot orange + mint; Vivid Purple is One Dark Pro Vivid
 /// purple + green, with a coral-red attention color so selected and blocked
 /// stay distinct. Persisted as `chrome-accent` (`coral`, `vivid-purple`).
-enum ChromeAccent: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum ChromeAccent: String, CaseIterable, Identifiable, Sendable {
     case coral
     case vividPurple = "vivid-purple"
 
@@ -496,13 +496,13 @@ enum Theme {
 /// Settings theme; the terminal, session tabs, and Alacritty palette do
 /// not use these values.
 private enum YeetDarkChrome {
-    static let panel = "161412"
-    static let header = "161412"
-    static let primaryText = "E8E2DC"
-    static let mutedText = "8A8580"
-    static let divider = "2C2926"
-    static let hover = "1E1C1A"
-    static let selected = "2A2420"
+    nonisolated static let panel = "161412"
+    nonisolated static let header = "161412"
+    nonisolated static let primaryText = "E8E2DC"
+    nonisolated static let mutedText = "8A8580"
+    nonisolated static let divider = "2C2926"
+    nonisolated static let hover = "1E1C1A"
+    nonisolated static let selected = "2A2420"
 }
 
 /// UI-facing colors for a terminal theme definition. The definition stores

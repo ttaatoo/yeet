@@ -445,7 +445,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable, WKNavigationDe
     func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationAction: WKNavigationAction,
-        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
     ) {
         guard let url = navigationAction.request.url else {
             decisionHandler(.cancel)
@@ -609,7 +609,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable, WKNavigationDe
         _ webView: WKWebView,
         runJavaScriptAlertPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo,
-        completionHandler: @escaping () -> Void
+        completionHandler: @escaping @MainActor @Sendable () -> Void
     ) {
         let alert = NSAlert()
         alert.messageText = webView.title ?? String(localized: "Webpage")
@@ -622,7 +622,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable, WKNavigationDe
         _ webView: WKWebView,
         runJavaScriptConfirmPanelWithMessage message: String,
         initiatedByFrame frame: WKFrameInfo,
-        completionHandler: @escaping (Bool) -> Void
+        completionHandler: @escaping @MainActor @Sendable (Bool) -> Void
     ) {
         let alert = NSAlert()
         alert.messageText = webView.title ?? String(localized: "Webpage")
@@ -639,7 +639,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable, WKNavigationDe
         runJavaScriptTextInputPanelWithPrompt prompt: String,
         defaultText: String?,
         initiatedByFrame frame: WKFrameInfo,
-        completionHandler: @escaping (String?) -> Void
+        completionHandler: @escaping @MainActor @Sendable (String?) -> Void
     ) {
         let alert = NSAlert()
         alert.messageText = webView.title ?? String(localized: "Webpage")
@@ -657,7 +657,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable, WKNavigationDe
     private func present(
         _ alert: NSAlert,
         for webView: WKWebView,
-        completion: @escaping (NSApplication.ModalResponse) -> Void
+        completion: @escaping @MainActor @Sendable (NSApplication.ModalResponse) -> Void
     ) {
         if let window = webView.window {
             alert.beginSheetModal(for: window, completionHandler: completion)

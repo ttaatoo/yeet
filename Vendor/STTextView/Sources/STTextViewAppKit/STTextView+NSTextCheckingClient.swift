@@ -14,7 +14,7 @@ import AppKit
 //   - Otherwise, if none of the range lies within the bounds of the document, then these methods should have no effect, and return nil where appropriate.
 //
 // The beginning and end of the document are not considered as lying outside of the bounds of the document, and zero-length ranges are acceptable (although in some cases they may have no effect).
-extension STTextView: NSTextCheckingClient {
+extension STTextView: @MainActor NSTextCheckingClient {
 
     private func adjustedRange(_ range: NSRange) -> NSRange? {
         var adjRange = range
@@ -253,7 +253,7 @@ extension STTextView {
 
 }
 
-extension STTextView: NSTextInputTraits {
+extension STTextView: @MainActor NSTextInputTraits {
 
     @objc
     public var spellCheckingType: NSTextInputTraitType {
@@ -321,7 +321,7 @@ extension STTextView: NSTextInputTraits {
 
 }
 
-extension STTextView: NSChangeSpelling {
+extension STTextView: @MainActor NSChangeSpelling {
 
     public func changeSpelling(_ sender: Any?) {
         textCheckingController.changeSpelling(sender)
@@ -329,7 +329,7 @@ extension STTextView: NSChangeSpelling {
 
 }
 
-extension STTextView: NSIgnoreMisspelledWords {
+extension STTextView: @MainActor NSIgnoreMisspelledWords {
 
     public func ignoreSpelling(_ sender: Any?) {
         textCheckingController.ignoreSpelling(sender)

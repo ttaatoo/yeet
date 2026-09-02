@@ -7,6 +7,10 @@ import AppKit
 import Darwin
 import Foundation
 
+nonisolated private struct MainQueueDistributedNotification: @unchecked Sendable {
+    let value: Notification
+}
+
 /// Bridges the bundled `yeet` executable back to its owning app process.
 ///
 /// Theme previews retain the original per-launch distributed-notification
@@ -91,8 +95,9 @@ final class KeroCLIService {
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
+                let notification = MainQueueDistributedNotification(value: notification)
                 MainActor.assumeIsolated {
-                    self?.handle(notification)
+                    self?.handle(notification.value)
                 }
             }
 

@@ -6,13 +6,13 @@
 import Foundation
 import Synchronization
 
-struct AlacrittyPresentedFrame: Equatable, Sendable {
+nonisolated struct AlacrittyPresentedFrame: Equatable, Sendable {
     let sequence: UInt64
     let displayOffset: Int
     let timestamp: CFTimeInterval
 }
 
-struct AlacrittyRenderStatsSnapshot: Equatable, Sendable {
+nonisolated struct AlacrittyRenderStatsSnapshot: Equatable, Sendable {
     let submittedFrames: Int
     let rejectedFrames: Int
     let completedFrames: Int
@@ -39,7 +39,7 @@ struct AlacrittyRenderStatsSnapshot: Equatable, Sendable {
 /// This exists because "the GPU is faster" is a claim worth checking rather
 /// than assuming: it records frame time, actual CPU row work, command-buffer
 /// completion, and drawable presentation.
-final class AlacrittyRenderStats: @unchecked Sendable {
+nonisolated final class AlacrittyRenderStats: @unchecked Sendable {
     static let shared = AlacrittyRenderStats()
 
     /// UserDefaults OR the env var: Xcode-launched runs cannot inherit shell

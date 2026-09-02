@@ -9,6 +9,7 @@
 #endif
 
 /// A common public interface for TextView
+@MainActor
 package protocol STTextViewProtocol {
     associatedtype GutterView
     associatedtype Color

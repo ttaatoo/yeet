@@ -1,6 +1,6 @@
 import Foundation
 
-public struct TokenName: Hashable, Decodable, CustomStringConvertible, ExpressibleByStringLiteral {
+public struct TokenName: Hashable, Decodable, CustomStringConvertible, ExpressibleByStringLiteral, Sendable {
 
     public static let `default`: TokenName = "EB6F2FBA-B90E-41BC-874E-67916516D889"
 

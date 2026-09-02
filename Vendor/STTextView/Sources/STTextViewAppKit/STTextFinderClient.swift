@@ -4,7 +4,8 @@
 import AppKit
 
 @objcMembers
-final class STTextFinderClient: NSObject, NSTextFinderClient {
+@MainActor
+final class STTextFinderClient: NSObject, @MainActor NSTextFinderClient {
 
     weak var textView: STTextView?
 

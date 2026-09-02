@@ -921,9 +921,17 @@ private final class ScrollBenchRunner: NSObject {
     }
 
     @objc nonisolated private func tick(_ link: CADisplayLink) {
+        let timestamp = link.timestamp
+        let targetTimestamp = link.targetTimestamp
+        let duration = link.duration
         assumeMainActor {
             ScrollBenchPresentationCollector.shared?.poll(phase: phase)
-            ScrollBenchPresentationCollector.shared?.recordDisplayLink(link, phase: phase)
+            ScrollBenchPresentationCollector.shared?.recordDisplayLink(
+                timestamp: timestamp,
+                targetTimestamp: targetTimestamp,
+                duration: duration,
+                phase: phase
+            )
             if phase == "scroll" {
                 stepScroll()
             }
@@ -1069,13 +1077,18 @@ private final class ScrollBenchPresentationCollector {
         }
     }
 
-    func recordDisplayLink(_ link: CADisplayLink, phase: String) {
+    func recordDisplayLink(
+        timestamp: TimeInterval,
+        targetTimestamp: TimeInterval,
+        duration: TimeInterval,
+        phase: String
+    ) {
         displayLinkIntervals.append((
             phase,
             ScrollBenchDisplayLinkPacing.validInterval(
-                timestamp: link.timestamp,
-                targetTimestamp: link.targetTimestamp,
-                duration: link.duration
+                timestamp: timestamp,
+                targetTimestamp: targetTimestamp,
+                duration: duration
             )
         ))
     }

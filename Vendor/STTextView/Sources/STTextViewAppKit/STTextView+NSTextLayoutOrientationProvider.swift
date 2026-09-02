@@ -3,7 +3,7 @@
 
 import AppKit
 
-extension STTextView: NSTextLayoutOrientationProvider {
+extension STTextView: @MainActor NSTextLayoutOrientationProvider {
     public var layoutOrientation: NSLayoutManager.TextLayoutOrientation {
         switch textLayoutManager.textLayoutOrientation(at: textLayoutManager.documentRange.location) {
         case .horizontal:

@@ -32,11 +32,11 @@ public struct TextViewEnvironmentModifier<Content: View, V>: View, TextViewModif
 }
 
 private struct FontEnvironmentKey: EnvironmentKey {
-    static var defaultValue: NSFont = .preferredFont(forTextStyle: .body)
+    nonisolated(unsafe) static let defaultValue: NSFont = .preferredFont(forTextStyle: .body)
 }
 
 private struct LineHeightMultipleEnvironmentKey: EnvironmentKey {
-    static var defaultValue: CGFloat = 1.0
+    static let defaultValue: CGFloat = 1.0
 }
 
 extension EnvironmentValues {

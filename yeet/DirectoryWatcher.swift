@@ -8,7 +8,7 @@ import Foundation
 /// Coalesced FSEvents watch on one directory tree. The stream runs off the
 /// main actor; change notifications hop back after a short settle so a burst
 /// of writes (npm install, git checkout) becomes one rebuild.
-final class DirectoryWatcher: @unchecked Sendable {
+nonisolated final class DirectoryWatcher: @unchecked Sendable {
     private let lock = NSLock()
     private var stream: FSEventStreamRef?
     private var watchedPath = ""

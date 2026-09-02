@@ -1,12 +1,23 @@
 # Why kero vendors STTextView
 
-This directory is a **verbatim copy of upstream [STTextView](https://github.com/krzyzanowskim/STTextView) tag `2.3.11`**, with exactly **twelve** local source patches. It is wired into the app as a local Swift package (`XCLocalSwiftPackageReference "Vendor/STTextView"` in `yeet.xcodeproj`), not as a remote SPM dependency.
+This directory is based on upstream [STTextView](https://github.com/krzyzanowskim/STTextView) tag `2.3.11` and carries the local patches listed below. It is wired into the app as a local Swift package (`XCLocalSwiftPackageReference "Vendor/STTextView"` in `yeet.xcodeproj`), not as a remote SPM dependency.
 
 We vendor it for one reason: **to carry source-level fixes that aren't in any upstream release.** SPM has no patch/overlay mechanism for a remote package — the only way to ship changes to a dependency's own source is to check that source into the repo and point the project at the local copy. Once the patches below land upstream, we can delete this directory and go back to a pinned remote dependency (see [Exit path](#exit-path)).
 
-`Package.swift` is byte-identical to upstream 2.3.11; the fixes below are the source delta.
+The fixes below describe the maintained delta from upstream 2.3.11.
 
 ## The patches
+
+### Swift 6 actor isolation
+
+AppKit callback protocols that operate on text views, completion windows, find
+clients, services, spelling, and attachment views use main-actor-isolated
+conformances. Associated-object keys used only by AppKit views are immutable and
+main-actor isolated.
+
+**Why the fix is safe.** These callbacks read or mutate AppKit view state, which
+AppKit owns on the main thread. The annotations expose that existing ownership
+to Swift 6 and reject accidental off-main use.
 
 ### Gutter numbering after an attribute change
 

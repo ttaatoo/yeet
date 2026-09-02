@@ -1034,7 +1034,6 @@ final class AppKitGitPanelView: NSView, NSTextViewDelegate, NSTextFieldDelegate 
     ) -> AppKitGitChangeListView.RowHandlers {
         let stageTrigger = OperationTrigger.entry(path: entry.path, operation: .stage)
         let unstageTrigger = OperationTrigger.entry(path: entry.path, operation: .unstage)
-        let discardTrigger = OperationTrigger.entry(path: entry.path, operation: .discard)
         return AppKitGitChangeListView.RowHandlers(
             openDiff: { [weak self] in
                 guard let self, let model = self.model, model.isCurrent(entry) else { return }
