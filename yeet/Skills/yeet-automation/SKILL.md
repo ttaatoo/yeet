@@ -143,6 +143,13 @@ Default states are `idle`, `done`, and `blocked`; default `timeout_ms` is
 120000 (100–3600000). Clients must keep that socket open for the whole
 interval. Yeet never classifies terminal text to end the wait.
 
+`yeet +agent start` is the `agent.start` socket method, not a CLI poll of
+`agent.get`. Yeet holds the connection until it recognizes the launched
+process, the agent disappears, or `timeout_ms` elapses (`wait_timeout`).
+Default `timeout_ms` is 30000 (3000–300000). Clients must keep that socket
+open for the whole interval. Yeet never classifies terminal text to end the
+wait.
+
 Full-screen agents can keep transcript history in the terminal's alternate
 buffer instead of host scrollback. After `wait` reaches `idle` or `done`, use an
 explicit line count with `agent read`; Yeet may page the agent's own transcript

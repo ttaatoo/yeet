@@ -32,6 +32,43 @@ final class KeroAgentWaitTests: XCTestCase {
         )
     }
 
+    func testImmediateRecognitionWhenProcessAuthorityHasPid() {
+        XCTAssertEqual(
+            KeroAgentWait.recognized(
+                agentStatus(authority: .process, processID: 4242)
+            ),
+            .matched
+        )
+        XCTAssertEqual(
+            KeroAgentWait.recognized(
+                agentStatus(authority: .integration, processID: 7)
+            ),
+            .matched
+        )
+    }
+
+    func testCommandAuthorityOrMissingPidIsNotYetRecognized() {
+        XCTAssertNil(
+            KeroAgentWait.recognized(
+                agentStatus(authority: .command, processID: nil)
+            )
+        )
+        XCTAssertNil(
+            KeroAgentWait.recognized(
+                agentStatus(authority: .command, processID: 99)
+            )
+        )
+        XCTAssertNil(
+            KeroAgentWait.recognized(
+                agentStatus(authority: .process, processID: nil)
+            )
+        )
+    }
+
+    func testMissingAgentIsDisappearedForRecognition() {
+        XCTAssertEqual(KeroAgentWait.recognized(nil), .disappeared)
+    }
+
     func testInvalidStateNamesAreInvalidParams() {
         switch KeroAgentWait.parse([
             "states": .array([.string("idle"), .string("running")]),
@@ -90,6 +127,38 @@ final class KeroAgentWaitTests: XCTestCase {
         }
     }
 
+    func testStartTimeoutBounds() throws {
+        XCTAssertEqual(try KeroAgentWait.parseStartTimeout([:]).get(), 30_000)
+        XCTAssertEqual(
+            try KeroAgentWait.parseStartTimeout(["timeout_ms": .number(3_000)]).get(),
+            3_000
+        )
+        XCTAssertEqual(
+            try KeroAgentWait.parseStartTimeout(["timeout_ms": .number(300_000)]).get(),
+            300_000
+        )
+        switch KeroAgentWait.parseStartTimeout(["timeout_ms": .number(2_999)]) {
+        case .success: XCTFail("2999ms must fail")
+        case .failure(let error):
+            XCTAssertEqual(
+                error,
+                .invalidParams("timeout_ms must be between 3000 and 300000.")
+            )
+        }
+        switch KeroAgentWait.parseStartTimeout(["timeout_ms": .number(300_001)]) {
+        case .success: XCTFail("over-max start timeout must fail")
+        case .failure: break
+        }
+        switch KeroAgentWait.parseStartTimeout(["timeout_ms": .number(100)]) {
+        case .success: XCTFail("wait-min is below start-min")
+        case .failure: break
+        }
+        switch KeroAgentWait.parseStartTimeout(["timeout_ms": .string("30000")]) {
+        case .success: XCTFail("string start timeout must fail")
+        case .failure: break
+        }
+    }
+
     func testWaitSpecIgnoresProjectAndWindowSelectors() throws {
         let spec = try KeroAgentWait.parse([
             "alias": .string("other-window-agent"),
@@ -103,26 +172,49 @@ final class KeroAgentWaitTests: XCTestCase {
         // resolver as agent.get. Wait has no project or window override.
     }
 
+    func testStartTimeoutIgnoresProjectAndWindowSelectors() throws {
+        let timeoutMS = try KeroAgentWait.parseStartTimeout([
+            "alias": .string("other-window-agent"),
+            "project_id": .string(UUID().uuidString),
+            "window_id": .string(UUID().uuidString),
+            "timeout_ms": .number(12_000),
+        ]).get()
+        XCTAssertEqual(timeoutMS, 12_000)
+        // Start targeting stays on the caller's project via targetPane.
+    }
+
     func testTimeoutErrorIsStructuredWaitTimeout() {
         XCTAssertEqual(
             KeroAgentWait.timeoutMessage(phases: [.blocked, .done, .idle]),
             "Timed out waiting for agent state blocked, done, idle."
         )
+        XCTAssertEqual(
+            KeroAgentWait.startTimeoutMessage,
+            "Timed out waiting for Yeet to recognize the launched agent."
+        )
     }
 
-    func testProtocolMethodsAdvertiseAgentWait() {
+    func testProtocolMethodsAdvertiseAgentWaitAndStart() {
         XCTAssertTrue(KeroAutomationCapability.methods.contains("agent.wait"))
+        XCTAssertTrue(KeroAutomationCapability.methods.contains("agent.start"))
         XCTAssertTrue(KeroAutomationCapability.methods.contains("agent.get"))
         XCTAssertTrue(KeroAutomationCapability.methods.contains("protocol.info"))
     }
 
-    func testSocketTimeoutIncludesTransportMarginOnlyForWait() {
+    func testSocketTimeoutIncludesTransportMarginForWaitAndStart() {
         XCTAssertEqual(KeroAgentWait.socketTimeout(timeoutMS: 120_000), 125)
         let wait = automationRequest(
             method: "agent.wait",
             params: ["timeout_ms": .number(1_000)]
         )
         XCTAssertEqual(KeroAgentWait.socketTimeout(for: wait), 6)
+        let start = automationRequest(
+            method: "agent.start",
+            params: ["timeout_ms": .number(3_000)]
+        )
+        XCTAssertEqual(KeroAgentWait.socketTimeout(for: start), 8)
+        let startDefault = automationRequest(method: "agent.start")
+        XCTAssertEqual(KeroAgentWait.socketTimeout(for: startDefault), 35)
         let get = automationRequest(method: "agent.get")
         XCTAssertEqual(KeroAgentWait.socketTimeout(for: get), 2)
         let invalidWait = automationRequest(
@@ -130,6 +222,11 @@ final class KeroAgentWaitTests: XCTestCase {
             params: ["timeout_ms": .number(1)]
         )
         XCTAssertEqual(KeroAgentWait.socketTimeout(for: invalidWait), 2)
+        let invalidStart = automationRequest(
+            method: "agent.start",
+            params: ["timeout_ms": .number(1)]
+        )
+        XCTAssertEqual(KeroAgentWait.socketTimeout(for: invalidStart), 2)
     }
 
     func testRaceMatchesInitialPhaseImmediately() async {
@@ -194,6 +291,51 @@ final class KeroAgentWaitTests: XCTestCase {
         XCTAssertEqual(outcome, .matched)
     }
 
+    func testRaceMatchesImmediateRecognition() async {
+        let stream = AsyncStream<KeroAgentStatus?> { continuation in
+            continuation.yield(agentStatus(authority: .process, processID: 11))
+            continuation.finish()
+        }
+        let outcome = await KeroAgentWait.race(
+            timeout: .seconds(2),
+            updates: stream,
+            finished: KeroAgentWait.recognized
+        )
+        XCTAssertEqual(outcome, .matched)
+    }
+
+    func testRaceTimesOutWhenNeverRecognized() async {
+        let stream = AsyncStream<KeroAgentStatus?> { continuation in
+            continuation.yield(agentStatus(authority: .command, processID: nil))
+            continuation.onTermination = { _ in
+                continuation.finish()
+            }
+        }
+        let started = ContinuousClock.now
+        let outcome = await KeroAgentWait.race(
+            timeout: .milliseconds(150),
+            updates: stream,
+            finished: KeroAgentWait.recognized
+        )
+        XCTAssertEqual(outcome, .timedOut)
+        let elapsed = started.duration(to: ContinuousClock.now)
+        XCTAssertLessThan(elapsed, .seconds(2))
+    }
+
+    func testRaceDisappearsWhenAgentClearsBeforeRecognition() async {
+        let stream = AsyncStream<KeroAgentStatus?> { continuation in
+            continuation.yield(agentStatus(authority: .command, processID: nil))
+            continuation.yield(nil)
+            continuation.finish()
+        }
+        let outcome = await KeroAgentWait.race(
+            timeout: .seconds(2),
+            updates: stream,
+            finished: KeroAgentWait.recognized
+        )
+        XCTAssertEqual(outcome, .disappeared)
+    }
+
     func testExchangeWaitTimeoutSurvivesADelayedHandler() throws {
         let path = uniqueSocketPath()
         let server = try KeroAutomationSocketServer(path: path) { request, reply in
@@ -214,6 +356,28 @@ final class KeroAgentWaitTests: XCTestCase {
         )
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.result?.objectValue?["waited"]?.boolValue, true)
+    }
+
+    func testExchangeStartTimeoutSurvivesADelayedHandler() throws {
+        let path = uniqueSocketPath()
+        let server = try KeroAutomationSocketServer(path: path) { request, reply in
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.35) {
+                reply(.success(id: request.id, result: .object(["started": .bool(true)])))
+            }
+        }
+        defer { withExtendedLifetime(server) {} }
+
+        let request = automationRequest(
+            method: "agent.start",
+            params: ["timeout_ms": .number(3_000)]
+        )
+        let response = try KeroAutomationSocketServer.exchange(
+            path: path,
+            request: request,
+            timeout: KeroAgentWait.socketTimeout(for: request)
+        )
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.result?.objectValue?["started"]?.boolValue, true)
     }
 
     func testShortClientTimeoutFailsBeforeASlowHandlerReplies() throws {
@@ -250,5 +414,22 @@ final class KeroAgentWaitTests: XCTestCase {
 
     private func uniqueSocketPath() -> String {
         "/tmp/yeet-aw-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString.prefix(8)).sock"
+    }
+
+    private func agentStatus(
+        authority: KeroAgentStateAuthority,
+        processID: pid_t?
+    ) -> KeroAgentStatus {
+        KeroAgentStatus(
+            alias: "tests",
+            kind: .codex,
+            phase: authority == .command ? .working : .created,
+            authority: authority,
+            reason: "test",
+            updatedAt: Date(),
+            processID: processID,
+            sessionID: nil,
+            unseen: false
+        )
     }
 }
