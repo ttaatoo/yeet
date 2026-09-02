@@ -87,7 +87,7 @@ struct TerminalHostView: NSViewRepresentable {
 
     static func dismantleNSView(_ view: NSView, coordinator: Coordinator) {
         guard let container = view as? TerminalContainerView,
-              let terminal = container.terminal as? any TerminalBackendSurface
+              let terminal = container.terminal
         else { return }
         // These closures originate on PaneView and therefore capture its
         // PaneContent, including the same TerminalSession that owns `terminal`.
@@ -188,7 +188,7 @@ final class TerminalParkingContainerView: NSView {
 /// and when navigation moves focus here. `TerminalHostView` drives the edge;
 /// this only performs the makeFirstResponder.
 private final class TerminalContainerView: NSView {
-    weak var terminal: NSView?
+    weak var terminal: AlacrittyTerminalView?
     var focusOnAppear = true {
         didSet {
             if !focusOnAppear { pendingFocusRequest = false }
@@ -240,7 +240,7 @@ private final class TerminalContainerView: NSView {
         guard needsSurfaceActivation,
               window != nil,
               bounds.width > 0, bounds.height > 0,
-              let terminal = terminal as? any TerminalBackendSurface,
+              let terminal = terminal,
               terminal.window != nil,
               terminal.bounds.width > 0, terminal.bounds.height > 0
         else { return }

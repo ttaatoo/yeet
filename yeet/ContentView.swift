@@ -149,6 +149,171 @@ enum BottomToolbarLayout {
     }
 }
 
+/// Owns the selected project's frequently changing workspace content. The
+/// project is observed at this boundary so pane, diff, and inspector updates
+/// do not require the window manager to relay the project's publisher.
+private struct SelectedProjectWorkspace<EmptyState: View>: View {
+    @ObservedObject var project: Project
+    @ObservedObject var manager: TerminalManager
+    @ObservedObject var git: GitStatusModel
+    @ObservedObject var fileTree: FileTreeModel
+    @ObservedObject var tabSplitDrag: TabSplitDragCoordinator
+    @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var themeChanges = Theme.changes
+
+    let emptyState: () -> EmptyState
+
+    private var commandCompletionSequences: [UUID: UInt64] {
+        Dictionary(uniqueKeysWithValues: project.sessions.map {
+            ($0.id, $0.commandLifecycle.completionSequence)
+        })
+    }
+
+    private var paneLayerIsOpaque: Bool {
+        guard let tab = project.selectedTab else { return true }
+        return tab.diffs.isEmpty
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                // Keep mounted diff stacks stable while observing each project
+                // directly for placement changes.
+                ForEach(manager.projectsWithMountedDiffs) { project in
+                    ProjectDiffStack(
+                        project: project,
+                        selectedProjectID: manager.selectedProjectID
+                    )
+                }
+
+                Group {
+                    if let tab = project.selectedTab {
+                        PaneLayoutView(
+                            tab: tab,
+                            tabSplitDrag: tabSplitDrag,
+                            onSplit: { manager.split(toward: $0) },
+                            onNewBrowserTab: { manager.newBrowserTab(initialURL: $0) },
+                            onNewBrowserPane: { manager.newBrowserPane(initialURL: $0) },
+                            onNewFileTab: { manager.openFile($0) },
+                            onNewFilePane: { manager.openFileToSide($0) }
+                        )
+                    } else {
+                        emptyState()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(
+                    paneLayerIsOpaque
+                        ? AnyShapeStyle(Color(nsColor: Theme.background))
+                        : AnyShapeStyle(Color.clear)
+                )
+                .zIndex(2)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if settings.toolbarVisibility != .hide
+                && (git.isRepo || settings.toolbarVisibility == .always) {
+                BottomToolbarView(
+                    model: git,
+                    height: BottomToolbarLayout.height(for: project.selectedSession),
+                    toggleGitPanel: { manager.togglePanel(.git) },
+                    hideToolbar: { settings.toolbarVisibility = .hide }
+                )
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            ForEach(manager.projects) { project in
+                ProjectParkingView(
+                    project: project,
+                    isVisibleProject: project.id == manager.selectedProjectID
+                )
+            }
+        }
+        .onAppear { scheduleInspectorSync() }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification
+        )) { _ in
+            scheduleInspectorSync()
+        }
+        .onChange(of: commandCompletionSequences) { scheduleInspectorSync() }
+        .onChange(of: project.selectedTabID) {
+            afterViewUpdate { tabSplitDrag.cancel() }
+            scheduleInspectorSync()
+        }
+        .onChange(of: project.id) { scheduleInspectorSync() }
+        .onChange(of: project.selectedSession?.id) { scheduleInspectorSync() }
+        .onChange(of: project.selectedSession?.workingDirectory) { scheduleInspectorSync() }
+        .onChange(of: project.selectedSession?.foregroundDirectoryPath) { scheduleInspectorSync() }
+        .onChange(of: project.customDirectory) { scheduleInspectorSync() }
+        .onChange(of: git.uniqueDirtyPathCount) { syncPendingReviewFromGit() }
+    }
+
+    private func scheduleInspectorSync() {
+        afterViewUpdate { syncInspectorModels() }
+    }
+
+    private func syncInspectorModels() {
+        guard let session = project.selectedSession else {
+            git.sync(root: "")
+            fileTree.sync(root: "")
+            return
+        }
+        let (root, _) = project.panelRoot(
+            followingSessionAt: session.currentDirectoryPath,
+            foregroundAt: session.foregroundDirectoryPath
+        )
+        git.sync(root: root)
+        fileTree.sync(root: root)
+    }
+
+    private func syncPendingReviewFromGit() {
+        guard project.pendingReview != nil,
+              let session = project.selectedSession else { return }
+        let (root, _) = project.panelRoot(
+            followingSessionAt: session.currentDirectoryPath,
+            foregroundAt: session.foregroundDirectoryPath
+        )
+        guard !git.repoRoot.isEmpty, git.repoRoot == root else { return }
+        project.updatePendingReviewFileCount(git.uniqueDirtyPathCount)
+    }
+}
+
+private struct ProjectParkingView: View {
+    @ObservedObject var project: Project
+    let isVisibleProject: Bool
+
+    var sessions: [TerminalSession] {
+        let visibleIDs = isVisibleProject
+            ? Set(project.selectedTab?.sessions.map(\.id) ?? [])
+            : []
+        return project.sessions.filter { !visibleIDs.contains($0.id) }
+    }
+
+    var body: some View {
+        TerminalParkingView(sessions: sessions)
+            .frame(width: 1, height: 1)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct ProjectDiffStack: View {
+    @ObservedObject var project: Project
+    @ObservedObject private var themeChanges = Theme.changes
+    let selectedProjectID: UUID?
+
+    var body: some View {
+        ForEach(project.diffPlacements, id: \.diff.id) { placement in
+            let isSelected = selectedProjectID == project.id
+                && project.selectedTabID == placement.tabID
+            DiffViewerView(diff: placement.diff, isSelected: isSelected)
+                .background(Color(nsColor: Theme.background))
+                .allowsHitTesting(isSelected)
+                .zIndex(isSelected ? 1 : 0)
+        }
+    }
+}
+
 struct ContentView: View {
     @ObservedObject var manager: TerminalManager
     @ObservedObject private var settings = AppSettings.shared
@@ -159,20 +324,6 @@ struct ContentView: View {
     @StateObject private var fileTree = FileTreeModel()
     @StateObject private var info = SessionInfoModel()
     @StateObject private var tabSplitDrag = TabSplitDragCoordinator()
-
-    /// Every terminal in the selected project can change the same repository.
-    /// Watching command completion keeps the toolbar current without polling.
-    private var commandCompletionSequences: [UUID: UInt64] {
-        Dictionary(uniqueKeysWithValues:
-            manager.selectedProject?.sessions.map {
-                ($0.id, $0.commandLifecycle.completionSequence)
-            } ?? []
-        )
-    }
-
-    private var bottomToolbarHeight: CGFloat {
-        BottomToolbarLayout.height(for: manager.selectedSession)
-    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -185,70 +336,35 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 // Above the pane stack so header tooltips, which hang down
                 // into the terminal area, aren't covered by it.
-                MainHeaderView(manager: manager, tabSplitDrag: tabSplitDrag)
+                MainHeaderView(
+                    manager: manager,
+                    project: manager.selectedProject,
+                    tabSplitDrag: tabSplitDrag
+                )
                     .zIndex(1)
 
-                ZStack {
-                    // Diff panes stay mounted after their project has been
-                    // visited: removing a project's stack pulls every
-                    // NSHostingView out of the window at once, making project
-                    // switching block while WebKit tears down and reattaches
-                    // the rendered diffs. Unvisited restored projects remain
-                    // lazy; inactive stacks sit beneath the active opaque pane.
-                    ForEach(manager.projectsWithMountedDiffs) { project in
-                        ForEach(project.diffPlacements, id: \.diff.id) { placement in
-                            let isSelected = manager.selectedProjectID == project.id
-                                && project.selectedTabID == placement.tabID
-                            DiffViewerView(
-                                diff: placement.diff,
-                                isSelected: isSelected
-                            )
-                            .background(Color(nsColor: Theme.background))
-                            .allowsHitTesting(isSelected)
-                            .zIndex(isSelected ? 1 : 0)
-                        }
-                    }
-                    Group {
-                        if let tab = manager.selectedProject?.selectedTab {
-                            PaneLayoutView(
-                                tab: tab,
-                                tabSplitDrag: tabSplitDrag,
-                                onSplit: { manager.split(toward: $0) },
-                                onNewBrowserTab: {
-                                    manager.newBrowserTab(initialURL: $0)
-                                },
-                                onNewBrowserPane: {
-                                    manager.newBrowserPane(initialURL: $0)
-                                },
-                                onNewFileTab: {
-                                    manager.openFile($0)
-                                },
-                                onNewFilePane: {
-                                    manager.openFileToSide($0)
-                                }
-                            )
-                        } else {
-                            emptyState
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    // Opaque so the pane gaps hide the unselected diffs behind,
-                    // except while a diff tab is up — then stay clear so its
-                    // web view shows through from the stack below.
-                    .background(paneLayerIsOpaque ? AnyShapeStyle(Color(nsColor: Theme.background)) : AnyShapeStyle(Color.clear))
-                    .zIndex(2)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                if manager.selectedProject != nil
-                    && settings.toolbarVisibility != .hide
-                    && (git.isRepo || settings.toolbarVisibility == .always) {
-                    BottomToolbarView(
-                        model: git,
-                        height: bottomToolbarHeight,
-                        toggleGitPanel: { manager.togglePanel(.git) },
-                        hideToolbar: { settings.toolbarVisibility = .hide }
+                if let project = manager.selectedProject {
+                    SelectedProjectWorkspace(
+                        project: project,
+                        manager: manager,
+                        git: git,
+                        fileTree: fileTree,
+                        tabSplitDrag: tabSplitDrag,
+                        emptyState: { emptyState }
                     )
+                } else {
+                    VStack(spacing: 0) {
+                        emptyState
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        if settings.toolbarVisibility == .always {
+                            BottomToolbarView(
+                                model: git,
+                                height: BottomToolbarLayout.idealHeight,
+                                toggleGitPanel: { manager.togglePanel(.git) },
+                                hideToolbar: { settings.toolbarVisibility = .hide }
+                            )
+                        }
+                    }
                 }
             }
             .background(Color(nsColor: Theme.background))
@@ -262,12 +378,6 @@ struct ContentView: View {
             }
         }
         .ignoresSafeArea()
-        .overlay(alignment: .topLeading) {
-            TerminalParkingView(sessions: parkedTerminalSessions)
-                .frame(width: 1, height: 1)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
         .overlay {
             if manager.isCommandPaletteVisible {
                 CommandPaletteView(manager: manager)
@@ -284,43 +394,18 @@ struct ContentView: View {
                 .frame(width: 0, height: 0)
         }
         .background(WindowChromeAccessor { manager.attach(to: $0) })
-        .onAppear { scheduleInspectorSync() }
-        .onReceive(NotificationCenter.default.publisher(
-            for: NSApplication.didBecomeActiveNotification
-        )) { _ in
-            scheduleInspectorSync()
-        }
-        .onChange(of: commandCompletionSequences) { scheduleInspectorSync() }
         .onChange(of: manager.selectedProjectID) {
-            afterViewUpdate { tabSplitDrag.cancel() }
-            scheduleInspectorSync()
+            afterViewUpdate {
+                tabSplitDrag.cancel()
+                if manager.selectedProject == nil {
+                    git.sync(root: "")
+                    fileTree.sync(root: "")
+                }
+            }
         }
-        .onChange(of: manager.selectedSession?.id) { scheduleInspectorSync() }
-        .onChange(of: manager.selectedSession?.workingDirectory) { scheduleInspectorSync() }
-        .onChange(of: manager.selectedSession?.foregroundDirectoryPath) { scheduleInspectorSync() }
-        .onChange(of: manager.selectedProject?.customDirectory) { scheduleInspectorSync() }
         .onChange(of: colorScheme) {
             afterViewUpdate { manager.refreshAppearance() }
         }
-        .onChange(of: git.uniqueDirtyPathCount) {
-            syncPendingReviewFromGit()
-        }
-    }
-
-    /// Apply the live Git snapshot to the selected project's review queue
-    /// only when that snapshot is for the same repository the project is
-    /// showing. Switching projects must not copy the previous repo's count.
-    private func syncPendingReviewFromGit() {
-        guard let project = manager.selectedProject,
-              project.pendingReview != nil,
-              let session = project.selectedSession else { return }
-        let (root, _) = project.panelRoot(
-            followingSessionAt: session.currentDirectoryPath,
-            foregroundAt: session.foregroundDirectoryPath
-        )
-        let gitRoot = git.repoRoot
-        guard !gitRoot.isEmpty, gitRoot == root else { return }
-        project.updatePendingReviewFileCount(git.uniqueDirtyPathCount)
     }
 
     @ViewBuilder
@@ -328,7 +413,6 @@ struct ContentView: View {
         if manager.isLeftSidebarVisible {
             SidebarView(
                 manager: manager,
-                bottomBarHeight: bottomToolbarHeight,
                 placement: settings.swapSidebars ? .trailing : .leading
             )
         }
@@ -347,44 +431,6 @@ struct ContentView: View {
                 )
             }
         }
-    }
-
-    /// Sessions in the visible tab are owned by `TerminalHostView`; every
-    /// other session stays window-attached in the invisible parking host.
-    private var parkedTerminalSessions: [TerminalSession] {
-        let visibleIDs = Set(
-            manager.selectedProject?.selectedTab?.sessions.map(\.id) ?? []
-        )
-        return manager.projects
-            .flatMap(\.sessions)
-            .filter { !visibleIDs.contains($0.id) }
-    }
-
-    /// The pane layer paints an opaque background to hide unselected diffs in
-    /// its gaps — but a diff tab's own pane must stay clear so its web view
-    /// (mounted in the stack behind) shows through.
-    private var paneLayerIsOpaque: Bool {
-        guard let tab = manager.selectedProject?.selectedTab else { return true }
-        return tab.diffs.isEmpty
-    }
-
-    private func scheduleInspectorSync() {
-        afterViewUpdate { syncInspectorModels() }
-    }
-
-    private func syncInspectorModels() {
-        guard let project = manager.selectedProject,
-              let session = project.selectedSession else {
-            git.sync(root: "")
-            fileTree.sync(root: "")
-            return
-        }
-        let (root, _) = project.panelRoot(
-            followingSessionAt: session.currentDirectoryPath,
-            foregroundAt: session.foregroundDirectoryPath
-        )
-        git.sync(root: root)
-        fileTree.sync(root: root)
     }
 
     @ViewBuilder
@@ -1018,6 +1064,7 @@ private struct InstantPopoverPresenter<PopoverContent: View>: NSViewRepresentabl
 /// window-drag space.
 private struct MainHeaderView: View {
     @ObservedObject var manager: TerminalManager
+    let project: Project?
     @ObservedObject var tabSplitDrag: TabSplitDragCoordinator
     @ObservedObject private var themeChanges = Theme.changes
     @ObservedObject private var settings = AppSettings.shared
@@ -1082,42 +1129,25 @@ private struct MainHeaderView: View {
                         }
                     }
                 }
-                if let project = manager.selectedProject {
+                if let project {
                     // Everything in the header that isn't the scrollable tab
                     // strip: leading inset, an optional leading-panel control,
                     // trailing padding (8), HStack spacings (16), trailing
                     // panel toggle (24), "+" and spacing (26), the minimum
                     // drag target (100), and the exit-zoom button
                     // (24 + 8 spacing) while shown.
-                    SessionTabsView(
+                    ProjectHeaderContent(
                         project: project,
+                        manager: manager,
                         tabSplitDrag: tabSplitDrag,
-                        maxStripWidth: max(
-                            0,
-                            geo.size.width - leadingInset - hiddenLeadingControlWidth
-                                - 74 - minimumWindowDragWidth
-                                - (manager.isPaneZoomed ? 32 : 0)
-                        )
+                        availableWidth: geo.size.width,
+                        leadingInset: leadingInset,
+                        hiddenLeadingControlWidth: hiddenLeadingControlWidth,
+                        minimumWindowDragWidth: minimumWindowDragWidth
                     )
-                }
-                WindowDragArea()
-                    .frame(minWidth: minimumWindowDragWidth, maxWidth: .infinity)
-                // Zoom indicator: only visible while the selected tab has a
-                // zoomed pane. Styled like the sidebar toggle next to it, with
-                // the accent tint marking the active state. Click restores the
-                // layout.
-                if manager.isPaneZoomed {
-                    Button {
-                        manager.togglePaneZoom()
-                    } label: {
-                        Image(systemName: "arrow.down.forward.and.arrow.up.backward")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color(nsColor: Theme.accent))
-                            .frame(width: 24, height: 24)
-                            .contentShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(.plain)
-                    .tooltip("Exit Pane Zoom (⇧⌘↩)", edge: .below, alignment: .trailing)
+                } else {
+                    WindowDragArea()
+                        .frame(minWidth: minimumWindowDragWidth, maxWidth: .infinity)
                 }
                 if showsTrailingProjectToggle {
                     ChromeIconButton(
@@ -1147,6 +1177,47 @@ private struct MainHeaderView: View {
             Rectangle()
                 .fill(Color(nsColor: Theme.divider))
                 .frame(height: 1)
+        }
+    }
+}
+
+private struct ProjectHeaderContent: View {
+    @ObservedObject var project: Project
+    let manager: TerminalManager
+    @ObservedObject var tabSplitDrag: TabSplitDragCoordinator
+    @ObservedObject private var themeChanges = Theme.changes
+    let availableWidth: CGFloat
+    let leadingInset: CGFloat
+    let hiddenLeadingControlWidth: CGFloat
+    let minimumWindowDragWidth: CGFloat
+
+    var body: some View {
+        HStack(spacing: 8) {
+            SessionTabsView(
+                project: project,
+                tabSplitDrag: tabSplitDrag,
+                maxStripWidth: max(
+                    0,
+                    availableWidth - leadingInset - hiddenLeadingControlWidth
+                        - 74 - minimumWindowDragWidth
+                        - (project.isPaneZoomed ? 32 : 0)
+                )
+            )
+            WindowDragArea()
+                .frame(minWidth: minimumWindowDragWidth, maxWidth: .infinity)
+            if project.isPaneZoomed {
+                Button {
+                    manager.togglePaneZoom()
+                } label: {
+                    Image(systemName: "arrow.down.forward.and.arrow.up.backward")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color(nsColor: Theme.accent))
+                        .frame(width: 24, height: 24)
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .tooltip("Exit Pane Zoom (⇧⌘↩)", edge: .below, alignment: .trailing)
+            }
         }
     }
 }

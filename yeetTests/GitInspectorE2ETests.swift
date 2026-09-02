@@ -589,6 +589,21 @@ final class GitInspectorE2ETests: XCTestCase {
         try await waitUntil(description: "first live diff") { !diff.isLoading } satisfies: { $0 }
         XCTAssertEqual(diff.web.newContent, "two\n")
 
+        // Reload deliberately preserves the editor's buffer in edit mode.
+        // This test covers review-mode navigation, independent of the user's
+        // saved Debug preference, and restores that preference afterwards.
+        let defaults = UserDefaults.standard
+        let previousMode = defaults.string(forKey: "diffView.mode")
+        defer {
+            diff.setEditing(previousMode == "edit")
+            if let previousMode {
+                defaults.set(previousMode, forKey: "diffView.mode")
+            } else {
+                defaults.removeObject(forKey: "diffView.mode")
+            }
+        }
+        diff.setEditing(false)
+
         try repo.write("live.txt", "three\n")
         diff.refreshWhenSelected()
         try await waitUntil(description: "reloaded live diff") {

@@ -15,6 +15,12 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Workspace restore accepts the recursive multi-window format used by
+  v0.1.47 and later. Older single-window and column-based layouts are no
+  longer restored.
+- Yeet no longer copies Kero/Kerox settings or terminal history, accepts old
+  built-in theme names, or removes old `kero-automation` installations.
+
 ## [0.1.56]
 
 - `yeet +agent wait` and `yeet +agent prompt --wait` wait inside Yeet for a provider-reported or recognized agent state instead of polling from the CLI. A timeout is the structured error `wait_timeout`.

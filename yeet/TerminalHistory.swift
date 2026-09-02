@@ -7,6 +7,16 @@ import AppKit
 import Darwin
 import Foundation
 
+@MainActor
+protocol TerminalScreenExporting: AnyObject {
+    /// Writes a VT capture into its own new directory under the process
+    /// temporary directory. The serializer validates and removes both.
+    func exportScreenFile() -> String?
+    /// Same file contract, but only for primary-buffer rows above the viewport.
+    /// Nil is inconclusive: the primary buffer can be empty or a TUI active.
+    func exportScrollbackFile() -> String?
+}
+
 /// Captures and normalizes styled terminal history without reaching into a
 /// terminal backend's buffer representation. A backend writes its screen to a
 /// temporary VT file; the rest of this utility operates only on that stream.
@@ -22,7 +32,7 @@ enum TerminalHistorySerializer {
     /// the last `maxLines` rows.
     @MainActor
     static func capture(
-        from surface: any TerminalBackendSurface, maxLines: Int
+        from surface: any TerminalScreenExporting, maxLines: Int
     ) -> CaptureResult {
         guard maxLines > 0,
               let captureFile = validatedCaptureFile(for: surface.exportScreenFile())
@@ -42,7 +52,7 @@ enum TerminalHistorySerializer {
     /// session has megabytes of scrollback.
     @MainActor
     static func previewText(
-        from surface: any TerminalBackendSurface,
+        from surface: any TerminalScreenExporting,
         maxLines: Int,
         maxColumns: Int
     ) -> String? {
@@ -106,10 +116,10 @@ enum TerminalHistorySerializer {
     /// inconclusive.
     ///
     /// Presence is only available via `exportScrollbackFile()`, which
-    /// materializes a full VT dump. `TerminalBackendSurface` has no cheaper
+    /// materializes a full VT dump. The terminal surface has no cheaper
     /// probe, so this still exports then deletes.
     @MainActor
-    static func hasPrimaryScrollback(_ surface: any TerminalBackendSurface) -> Bool {
+    static func hasPrimaryScrollback(_ surface: any TerminalScreenExporting) -> Bool {
         guard let captureFile = validatedCaptureFile(
             for: surface.exportScrollbackFile()
         ) else { return false }
@@ -369,7 +379,7 @@ enum TerminalHistorySerializer {
     }
 
     /// Accept only a regular file in a direct, non-symlink child of the OS temp
-    /// directory. That child is the unique directory Ghostty creates for this
+    /// directory. That child is the unique directory Alacritty creates for this
     /// screen dump and is the only directory cleanup may remove.
     /// Holds a backend's export to its side of the bargain: a regular file,
     /// alone in a fresh subdirectory of the process temporary directory, with
@@ -419,117 +429,158 @@ enum TerminalHistorySerializer {
 }
 
 /// Persists per-session terminal history to a sidecar file, keyed by an opaque
-/// string that the session layout snapshot (in `UserDefaults`) references. Kept
+/// string that the session layout snapshot references. Kept
 /// out of the snapshot itself so `UserDefaults` never holds large blobs.
 ///
 /// Each save rewrites the whole file from the live set of sessions, so keys
 /// belonging to sessions that no longer exist are pruned automatically.
-/// Encode and I/O run on a serial queue so autosave does not JSON-encode on
-/// the main thread; equal bytes skip the write.
-enum TerminalHistoryStore {
+/// Encode and I/O run on a serial queue. Layout-only autosaves do not call
+/// this store; a history capture writes a new generation.
+final class TerminalHistoryStore {
     /// Debug builds keep their state under `yeet-dev`, matching `AppSettings`
     /// and the separate `sh.yeet.dev` bundle id, so a dev build never clobbers
-    /// an installed production build's history — or official Kero's.
-    /// Leftover Kerox (then older Kero) Application Support is copied when
-    /// Yeet has no history directory yet.
-    private static let fileURL: URL = {
+    /// an installed production build's history or official Kero's.
+    nonisolated static let defaultFileURL: URL = {
         #if DEBUG
         let directory = "yeet-dev"
-        let leftovers = ["kerox-dev", "kero-dev"]
         #else
         let directory = "yeet"
-        let leftovers = ["kerox", "kero"]
         #endif
         let base = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask
         ).first ?? FileManager.default.temporaryDirectory
         let destDir = base.appendingPathComponent(directory, isDirectory: true)
-        LegacyIdentityStore.adoptIfMissing(
-            destination: destDir,
-            leftovers: leftovers.map { base.appendingPathComponent($0, isDirectory: true) }
-        )
         return destDir.appendingPathComponent("terminal-history.json")
     }()
 
     private final class Writer: @unchecked Sendable {
         let lock = NSLock()
         var generation: UInt64 = 0
-        var lastWritten: Data?
     }
 
-    private static let writer = Writer()
-    private static let ioQueueKey = DispatchSpecificKey<UInt8>()
-    private static let ioQueue: DispatchQueue = {
+    private let fileURL: URL
+    private let writer = Writer()
+    private let ioQueueKey = DispatchSpecificKey<UInt8>()
+    private let ioQueue: DispatchQueue
+    private var preservesUnreadableHistory = false
+
+    init(fileURL: URL = defaultFileURL) {
+        self.fileURL = fileURL
         let queue = DispatchQueue(label: "sh.yeet.terminal-history")
         queue.setSpecific(key: ioQueueKey, value: 1)
-        return queue
-    }()
+        ioQueue = queue
+    }
 
-    static func save(_ histories: [String: String]) {
+    private struct Archive: Codable {
+        let generation: String
+        let histories: [String: String]
+    }
+
+    struct Loaded {
+        let generation: String?
+        let histories: [String: String]
+    }
+
+    func save(_ histories: [String: String], generation: String) {
+        // A failed recovery copy must not be followed by an autosave that
+        // destroys the only remaining bytes. Retry on the next launch.
+        guard !preservesUnreadableHistory else { return }
+        let writer = writer
+        let fileURL = fileURL
         writer.lock.lock()
         writer.generation += 1
         let token = writer.generation
         writer.lock.unlock()
-        let payload = histories
         ioQueue.async {
-            guard let encoded = encodedSidecar(payload) else { return }
+            guard let encoded = try? Self.encode(histories, generation: generation) else {
+                NSLog("TerminalHistoryStore: failed to encode history")
+                return
+            }
 
             writer.lock.lock()
             let stale = token != writer.generation
-            let previous = writer.lastWritten
             writer.lock.unlock()
             guard !stale else { return }
-            if previous == encoded { return }
-            guard writeSidecar(encoded) else { return }
-
-            writer.lock.lock()
-            if token == writer.generation {
-                writer.lastWritten = encoded
-            }
-            writer.lock.unlock()
+            Self.writeSidecar(encoded, to: fileURL)
         }
     }
 
     /// Blocks until every previously enqueued save has finished. Quit,
     /// language-relaunch, and last-window close wait so the sidecar is on
     /// disk before the process continues. Must not be called from `ioQueue`.
-    static func waitForPendingWrites() {
+    func waitForPendingWrites() {
         // A sync wait from this queue would deadlock; callers are MainActor.
         guard DispatchQueue.getSpecific(key: ioQueueKey) == nil else { return }
         ioQueue.sync {}
     }
 
-    /// Sorted JSON bytes, or empty `Data` when the sidecar file should be
-    /// removed. Nil when a non-empty payload fails to encode.
-    private static func encodedSidecar(_ histories: [String: String]) -> Data? {
+    /// Empty bytes remove the sidecar when no session has history.
+    static func encode(_ histories: [String: String], generation: String) throws -> Data {
         guard !histories.isEmpty else { return Data() }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        return try? encoder.encode(histories)
+        return try encoder.encode(Archive(generation: generation, histories: histories))
     }
 
     /// Empty `Data` deletes the file so a later restore finds nothing rather
     /// than replaying stale output.
-    private static func writeSidecar(_ data: Data) -> Bool {
-        if data.isEmpty {
-            try? FileManager.default.removeItem(at: fileURL)
-            return true
-        }
+    private static func writeSidecar(_ data: Data, to fileURL: URL) {
         do {
+            if data.isEmpty {
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    try FileManager.default.removeItem(at: fileURL)
+                }
+                return
+            }
             try FileManager.default.createDirectory(
                 at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: fileURL, options: .atomic)
-            return true
         } catch {
             NSLog("yeet: failed to write \(fileURL.path): \(error)")
-            return false
         }
     }
 
-    static func load() -> [String: String] {
-        guard let data = try? Data(contentsOf: fileURL),
-              let histories = try? JSONDecoder().decode([String: String].self, from: data)
-        else { return [:] }
-        return histories
+    func load() -> Loaded {
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch CocoaError.fileReadNoSuchFile {
+            return Loaded(generation: nil, histories: [:])
+        } catch {
+            preservesUnreadableHistory = true
+            NSLog("TerminalHistoryStore: cannot read history; preserving file: \(error)")
+            return Loaded(generation: nil, histories: [:])
+        }
+        do {
+            return try Self.decode(data)
+        } catch {
+            preserveForRecovery()
+            return Loaded(generation: nil, histories: [:])
+        }
+    }
+
+    /// Keeps history that cannot be attached to the active layout. The layout
+    /// recovery key alone is not enough to recover its terminal output.
+    func preserveForRecovery() {
+        let recoveryURL = fileURL.appendingPathExtension("recovery")
+        do {
+            try Data(contentsOf: fileURL).write(to: recoveryURL, options: .atomic)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: recoveryURL.path
+            )
+            NSLog("TerminalHistoryStore: copied unattached history to \(recoveryURL.path)")
+        } catch {
+            preservesUnreadableHistory = true
+            NSLog("TerminalHistoryStore: failed to preserve history: \(error)")
+        }
+    }
+
+    static func decode(_ data: Data) throws -> Loaded {
+        if let archive = try? JSONDecoder().decode(Archive.self, from: data) {
+            return Loaded(generation: archive.generation, histories: archive.histories)
+        }
+        // The supported unversioned workspace stores history as a plain map.
+        let histories = try JSONDecoder().decode([String: String].self, from: data)
+        return Loaded(generation: nil, histories: histories)
     }
 }

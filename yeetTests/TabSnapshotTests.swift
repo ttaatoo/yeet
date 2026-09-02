@@ -10,65 +10,6 @@ final class TabSnapshotTests: XCTestCase {
     private typealias TabSnapshot = SessionSnapshot.ProjectSnapshot.TabSnapshot
     private typealias PaneContentSnapshot = SessionSnapshot.ProjectSnapshot.PaneContentSnapshot
 
-    func testLegacySingleContentDecodesAsOnePane() throws {
-        let data = try JSONEncoder().encode(
-            PaneContentSnapshot.session(
-                workingDirectory: "/tmp/repo", agentKind: nil, agentSessionID: nil
-            )
-        )
-        let tab = try JSONDecoder().decode(TabSnapshot.self, from: data)
-        guard case .pane(let pane) = tab.layout else {
-            return XCTFail("expected a single pane")
-        }
-        guard case .session(let directory, let agentKind, let agentSessionID) = pane.content
-        else { return XCTFail("expected a session pane") }
-        XCTAssertNil(agentKind)
-        XCTAssertNil(agentSessionID)
-        XCTAssertEqual(directory, "/tmp/repo")
-        XCTAssertEqual(tab.focusedPaneIndex, 0)
-        XCTAssertNil(tab.customName)
-    }
-
-    func testColumnLayoutDecodesToRecursiveSplit() throws {
-        let columns = [
-            SessionSnapshot.ProjectSnapshot.ColumnSnapshot(
-                panes: [
-                    .init(
-                        content: .file(path: "/tmp/a.swift", editorState: nil),
-                        weight: 1
-                    ),
-                ],
-                weight: 1
-            ),
-            SessionSnapshot.ProjectSnapshot.ColumnSnapshot(
-                panes: [
-                    .init(
-                        content: .session(
-                            workingDirectory: "/tmp",
-                            agentKind: "claude",
-                            agentSessionID: "abc-123"
-                        ),
-                        weight: 1
-                    ),
-                ],
-                weight: 1
-            ),
-        ]
-        let payload: [String: Any] = [
-            "columns": try JSONSerialization.jsonObject(
-                with: JSONEncoder().encode(columns)
-            ) as Any,
-            "focusedColumn": 1,
-            "focusedRow": 0,
-        ]
-        let data = try JSONSerialization.data(withJSONObject: payload)
-        let tab = try JSONDecoder().decode(TabSnapshot.self, from: data)
-        guard case .split = tab.layout else {
-            return XCTFail("expected a split rebuilt from columns")
-        }
-        XCTAssertEqual(tab.focusedPaneIndex, 1)
-    }
-
     func testLegacySessionPayloadWithoutAgentFieldsDecodes() throws {
         let data = try JSONSerialization.data(
             withJSONObject: ["workingDirectory": "/tmp/legacy"]

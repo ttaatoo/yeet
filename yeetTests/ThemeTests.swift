@@ -54,13 +54,9 @@ final class ThemeTests: XCTestCase {
     func testCatalogNamesResolveAndUnknownNamesDoNot() {
         XCTAssertTrue(Theme.isCommonTheme(named: Theme.defaultDarkThemeName, dark: true))
         XCTAssertTrue(Theme.isCommonTheme(named: Theme.defaultLightThemeName, dark: false))
-        XCTAssertTrue(Theme.isCommonTheme(named: Theme.legacyDefaultDarkThemeName, dark: true))
-        XCTAssertTrue(Theme.isCommonTheme(named: Theme.legacyDefaultLightThemeName, dark: false))
         XCTAssertFalse(Theme.isCommonTheme(named: Theme.defaultDarkThemeName, dark: false))
         XCTAssertNil(Theme.definition(named: "not-a-real-theme"))
         XCTAssertEqual(Theme.definition(named: "GitHub Dark")?.name, "GitHub Dark")
-        XCTAssertEqual(Theme.definition(named: "Default Dark")?.name, Theme.defaultDarkThemeName)
-        XCTAssertEqual(Theme.definition(named: "Default Light")?.name, Theme.defaultLightThemeName)
         XCTAssertEqual(Theme.commonDarkThemes.first?.name, Theme.defaultDarkThemeName)
         XCTAssertEqual(Theme.commonLightThemes.first?.name, Theme.defaultLightThemeName)
         XCTAssertLessThanOrEqual(Theme.commonDarkThemes.count, 30)
@@ -75,6 +71,13 @@ final class ThemeTests: XCTestCase {
             Set(Theme.commonLightThemes.map(\.name)).count,
             Theme.commonLightThemes.count
         )
+    }
+
+    func testRetiredBuiltinAliasesDoNotResolve() {
+        XCTAssertFalse(Theme.isCommonTheme(named: "Default Dark", dark: true))
+        XCTAssertFalse(Theme.isCommonTheme(named: "Default Light", dark: false))
+        XCTAssertNil(Theme.definition(named: "Default Dark"))
+        XCTAssertNil(Theme.definition(named: "Default Light"))
     }
 
     func testYeetLightUsesWarmPaperAndDeepMintCursor() {

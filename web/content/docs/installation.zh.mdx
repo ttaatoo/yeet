@@ -5,7 +5,7 @@ description: 从源码构建 Yeet，也可在 GitHub Release 带有 zip 时用 H
 
 本仓库发布的是 **Yeet**，基于 [Kero](https://github.com/egoist/kero)（EGOIST）。构建是 **ad-hoc 签名**（没有 Apple Developer Program / Developer ID），不是 [kero.sh](https://kero.sh) 上经过公证的官方应用。当前代码需要 macOS 15.6（Sequoia）或更高。
 
-如果你要的是 Yeet，**不要**运行 `brew install egoist/tap/kero`。那条命令会安装官方 Kero（`Kero.app` / `sh.kero`）。Yeet 安装的是 `Yeet.app` / `sh.yeet`，配置在 `~/.config/yeet`。若该目录还不存在，会先只读拷贝遗留的 `~/.config/kerox`，再否则是更早的 `~/.config/kero`。
+如果你要的是 Yeet，**不要**运行 `brew install egoist/tap/kero`。那条命令会安装官方 Kero（`Kero.app` / `sh.kero`）。Yeet 安装的是 `Yeet.app` / `sh.yeet`，配置在 `~/.config/yeet`。目录不存在时会自动创建，不会导入旧 Kero 或 Kerox 配置。
 
 ## 从源码构建
 
@@ -46,9 +46,7 @@ git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/ye
 
 ## 更新
 
-打包的 Yeet 没有 [Sparkle](https://sparkle-project.org) 订阅源。官方 Kero 的订阅源会把本分支覆盖成 `Kero.app`。打包构建没有应用内更新，没有订阅源时，设置里也不再显示更新控件。
-
-请从源码重新构建，或在 GitHub Release 带有 Yeet.zip 时用 Homebrew / zip。
+Yeet 不包含应用内更新器。请从源码重新构建，或在 GitHub Release 带有 Yeet.zip 时使用 Homebrew 或 zip。
 
 ## 从 Finder 打开文件夹
 

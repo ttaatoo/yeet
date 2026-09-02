@@ -123,6 +123,7 @@ struct CommandPaletteView: View {
     }
 
     @ObservedObject var manager: TerminalManager
+    @StateObject private var projectStore: WorkspaceProjectSnapshotStore
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var themeChanges = Theme.changes
     @Environment(\.openSettings) private var openSettings
@@ -132,6 +133,11 @@ struct CommandPaletteView: View {
     @State private var projectFiles: [ProjectFile] = []
     @StateObject private var pointerSelectionController = PalettePointerSelectionController()
     @FocusState private var searchFocused: Bool
+
+    init(manager: TerminalManager) {
+        self.manager = manager
+        _projectStore = StateObject(wrappedValue: WorkspaceProjectSnapshotStore(projects: manager.projects))
+    }
 
     /// Smith-Waterman uses fzf/nucleo-style boundary and gap scoring while
     /// remaining fast enough to scan a large project on every keystroke.
@@ -156,6 +162,9 @@ struct CommandPaletteView: View {
         )
         .onExitCommand { handleEscapeFromKeyboard() }
         .onDisappear { manager.restoreFocusAfterCommandPalette() }
+        .onReceive(manager.$projects) { projects in
+            projectStore.updateProjects(projects)
+        }
         .task(id: fileIndexRoot) {
             projectFiles = []
             guard let root = fileIndexRoot else { return }
@@ -299,7 +308,8 @@ struct CommandPaletteView: View {
             },
         ]
 
-        if let project = manager.selectedProject {
+        if let selected = projectStore.snapshot(for: manager.selectedProjectID) {
+            let project = selected.project
             items.append(
                 PaletteCommand(id: "close-project", title: "Close Project: \(project.name)", systemImage: "folder.badge.minus") {
                     manager.close(project)
@@ -307,7 +317,8 @@ struct CommandPaletteView: View {
             )
         }
 
-        for (index, project) in manager.projects.enumerated() where project.id != manager.selectedProjectID {
+        for (index, snapshot) in projectStore.projects.enumerated() where snapshot.id != manager.selectedProjectID {
+            let project = snapshot.project
             items.append(
                 PaletteCommand(
                     id: "switch-project-\(project.id)",
@@ -332,10 +343,10 @@ struct CommandPaletteView: View {
     /// The directory shows as a subtitle and the project name folds into the
     /// searchable text, so typing a repo or folder name finds its sessions.
     private var sessionCommands: [PaletteCommand] {
-        manager.projects.flatMap { project in
-            project.sessions.map { session in
+        projectStore.projects.flatMap { snapshot in
+            snapshot.sessions.map { session in
                 let directory = sessionDirectory(session)
-                let search = [session.title, project.name, directory]
+                let search = [session.title, snapshot.name, directory]
                     .compactMap { $0 }
                     .joined(separator: " ")
                 return PaletteCommand(
@@ -369,8 +380,9 @@ struct CommandPaletteView: View {
     /// Home is excluded because it is an account boundary, not a project root.
     private var fileIndexRoot: String? {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty,
-              let project = manager.selectedProject
+              let snapshot = projectStore.snapshot(for: manager.selectedProjectID)
         else { return nil }
+        let project = snapshot.project
         let root: String?
         if let session = project.selectedSession {
             root = project.panelRoot(
@@ -405,14 +417,14 @@ struct CommandPaletteView: View {
     /// Projects whose last agent turn left uncommitted files. Placed above
     /// Commands so ⇧⌘A and ⌘P share the same review path.
     private var reviewCommands: [PaletteCommand] {
-        manager.projects.compactMap { project in
-            guard let review = project.pendingReview, review.fileCount > 0 else {
+        projectStore.projects.compactMap { snapshot in
+            guard let review = snapshot.pendingReview, review.fileCount > 0 else {
                 return nil
             }
             let count = review.fileCount
             return PaletteCommand(
-                id: "review-\(project.id.uuidString)",
-                verbatimTitle: project.name,
+                id: "review-\(snapshot.id.uuidString)",
+                verbatimTitle: snapshot.name,
                 systemImage: "plus.forwardslash.minus",
                 subtitle: String(
                     localized: "\(count) files to review",
@@ -420,9 +432,9 @@ struct CommandPaletteView: View {
                 ),
                 shortcut: "⇧⌘A",
                 section: .review,
-                searchText: "review \(project.name)"
+                searchText: "review \(snapshot.name)"
             ) {
-                manager.revealPendingReview(project)
+                manager.revealPendingReview(snapshot.project)
             }
         }
     }

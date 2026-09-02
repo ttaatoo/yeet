@@ -68,16 +68,5 @@
 	     request mic access attributed to Yeet as the responsible process. -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>A program running within Yeet would like to use your microphone.</string>
-
-	<!-- Sparkle. Official egoist builds consume https://releases.kero.sh/appcast.xml
-	     and ship the matching SUPublicEDKey. Yeet must not: a Sparkle
-	     update from that feed would replace Yeet with notarized upstream
-	     Kero. Debug and Release leave KERO_SU_FEED_URL and KERO_SU_PUBLIC_ED_KEY
-	     empty. The updater does not start without a feed. scripts/package.sh
-	     also clears these keys on the packaged app. -->
-	<key>SUFeedURL</key>
-	<string>$(KERO_SU_FEED_URL)</string>
-	<key>SUPublicEDKey</key>
-	<string>$(KERO_SU_PUBLIC_ED_KEY)</string>
 </dict>
 </plist>

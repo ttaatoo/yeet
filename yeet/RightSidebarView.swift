@@ -15,6 +15,28 @@ struct RightSidebarView: View {
     @ObservedObject var fileTree: FileTreeModel
     @ObservedObject var info: SessionInfoModel
     var placement: HorizontalEdge = .trailing
+
+    var body: some View {
+        if let project = manager.selectedProject {
+            ProjectInspectorView(
+                manager: manager,
+                project: project,
+                git: git,
+                fileTree: fileTree,
+                info: info,
+                placement: placement
+            )
+        }
+    }
+}
+
+private struct ProjectInspectorView: View {
+    @ObservedObject var manager: TerminalManager
+    @ObservedObject var project: Project
+    @ObservedObject var git: GitStatusModel
+    @ObservedObject var fileTree: FileTreeModel
+    @ObservedObject var info: SessionInfoModel
+    var placement: HorizontalEdge = .trailing
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var themeChanges = Theme.changes
     @State private var applicationIsActive = NSApp.isActive
@@ -33,16 +55,16 @@ struct RightSidebarView: View {
     /// updates while still catching commands completed in an unfocused pane.
     private var commandCompletionSequences: [UUID: UInt64] {
         Dictionary(uniqueKeysWithValues:
-            manager.selectedProject?.sessions.map {
+            project.sessions.map {
                 ($0.id, $0.commandLifecycle.completionSequence)
-            } ?? []
+            }
         )
     }
 
     /// Path of the file in the focused pane, so the tree can highlight it.
-    /// Reactive: focus/selection is published up through the project to `manager`.
+    /// Focus and selection updates come from the observed project.
     private var openFilePath: String? {
-        if case .file(let file)? = manager.selectedProject?.focusedContent {
+        if case .file(let file)? = project.focusedContent {
             return file.path
         }
         return nil
@@ -75,7 +97,7 @@ struct RightSidebarView: View {
                         FileTreePanel(
                             model: fileTree,
                             git: git,
-                            session: manager.selectedSession,
+                            session: project.selectedSession,
                             rootBadge: rootBadge,
                             currentFilePath: openFilePath,
                             openFile: { manager.openFile($0) },
@@ -103,7 +125,7 @@ struct RightSidebarView: View {
                     case .git:
                         GitPanel(
                             model: git,
-                            session: manager.selectedSession,
+                            session: project.selectedSession,
                             openFile: { manager.openFile($0) },
                             openToSide: { manager.openFileToSide($0) },
                             openDiff: { entry, staged in
@@ -127,7 +149,7 @@ struct RightSidebarView: View {
                             }
                         )
                     case .info:
-                        InfoPanel(model: info, session: manager.selectedSession)
+                        InfoPanel(model: info, session: project.selectedSession)
                     }
                 }
                 .frame(width: width)
@@ -179,13 +201,14 @@ struct RightSidebarView: View {
         }
         .onChange(of: manager.isPanelVisible) { scheduleSyncModels() }
         .onChange(of: manager.panelTab) { scheduleSyncModels() }
-        .onChange(of: manager.selectedSession?.id) { scheduleSyncModels() }
+        .onChange(of: project.id) { scheduleSyncModels() }
+        .onChange(of: project.selectedSession?.id) { scheduleSyncModels() }
         // A `cd` in the terminal publishes the new cwd immediately (OSC 7 →
         // session.workingDirectory); resync at once so automatically rooted
         // panels follow the terminal without waiting for another event.
-        .onChange(of: manager.selectedSession?.workingDirectory) { scheduleSyncModels() }
+        .onChange(of: project.selectedSession?.workingDirectory) { scheduleSyncModels() }
         // Same for pinning/unpinning the project directory.
-        .onChange(of: manager.selectedProject?.customDirectory) { scheduleSyncModels() }
+        .onChange(of: project.customDirectory) { scheduleSyncModels() }
         .environment(
             \.sidebarFontScale,
             CGFloat(settings.sidebarFontSize / AppSettings.defaultSidebarFontSize)
@@ -283,7 +306,6 @@ struct RightSidebarView: View {
 
     private func syncModels() {
         guard manager.isPanelVisible,
-              let project = manager.selectedProject,
               let session = project.selectedSession
         else { return }
         let cwd = session.currentDirectoryPath

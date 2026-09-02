@@ -11,8 +11,6 @@ import Foundation
 /// own root.
 enum KeroAutomationSkill {
     static let name = "yeet-automation"
-    private static let legacyName = "kero-automation"
-    private static let legacyManifestName = ".kero-managed.json"
 
     enum Destination: String, CaseIterable {
         case universal
@@ -140,7 +138,6 @@ enum KeroAutomationSkill {
         force: Bool,
         homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
     ) throws -> [MutationResult] {
-        removeLegacyInstallations(homeURL: homeURL)
         let source = try source()
         let existing = try unique(destinations).map {
             try snapshot(for: $0, source: source, homeURL: homeURL)
@@ -170,7 +167,6 @@ enum KeroAutomationSkill {
         force: Bool,
         homeURL: URL = FileManager.default.homeDirectoryForCurrentUser
     ) throws -> [MutationResult] {
-        removeLegacyInstallations(homeURL: homeURL)
         let source = try source()
         let existing = try unique(destinations).map {
             try snapshot(for: $0, source: source, homeURL: homeURL)
@@ -424,23 +420,6 @@ enum KeroAutomationSkill {
             [.posixPermissions: 0o644],
             ofItemAtPath: manifestURL.path
         )
-    }
-
-    /// Drops leftover `kero-automation` links that this app previously
-    /// installed. Only directories with `.kero-managed.json` are removed.
-    private static func removeLegacyInstallations(homeURL: URL) {
-        for destination in Destination.allCases {
-            let relative: String
-            switch destination {
-            case .universal: relative = ".agents/skills/\(legacyName)"
-            case .claude: relative = ".claude/skills/\(legacyName)"
-            }
-            let url = homeURL.appendingPathComponent(relative, isDirectory: true)
-            guard itemType(at: url) == .typeDirectory else { continue }
-            let manifestURL = url.appendingPathComponent(legacyManifestName)
-            guard isRegularFile(manifestURL) else { continue }
-            try? FileManager.default.removeItem(at: url)
-        }
     }
 
     private static func unique(_ destinations: [Destination]) -> [Destination] {

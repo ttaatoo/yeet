@@ -5,7 +5,7 @@ description: Build Yeet from source, optionally install a GitHub Release zip wit
 
 This repository ships **Yeet**, based on [Kero](https://github.com/egoist/kero) by EGOIST. Builds are **ad-hoc signed** (no Apple Developer Program / Developer ID). That is not the notarized app from [kero.sh](https://kero.sh). The current tree needs macOS 15.6 (Sequoia) or later.
 
-Do **not** run `brew install egoist/tap/kero` if you want Yeet. That command installs official Kero (`Kero.app` / `sh.kero`). Yeet installs `Yeet.app` / `sh.yeet` and keeps settings in `~/.config/yeet`. If that directory is missing, leftover `~/.config/kerox` (then older `~/.config/kero`) is copied in.
+Do **not** run `brew install egoist/tap/kero` if you want Yeet. That command installs official Kero (`Kero.app` / `sh.kero`). Yeet installs `Yeet.app` / `sh.yeet` and keeps settings in `~/.config/yeet`. Yeet creates this directory when needed and does not import older Kero or Kerox settings.
 
 ## Build from source
 
@@ -46,9 +46,8 @@ Compiling with the formula (`brew install --formula --HEAD ttaatoo/yeet/yeet`) a
 
 ## Updates
 
-Packaged Yeet has no [Sparkle](https://sparkle-project.org) feed. An official Kero feed would replace Yeet with `Kero.app`. There is no in-app updater on packaged builds, and Settings hides update controls when there is no feed.
-
-Rebuild from source, or use Homebrew / a new GitHub Release zip when that asset exists.
+Yeet does not include an in-app updater. Rebuild from source, or use Homebrew
+or a new GitHub Release zip when that asset exists.
 
 ## Open a folder from Finder
 

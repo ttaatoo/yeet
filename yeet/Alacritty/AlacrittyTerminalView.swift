@@ -459,15 +459,16 @@ struct AlacrittyPresentationPolicy: Equatable {
     var shouldFreezeOnApplicationResignActive: Bool { !benchmarkMode }
 }
 
-/// Kero's Alacritty backend: a `TerminalBackendSurface` rendered with Metal
+/// Kero's Alacritty terminal rendered with Metal
 /// from a CoreText glyph atlas on top of the `alacritty_terminal` crate.
 ///
 /// The crate is emulation only — it has no renderer — so everything visible
 /// here is Kero's: cell layout, glyph drawing, the cursor, selection, and the
 /// key encodings in `AlacrittyKeyMap`. State lives in Rust behind the handle;
 /// this view snapshots the visible grid each time it draws.
-final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
-    TerminalSelectionAvailabilitySurface, NSUserInterfaceValidations {
+final class AlacrittyTerminalView: NSView, TerminalFindSurface,
+    TerminalScreenExporting, TerminalSelectionAvailabilitySurface,
+    NSUserInterfaceValidations {
     weak var events: (any TerminalBackendEvents)? {
         didSet { flushPendingEvents() }
     }
@@ -2018,7 +2019,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
         }
     }
 
-    // MARK: - TerminalBackendSurface
+    // MARK: - Terminal surface
 
     func sendText(_ text: String) {
         write(Array(text.utf8))

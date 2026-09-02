@@ -30,7 +30,7 @@ struct AgentAttentionRef: Equatable {
 }
 
 /// One Find menu command, routed from the menu bar to whichever find
-/// implementation the focused pane owns: Ghostty's own search in a terminal,
+/// implementation the focused pane owns: Alacritty's search in a terminal,
 /// `NSTextFinder`'s find bar in a file editor.
 enum FindAction {
     case show
@@ -70,11 +70,8 @@ final class TerminalManager: nonisolated ObservableObject {
     @Published var isFPSCounterVisible = false
     @Published private(set) var isCommandPaletteVisible = false
 
-    /// Projects publish their own changes (session list, session selection);
-    /// re-publish them so views observing the manager stay current.
-    private var projectObservations: [UUID: AnyCancellable] = [:]
-    /// Child sinks must not `objectWillChange.send()` during a SwiftUI pass.
-    private lazy var coalescedObjectWillChange = CoalescedObjectWillChange(objectWillChange)
+    /// Persistence listens to explicit mutation events.
+    private let workspaceMutations = PassthroughSubject<Void, Never>()
     /// Projects whose diff stacks have already been mounted in this window.
     /// Unvisited restored projects stay lazy so launch does not instantiate all
     /// of their WKWebViews at once. Capped LRU — visited diffs are expensive
@@ -83,6 +80,7 @@ final class TerminalManager: nonisolated ObservableObject {
     private static let maxMountedDiffProjects = 2
     private var projectCounter = 0
     private var settingsObservation: AnyCancellable?
+    private var projectAutosaveObservations: [UUID: AnyCancellable] = [:]
     private var autosaveObservation: AnyCancellable?
     /// The stable terminal/editor responder displaced by the command palette's
     /// search field. AppKit field editors are deliberately excluded because a
@@ -140,8 +138,9 @@ final class TerminalManager: nonisolated ObservableObject {
     init() {
         if !Self.hasLoadedStore {
             Self.hasLoadedStore = true
-            Self.pendingRestores = SessionStore.load()
-            Self.pendingHistories = TerminalHistoryStore.load()
+            let state = WorkspaceStateStore.shared.load()
+            Self.pendingRestores = state.snapshots
+            Self.pendingHistories = state.histories
         }
         Self.registry.append(self)
         var restored = false
@@ -188,10 +187,12 @@ final class TerminalManager: nonisolated ObservableObject {
             .sink { [weak self] _ in
                 self?.refreshAppearance()
             }
-        // Every project/tab/selection change re-publishes through the manager,
-        // so a debounced sink snapshots layout after mutations settle without
-        // reading live terminal contents.
-        autosaveObservation = objectWillChange
+        // Project changes reach persistence without invalidating every view
+        // that observes this window's manager. Debouncing also reads state
+        // after @Published has finished its willSet notification.
+        autosaveObservation = Publishers.Merge(
+            objectWillChange.map { _ in () }, workspaceMutations
+        )
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { _ in
                 // Quit already captured live scrollback in `confirmQuit`.
@@ -396,9 +397,8 @@ final class TerminalManager: nonisolated ObservableObject {
             fallbackName: "Project \(projectCounter)",
             createInitialSession: createInitialSession
         )
-        projectObservations[project.id] = project.objectWillChange.sink { [weak self] _ in
-            self?.coalescedObjectWillChange.send()
-        }
+        projectAutosaveObservations[project.id] = project.objectWillChange
+            .sink { [weak self] _ in self?.workspaceMutations.send() }
         return project
     }
 
@@ -457,7 +457,7 @@ final class TerminalManager: nonisolated ObservableObject {
     private func remove(_ project: Project) {
         guard let index = projects.firstIndex(where: { $0.id == project.id }) else { return }
         projects.remove(at: index)
-        projectObservations[project.id] = nil
+        projectAutosaveObservations[project.id] = nil
         if selectedProjectID == project.id {
             let neighbor = min(index, projects.count - 1)
             selectedProjectID = neighbor >= 0 ? projects[neighbor].id : nil
@@ -590,10 +590,6 @@ final class TerminalManager: nonisolated ObservableObject {
         return false
     }
 
-    var hasAgentAttention: Bool {
-        !Self.agentAttentionRefs(in: projects).isEmpty
-    }
-
     /// Cycles blocked agents first, then pending-review projects, then leftover
     /// unseen completions, preserving project, tab, and split-tree order within
     /// each state. Only an explicit focus action acknowledges `done`; automation
@@ -699,12 +695,6 @@ final class TerminalManager: nonisolated ObservableObject {
         }
     }
 
-    /// Whether ⌘K has a terminal on screen to act on right now.
-    var canClearActiveTerminal: Bool {
-        if case .session? = selectedProject?.focusedContent { return true }
-        return false
-    }
-
     /// Routes a Find menu command to the focused pane. Driven off the focused
     /// pane rather than the first responder, so ⌘F and ⌘G keep working while
     /// the find bar's own field holds keyboard focus.
@@ -714,22 +704,6 @@ final class TerminalManager: nonisolated ObservableObject {
         case .file(let file): file.performFindAction(action)
         case .browser, .diff, .none: break
         }
-    }
-
-    /// Whether the Find menu has something searchable on screen right now.
-    /// Diffs render their own views rather than a searchable text view.
-    var canFind: Bool {
-        switch selectedProject?.focusedContent {
-        case .session, .file: return true
-        case .browser, .diff, .none: return false
-        }
-    }
-
-    /// Whether Find and Replace has an editable pane to act on: terminal
-    /// output and diffs are read-only, so replace is only offered for a file.
-    var canReplace: Bool {
-        if case .file? = selectedProject?.focusedContent { return true }
-        return false
     }
 
     /// Closes the focused pane (⌘W). When it's the last pane in its tab the
@@ -765,18 +739,6 @@ final class TerminalManager: nonisolated ObservableObject {
     func resizePaneLeft() { selectedProject?.resizePaneLeft() }
     func resizePaneRight() { selectedProject?.resizePaneRight() }
 
-    /// Whether the focused pane can be split right now (false for diffs / no
-    /// project).
-    var canSplit: Bool { selectedProject?.canSplit ?? false }
-
-    /// Whether the selected tab holds more than one pane — gates the zoom,
-    /// resize and equalize commands.
-    var hasSplitPanes: Bool { selectedProject?.hasSplitPanes ?? false }
-
-    /// Whether the selected tab is showing a zoomed pane — drives the header's
-    /// exit-zoom indicator.
-    var isPaneZoomed: Bool { selectedProject?.isPaneZoomed ?? false }
-
     func selectNextTab() {
         selectedProject?.selectNext()
     }
@@ -796,10 +758,6 @@ final class TerminalManager: nonisolated ObservableObject {
             return browser
         }
         return nil
-    }
-
-    var hasSelectedBrowser: Bool {
-        selectedBrowser != nil
     }
 
     func focusBrowserAddressBar() {
@@ -935,7 +893,7 @@ final class TerminalManager: nonisolated ObservableObject {
     /// AppKit ancestry before deciding whether palette dismissal can restore
     /// the page's keyboard focus.
     private func isStableWorkspaceResponder(_ responder: NSResponder) -> Bool {
-        if responder is any TerminalBackendSurface || responder is FocusReportingTextView {
+        if responder is AlacrittyTerminalView || responder is FocusReportingTextView {
             return true
         }
         var view = responder as? NSView
@@ -1014,8 +972,7 @@ final class TerminalManager: nonisolated ObservableObject {
                 snapshots.append(window.snapshot)
                 histories.merge(window.histories) { _, new in new }
             }
-            SessionStore.save(snapshots)
-            TerminalHistoryStore.save(histories)
+            WorkspaceStateStore.shared.save(snapshots: snapshots, histories: histories)
         } else {
             Self.registry.removeAll { $0 === self }
             // These shells are about to be destroyed, so this is their final
@@ -1023,9 +980,8 @@ final class TerminalManager: nonisolated ObservableObject {
             let window = makeWindowSnapshot(captureTerminalHistory: true)
             // Last window: keep its snapshot and scrollback saved and queued so
             // reopening (or relaunching) restores them.
-            SessionStore.save([window.snapshot])
-            TerminalHistoryStore.save(window.histories)
-            TerminalHistoryStore.waitForPendingWrites()
+            WorkspaceStateStore.shared.save(snapshots: [window.snapshot], histories: window.histories)
+            WorkspaceStateStore.shared.waitForPendingWrites()
             Self.pendingRestores = [window.snapshot]
             Self.pendingHistories = window.histories
         }
@@ -1047,19 +1003,22 @@ final class TerminalManager: nonisolated ObservableObject {
             snapshots.append(window.snapshot)
             histories.merge(window.histories) { _, new in new }
         }
-        SessionStore.save(snapshots)
-        TerminalHistoryStore.save(histories)
+        if captureTerminalHistory {
+            WorkspaceStateStore.shared.save(snapshots: snapshots, histories: histories)
+        } else {
+            WorkspaceStateStore.shared.saveLayout(snapshots)
+        }
         // Quit and language-relaunch capture while windows are live and
         // must finish the sidecar write before the process continues.
         if captureTerminalHistory {
-            TerminalHistoryStore.waitForPendingWrites()
+            WorkspaceStateStore.shared.waitForPendingWrites()
         }
     }
 
     /// Builds this window's layout snapshot and, alongside it, the scrollback
     /// to persist for its sessions. Each captured session reuses the runtime
-    /// `historyKey` stored on the session so skip-equal sidecar writes can
-    /// match; a fresh UUID is assigned when the session has none. Sessions
+    /// `historyKey` stored on the session so layout-only saves keep the same
+    /// history reference; a fresh UUID is assigned when it has none. Sessions
     /// with no history (feature off, empty, or unserializable) get no key.
     private func makeWindowSnapshot(
         captureTerminalHistory: Bool
@@ -1194,7 +1153,6 @@ final class TerminalManager: nonisolated ObservableObject {
                 guard let tab = project.restoreTab(
                     from: savedTab, histories: Self.pendingHistories
                 ) else { continue }
-                Self.restoreHistoryKeys(from: savedTab.layout, onto: tab.layout)
                 if let sessionIndex = savedTab.contextSessionIndex {
                     restoredContexts.append((tab, sessionIndex))
                 }
@@ -1205,7 +1163,7 @@ final class TerminalManager: nonisolated ObservableObject {
                 context.tab.contextSession = restoredSessions[context.sessionIndex]
             }
             guard !project.tabs.isEmpty else {
-                projectObservations[project.id] = nil
+                projectAutosaveObservations[project.id] = nil
                 continue
             }
             if let index = saved.selectedTabIndex, project.tabs.indices.contains(index) {
@@ -1223,46 +1181,4 @@ final class TerminalManager: nonisolated ObservableObject {
         return true
     }
 
-    /// Copies saved sidecar keys onto the rebuilt sessions. Restore cannot
-    /// set `TerminalSession.historyKey` from `Project.restoreLayout` (that
-    /// type has no stored key); pairing here keeps skip-equal writes stable.
-    private static func restoreHistoryKeys(
-        from snap: SessionSnapshot.ProjectSnapshot.LayoutSnapshot,
-        onto layout: PaneNode
-    ) {
-        switch (snap, layout) {
-        case (.pane(let paneSnap), .pane(let pane)):
-            if case .session(let session) = pane.content,
-               let key = paneSnap.historyKey {
-                session.historyKey = key
-            }
-        case (.split(_, _, let firstSnap, let secondSnap), .split(let split)):
-            restoreHistoryKeys(from: firstSnap, onto: split.first)
-            restoreHistoryKeys(from: secondSnap, onto: split.second)
-        default:
-            break
-        }
-    }
-}
-
-extension TerminalSession {
-    private enum HistoryKeyAssociation {
-        static var key: UInt8 = 0
-    }
-
-    /// Opaque sidecar key reused across layout saves so skip-equal writes
-    /// can match. Runtime-only; restore copies it from `PaneSnapshot.historyKey`.
-    fileprivate var historyKey: String? {
-        get {
-            objc_getAssociatedObject(self, &HistoryKeyAssociation.key) as? String
-        }
-        set {
-            objc_setAssociatedObject(
-                self,
-                &HistoryKeyAssociation.key,
-                newValue,
-                .OBJC_ASSOCIATION_COPY_NONATOMIC
-            )
-        }
-    }
 }

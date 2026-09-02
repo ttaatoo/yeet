@@ -9,7 +9,6 @@ import SwiftUI
 /// The app settings window (Cmd+,).
 struct SettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
-    @ObservedObject private var updater = Updater.shared
     @State private var relaunchError = ""
     @State private var isShowingRelaunchError = false
 
@@ -299,20 +298,6 @@ struct SettingsView: View {
                     onChange: { try settings.setAIEnabled($0) }
                 )
                 .frame(minHeight: 44)
-            }
-
-            if updater.hasUpdateFeed {
-                Section("Updates") {
-                    Toggle(
-                        "Automatically check for updates",
-                        isOn: $updater.automaticallyChecksForUpdates
-                    )
-
-                    Button("Check for Updates…") {
-                        updater.checkForUpdates()
-                    }
-                    .disabled(!updater.canCheckForUpdates)
-                }
             }
 
             Section {

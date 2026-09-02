@@ -165,6 +165,31 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         selectedTab?.canSplit ?? false
     }
 
+    /// Clear acts on the focused terminal, not the inspector's context session.
+    var canClearActiveTerminal: Bool {
+        if case .session? = focusedContent { return true }
+        return false
+    }
+
+    /// Terminals and editors own find bars; browser and diff panes do not.
+    var canFind: Bool {
+        switch focusedContent {
+        case .session, .file: return true
+        case .browser, .diff, .none: return false
+        }
+    }
+
+    /// Replace is an editor operation, never a terminal input operation.
+    var canReplace: Bool {
+        if case .file? = focusedContent { return true }
+        return false
+    }
+
+    var hasSelectedBrowser: Bool {
+        if case .browser? = focusedContent { return true }
+        return false
+    }
+
     // MARK: - Pending review
 
     func capturePendingReview(sessionID: UUID, fileCount: Int) {
@@ -281,6 +306,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     private func makeSession(
         directory: String? = nil,
         restoredHistory: String? = nil,
+        historyKey: String? = nil,
         commandArguments: [String]? = nil,
         environmentPath: String? = nil
     ) -> TerminalSession {
@@ -289,6 +315,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
                 ?? customDirectory
                 ?? selectedSession?.currentDirectoryPath,
             restoredHistory: restoredHistory,
+            historyKey: historyKey,
             commandArguments: commandArguments,
             environmentPath: environmentPath
         )
@@ -861,7 +888,9 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         case .pane(let pane):
             let restoredHistory = pane.historyKey.flatMap { histories[$0] }
             return .pane(Pane(content: makeContent(
-                from: pane.content, restoredHistory: restoredHistory
+                from: pane.content,
+                restoredHistory: restoredHistory,
+                historyKey: pane.historyKey
             )))
         case .split(let axis, let fraction, let first, let second):
             return .split(PaneSplit(
@@ -875,12 +904,15 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
 
     private func makeContent(
         from snap: SessionSnapshot.ProjectSnapshot.PaneContentSnapshot,
-        restoredHistory: String? = nil
+        restoredHistory: String? = nil,
+        historyKey: String? = nil
     ) -> PaneContent {
         switch snap {
         case .session(let workingDirectory, let agentKind, let agentSessionID):
             let session = makeSession(
-                directory: workingDirectory, restoredHistory: restoredHistory
+                directory: workingDirectory,
+                restoredHistory: restoredHistory,
+                historyKey: historyKey
             )
             if let kindName = agentKind,
                let kind = KeroAgentKind(rawValue: kindName),
