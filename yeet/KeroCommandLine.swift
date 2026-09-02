@@ -197,9 +197,10 @@ final class AppConnection {
         )
         let response: KeroAutomationResponse
         do {
-            // `agent.wait` can hold the connection for timeout_ms. The 5s
-            // default would otherwise surface as a hung or transport error.
-            let exchangeTimeout = method == "agent.wait"
+            // `agent.wait` and recognizing `agent.start` can hold the
+            // connection for timeout_ms. The 5s default would otherwise
+            // surface as a hung or transport error.
+            let exchangeTimeout = method == "agent.wait" || method == "agent.start"
                 ? max(timeout, KeroAgentWait.socketTimeout(for: request))
                 : timeout
             response = try KeroAutomationSocketServer.exchange(

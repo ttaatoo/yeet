@@ -92,7 +92,7 @@ enum KeroAutomationRouter {
             return success(request, paneSnapshot(target, caller: caller))
 
         case "agent.start":
-            return startAgent(request, caller: caller)
+            return await startAgent(request, caller: caller)
 
         case "agent.prompt":
             return promptAgent(request, caller: caller)
@@ -252,10 +252,14 @@ enum KeroAutomationRouter {
         }
     }
 
+    /// Declares the agent, sends the launch command, then waits for Yeet to
+    /// recognize the process. Same race as `agent.wait` over `$agentStatus`;
+    /// terminal text is never classified, and `Thread.sleep` is never used
+    /// here.
     private static func startAgent(
         _ request: KeroAutomationRequest,
         caller: PaneContext
-    ) -> KeroAutomationResponse {
+    ) async -> KeroAutomationResponse {
         guard let target = targetPane(request, caller: caller),
               let session = target.session else {
             return failure(request, "terminal_required", "The target pane is not a terminal.")
@@ -305,6 +309,13 @@ enum KeroAutomationRouter {
                 "Agent arguments exceed the protocol limits or contain terminal control characters."
             )
         }
+        let timeoutMS: Int
+        switch KeroAgentWait.parseStartTimeout(request.params) {
+        case .success(let value):
+            timeoutMS = value
+        case .failure(let error):
+            return failure(request, "invalid_params", error.message)
+        }
 
         session.declareAutomationAgent(alias: alias, kind: kind)
         let command = ([kind.executable] + extra).map(shellQuote).joined(separator: " ")
@@ -312,7 +323,33 @@ enum KeroAutomationRouter {
         if request.params["focus"]?.boolValue == true {
             TerminalManager.revealSession(id: session.id)
         }
-        return success(request, paneSnapshot(target, caller: caller))
+
+        let observation = KeroAgentWait.statusUpdates(from: session)
+        defer { observation.cancel() }
+        let outcome = await KeroAgentWait.race(
+            timeout: .milliseconds(timeoutMS),
+            updates: observation.stream,
+            finished: KeroAgentWait.recognized
+        )
+        switch outcome {
+        case .matched:
+            guard let current = targetPane(request, caller: caller) else {
+                return failure(request, "pane_not_found", "No matching pane exists in this project.")
+            }
+            return success(request, paneSnapshot(current, caller: caller))
+        case .disappeared:
+            return failure(
+                request,
+                "agent_not_running",
+                KeroAgentWait.startDisappearedMessage
+            )
+        case .timedOut:
+            return failure(
+                request,
+                "wait_timeout",
+                KeroAgentWait.startTimeoutMessage
+            )
+        }
     }
 
     private static func promptAgent(
