@@ -100,6 +100,76 @@ final class GitPorcelainTests: XCTestCase {
         XCTAssertEqual(decorations[decomposedPath], .deleted)
     }
 
+    func testDiscardFingerprintsMergeExactDuplicatePaths() {
+        let entry = GitStatusModel.Entry(
+            path: "src/app.swift",
+            staged: ".",
+            unstaged: "R",
+            origPath: "src/app.swift"
+        )
+        var seen: [String] = []
+        let fingerprints = GitStatusModel.discardFingerprints(for: entry) { path in
+            seen.append(path)
+            return "\(path)-fp"
+        }
+
+        XCTAssertEqual(GitStatusModel.discardFingerprintPaths(for: entry), [
+            "src/app.swift", "src/app.swift",
+        ])
+        XCTAssertEqual(seen, ["src/app.swift", "src/app.swift"])
+        XCTAssertEqual(fingerprints.count, 1)
+        XCTAssertEqual(fingerprints["src/app.swift"], "src/app.swift-fp")
+        XCTAssertEqual(entry.path, "src/app.swift")
+        XCTAssertEqual(entry.origPath, "src/app.swift")
+    }
+
+    func testDiscardFingerprintsMergeCanonicallyEquivalentPathAndOrigPath() {
+        let composedPath = "caf\u{e9}.txt"
+        let decomposedPath = "cafe\u{301}.txt"
+        XCTAssertEqual(composedPath, decomposedPath)
+        XCTAssertNotEqual(
+            Array(composedPath.unicodeScalars), Array(decomposedPath.unicodeScalars)
+        )
+        let entry = GitStatusModel.Entry(
+            path: composedPath,
+            staged: ".",
+            unstaged: "R",
+            origPath: decomposedPath
+        )
+        var seen: [[Unicode.Scalar]] = []
+        let fingerprints = GitStatusModel.discardFingerprints(for: entry) { path in
+            seen.append(Array(path.unicodeScalars))
+            return Array(path.unicodeScalars)
+        }
+
+        let paths = GitStatusModel.discardFingerprintPaths(for: entry)
+        XCTAssertEqual(paths.count, 2)
+        XCTAssertEqual(Array(paths[0].unicodeScalars), Array(composedPath.unicodeScalars))
+        XCTAssertEqual(Array(paths[1].unicodeScalars), Array(decomposedPath.unicodeScalars))
+        XCTAssertEqual(seen, [
+            Array(composedPath.unicodeScalars),
+            Array(decomposedPath.unicodeScalars),
+        ])
+        XCTAssertEqual(fingerprints.count, 1)
+        XCTAssertEqual(fingerprints[composedPath], Array(composedPath.unicodeScalars))
+        XCTAssertEqual(fingerprints[decomposedPath], Array(composedPath.unicodeScalars))
+        XCTAssertEqual(Array(entry.path.unicodeScalars), Array(composedPath.unicodeScalars))
+        XCTAssertEqual(Array(entry.origPath!.unicodeScalars), Array(decomposedPath.unicodeScalars))
+    }
+
+    func testDiscardFingerprintsKeepDistinctRenamePaths() {
+        let entry = GitStatusModel.Entry(
+            path: "new name.txt",
+            staged: ".",
+            unstaged: "R",
+            origPath: "old name.txt"
+        )
+        let fingerprints = GitStatusModel.discardFingerprints(for: entry) { $0 }
+        XCTAssertEqual(fingerprints.count, 2)
+        XCTAssertEqual(fingerprints["new name.txt"], "new name.txt")
+        XCTAssertEqual(fingerprints["old name.txt"], "old name.txt")
+    }
+
     func testShouldReuseCachedGitDetailsSameRootHeadAndLimit() {
         let key = GitStatusModel.GitDetailsCacheKey(
             repositoryRoot: "/repo",

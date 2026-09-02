@@ -312,6 +312,30 @@ final class GitStatusModel: nonisolated ObservableObject {
         )
     }
 
+    /// Paths whose on-disk fingerprints must stay unchanged while a discard
+    /// confirmation is open. Git operations still use `Entry.path` / `origPath`
+    /// bytes; this list is only the fingerprint map's keys.
+    nonisolated static func discardFingerprintPaths(for entry: Entry) -> [String] {
+        var paths = [entry.path]
+        if entry.isWorktreeRename, let original = entry.origPath {
+            paths.append(original)
+        }
+        return paths
+    }
+
+    /// A rename's `path` and `origPath` can collide as Swift dictionary keys
+    /// (NFC vs NFD, or an exact duplicate). Keep one fingerprint instead of
+    /// trapping; the original entry is left intact for Git operations.
+    nonisolated static func discardFingerprints<Fingerprint>(
+        for entry: Entry,
+        fingerprint: (String) -> Fingerprint
+    ) -> [String: Fingerprint] {
+        let pairs = discardFingerprintPaths(for: entry).map { path in
+            (path, fingerprint(path))
+        }
+        return Dictionary(pairs, uniquingKeysWith: { current, _ in current })
+    }
+
     func sync(root: String) {
         changeBatch.perform {
             if root != rootPath {
