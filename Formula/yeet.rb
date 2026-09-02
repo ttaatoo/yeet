@@ -6,8 +6,8 @@ class Yeet < Formula
   # Source-build formula: compiles Yeet.app on this Mac. The cask
   # (`Casks/yeet.rb`) downloads Yeet.zip when a GitHub Release includes
   # that asset and a pinned sha256. Do not use sha256 :no_check.
-  url "https://github.com/ttaatoo/yeet/archive/refs/tags/v0.1.57.tar.gz"
-  sha256 "f514a9a49e2d048b5fad2c59e15b0f3df931628e1b627b83a831864a8bbfc55f"
+  url "https://github.com/ttaatoo/yeet/archive/refs/tags/v0.1.58.tar.gz"
+  sha256 "8f9a29251d757f15c0218ba70c67bd3f75344fc08d745e6ef3e82947596aaf18"
   license "GPL-3.0-only"
   head "https://github.com/ttaatoo/yeet.git", branch: "main"
 
