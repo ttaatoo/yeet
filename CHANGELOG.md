@@ -15,6 +15,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+## [0.1.61]
+
 - Workspace restore accepts the recursive multi-window format used by
   v0.1.47 and later. Older single-window and column-based layouts are no
   longer restored.
