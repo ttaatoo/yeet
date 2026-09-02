@@ -52,6 +52,15 @@ xcodebuild test -project yeet.xcodeproj -scheme yeet \
   -destination 'platform=macOS,arch=arm64'
 ```
 
+The startup resource check restores 8 projects, 10 tabs, and 15 terminal
+panes with 500 history lines per pane. It fails if the packaged Release app
+does not become ready within 5 seconds or exceeds a 300 MiB physical footprint:
+
+```bash
+bash scripts/package.sh
+bash scripts/bench-startup-resources.sh dist/Yeet.app
+```
+
 Add `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer` if you only have Xcode beta.
 
 A Debug build is `sh.yeet.dev` and keeps its own state, so it can run beside an

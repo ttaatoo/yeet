@@ -64,3 +64,9 @@ jobs:
             CLANG_COVERAGE_MAPPING=NO \
             CLANG_ENABLE_CODE_COVERAGE=NO \
             ENABLE_CODE_COVERAGE=NO
+
+      - name: Build Release resource benchmark
+        run: bash scripts/package.sh
+
+      - name: Check Release startup resources
+        run: bash scripts/bench-startup-resources.sh dist/Yeet.app
