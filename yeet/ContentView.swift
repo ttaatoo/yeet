@@ -163,10 +163,11 @@ struct ContentView: View {
     /// Every terminal in the selected project can change the same repository.
     /// Watching command completion keeps the toolbar current without polling.
     private var commandCompletionSequences: [UUID: UInt64] {
-        Dictionary(uniqueKeysWithValues:
+        Dictionary(
             manager.selectedProject?.sessions.map {
                 ($0.id, $0.commandLifecycle.completionSequence)
-            } ?? []
+            } ?? [],
+            uniquingKeysWith: { _, later in later }
         )
     }
 

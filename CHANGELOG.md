@@ -17,6 +17,7 @@ the original feature bullet instead of adding separate entries for them.
 
 - `yeet +agent start` waits inside Yeet for process recognition instead of polling from the CLI.
 - Starting an agent can use its own git worktree so parallel agents do not share one dirty tree.
+- Discarding a Git file with duplicate or Unicode-equivalent paths no longer crashes.
 
 ## [0.1.57]
 

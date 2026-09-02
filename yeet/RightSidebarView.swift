@@ -32,10 +32,11 @@ struct RightSidebarView: View {
     /// Watching only these counters avoids reacting to prompt/input lifecycle
     /// updates while still catching commands completed in an unfocused pane.
     private var commandCompletionSequences: [UUID: UInt64] {
-        Dictionary(uniqueKeysWithValues:
+        Dictionary(
             manager.selectedProject?.sessions.map {
                 ($0.id, $0.commandLifecycle.completionSequence)
-            } ?? []
+            } ?? [],
+            uniquingKeysWith: { _, later in later }
         )
     }
 
@@ -1733,15 +1734,11 @@ private struct GitPanel: View {
     }
 
     private func makePendingDiscard(_ entry: GitStatusModel.Entry) -> PendingDiscard {
-        var paths = [entry.path]
-        if entry.isWorktreeRename, let original = entry.origPath {
-            paths.append(original)
-        }
-        return PendingDiscard(
+        PendingDiscard(
             entry: entry,
-            fingerprints: Dictionary(uniqueKeysWithValues: paths.map { path in
-                (path, fileFingerprint(at: absolutePath(path, for: entry)))
-            }),
+            fingerprints: GitStatusModel.discardFingerprints(for: entry) { path in
+                fileFingerprint(at: absolutePath(path, for: entry))
+            },
             branch: model.branch,
             headOID: model.headOID
         )
