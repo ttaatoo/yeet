@@ -333,6 +333,9 @@ enum KeroAutomationRouter {
             case .failure(let error):
                 return failure(request, error.code, error.message)
             }
+            // Re-check after prepare: the pane or alias may have been taken
+            // during git. Do not auto-remove; leftover checkout is v1 and
+            // the operator deletes with `git worktree remove`.
             guard let current = targetPane(request, caller: caller),
                   let live = current.session else {
                 return failure(

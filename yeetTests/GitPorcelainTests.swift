@@ -326,11 +326,21 @@ final class GitPorcelainTests: XCTestCase {
         XCTAssertEqual(first.branch, "yeet/agent/iso")
         XCTAssertTrue(GitRepositoryLocator.isLinkedWorktree(first.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: first.path))
+        try "leftover\n".write(
+            to: URL(fileURLWithPath: first.path).appendingPathComponent("leftover.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
 
         let attached = try KeroAgentWorktree.prepare(alias: "iso", cwd: repo.path).get()
         XCTAssertTrue(attached.attached)
         XCTAssertEqual(attached.path, first.path)
         XCTAssertEqual(attached.branch, first.branch)
+        let leftover = try String(
+            contentsOfFile: (attached.path as NSString).appendingPathComponent("leftover.txt"),
+            encoding: .utf8
+        )
+        XCTAssertEqual(leftover, "leftover\n")
 
         try KeroAgentWorktree.remove(path: first.path, in: repo.path).get()
         XCTAssertFalse(FileManager.default.fileExists(atPath: first.path))

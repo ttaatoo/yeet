@@ -69,9 +69,10 @@ enum KeroAgentWorktree {
         return (parent as NSString).appendingPathComponent("\(base)-yeet-\(alias)")
     }
 
-    /// Source dirt stays in the original checkout. The agent worktree is a
-    /// clean HEAD of a new (or reused) `yeet/agent/<alias>` branch. Never
-    /// stash, `--force`, or merge.
+    /// Source dirt stays in the original checkout. A new `yeet/agent/<alias>`
+    /// worktree is a clean HEAD of that branch. Reusing the same alias
+    /// attaches the existing checkout, including leftover dirty files. Never
+    /// stash, `--force`, or auto-merge.
     nonisolated static func prepare(
         alias: String,
         cwd: String,

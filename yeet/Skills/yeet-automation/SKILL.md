@@ -84,7 +84,9 @@ Follow this sequence:
    state is `created`; Yeet does not inspect the CLI screen or wait for a
    provider-specific ready prompt. Pass `--worktree` (socket param
    `worktree: true`) to give that pane its own git worktree and branch so
-   parallel agents do not share one dirty tree. Files and Git follow that
+   parallel agents do not share one dirty tree. The same alias reuses the
+   existing `yeet/agent/<alias>` checkout, including leftover dirty files from
+   the last run. A new alias creates a new worktree. Files and Git follow that
    checkout. Discarding and merging stay in the Git panel; Yeet does not
    auto-merge. The default is the shared project checkout. Git failures
    return a structured error and do not declare the agent.
@@ -130,7 +132,9 @@ Do not answer an interactive approval or credential prompt on the user's
 behalf; report the blocker instead.
 
 Reuse the same alias for follow-up prompts only while that recognized agent is
-still running. Use a new alias for a new worker.
+still running. Use a new alias for a new worker. With `--worktree`, starting
+again under the same alias reattaches `yeet/agent/<alias>`, including leftover
+dirty files; pick a new alias for a new worktree.
 
 ## Lifecycle and result reads
 
