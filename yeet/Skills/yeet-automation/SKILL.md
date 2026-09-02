@@ -82,7 +82,12 @@ Follow this sequence:
 
    `start` returns once Yeet recognizes the requested foreground process. Its
    state is `created`; Yeet does not inspect the CLI screen or wait for a
-   provider-specific ready prompt.
+   provider-specific ready prompt. Pass `--worktree` (socket param
+   `worktree: true`) to give that pane its own git worktree and branch so
+   parallel agents do not share one dirty tree. Files and Git follow that
+   checkout. Discarding and merging stay in the Git panel; Yeet does not
+   auto-merge. The default is the shared project checkout. Git failures
+   return a structured error and do not declare the agent.
 
 5. Send a bounded task with acceptance criteria. Do not add Yeet lifecycle
    commands to the task; supported provider integrations report state directly:

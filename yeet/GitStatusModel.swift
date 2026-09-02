@@ -1405,10 +1405,11 @@ final class GitStatusModel: nonisolated ObservableObject {
     /// this from Swift's cooperative executor at once, and dispatching the
     /// readers back onto the shared pool can starve every pipe drain.
     nonisolated static func runGit(
-        _ args: [String], in dir: String, timeout: TimeInterval? = nil
+        _ args: [String], in dir: String, timeout: TimeInterval? = nil,
+        executable: String = "/usr/bin/git"
     ) -> (status: Int32, stdout: String, stderr: String) {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
         process.currentDirectoryURL = URL(fileURLWithPath: dir, isDirectory: true)
         var env = ProcessInfo.processInfo.environment
