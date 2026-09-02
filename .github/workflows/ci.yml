@@ -57,6 +57,7 @@ jobs:
             -scheme yeet \
             -configuration Debug \
             -destination 'platform=macOS,arch=arm64' \
+            -resultBundlePath "$RUNNER_TEMP/yeet-tests.xcresult" \
             -skipMacroValidation \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_ALLOWED=YES \
@@ -64,6 +65,23 @@ jobs:
             CLANG_COVERAGE_MAPPING=NO \
             CLANG_ENABLE_CODE_COVERAGE=NO \
             ENABLE_CODE_COVERAGE=NO
+
+      - name: Show test failures
+        if: failure()
+        run: |
+          if [ -d "$RUNNER_TEMP/yeet-tests.xcresult" ]; then
+            xcrun xcresulttool get test-results summary \
+              --path "$RUNNER_TEMP/yeet-tests.xcresult"
+          fi
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-test-results
+          path: ${{ runner.temp }}/yeet-tests.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Build Release resource benchmark
         run: bash scripts/package.sh
