@@ -159,6 +159,7 @@ struct ContentView: View {
     @StateObject private var fileTree = FileTreeModel()
     @StateObject private var info = SessionInfoModel()
     @StateObject private var tabSplitDrag = TabSplitDragCoordinator()
+    @AppStorage("rightSidebarWidth") private var inspectorWidth: Double = InspectorMetrics.defaultWidth
 
     /// Every terminal in the selected project can change the same repository.
     /// Watching command completion keeps the toolbar current without polling.
@@ -338,15 +339,14 @@ struct ContentView: View {
     @ViewBuilder
     private var inspectorSidebar: some View {
         if manager.isPanelVisible {
-            WorkspaceInspectorHost {
-                RightSidebarView(
-                    manager: manager,
-                    git: git,
-                    fileTree: fileTree,
-                    info: info,
-                    placement: settings.swapSidebars ? .leading : .trailing
-                )
-            }
+            WorkspaceInspectorHost(
+                manager: manager,
+                git: git,
+                fileTree: fileTree,
+                info: info,
+                width: $inspectorWidth,
+                placement: settings.swapSidebars ? .leading : .trailing
+            )
         }
     }
 
