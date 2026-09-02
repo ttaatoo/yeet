@@ -24,6 +24,29 @@ final class WorkspaceE2ETests: XCTestCase {
         )
         defer { session.terminate() }
 
+        // A terminal starts only after AppKit attaches it at a stable pane
+        // size. Exercise the production lifecycle instead of creating a PTY
+        // for a detached, zero-sized test view.
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        let host = NSView(frame: window.contentView?.bounds ?? .zero)
+        window.contentView = host
+        let surface = session.surface
+        surface.frame = host.bounds
+        host.addSubview(surface)
+        window.orderFront(nil)
+        surface.setSurfaceVisible(true)
+        defer {
+            surface.removeFromSuperview()
+            window.contentView = nil
+            window.close()
+        }
+
         let text = try await waitUntil(timeout: 8) {
             session.surface.readVisibleText(maxLines: 8, maxColumns: 80)
         } satisfies: { $0?.contains("YEET_E2E_OK") == true }

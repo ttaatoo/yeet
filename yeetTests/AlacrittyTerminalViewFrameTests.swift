@@ -7,6 +7,56 @@ import XCTest
 @testable import yeet
 
 final class AlacrittyTerminalViewFrameTests: XCTestCase {
+    func testGridSizeCapsOversizedRestoredLayout() {
+        let size = AlacrittyGridSize.from(
+            viewportSize: CGSize(
+                width: CGFloat.greatestFiniteMagnitude,
+                height: CGFloat.greatestFiniteMagnitude
+            ),
+            cellSize: CGSize(width: 1, height: 1),
+            padding: .zero
+        )
+
+        XCTAssertEqual(size.columns, AlacrittyGridSize.maximumColumns)
+        XCTAssertEqual(size.rows, 256)
+        XCTAssertLessThanOrEqual(
+            size.columns * size.rows,
+            AlacrittyGridSize.maximumCellCount
+        )
+    }
+
+    func testGridSizeRejectsNonFiniteLayout() {
+        let size = AlacrittyGridSize.from(
+            viewportSize: CGSize(width: CGFloat.infinity, height: 800),
+            cellSize: CGSize(width: 8, height: 16),
+            padding: .zero
+        )
+
+        XCTAssertEqual(size, AlacrittyGridSize(columns: 2, rows: 2))
+    }
+
+    func testGridSizeKeepsTheEmulatorMinimumAndDelaysTinyPaneStartup() {
+        let size = AlacrittyGridSize.from(
+            viewportSize: CGSize(width: 1, height: 1),
+            cellSize: CGSize(width: 8, height: 16),
+            padding: .zero
+        )
+
+        XCTAssertEqual(size, AlacrittyGridSize(columns: 2, rows: 2))
+        XCTAssertFalse(size.isStableForBackend)
+    }
+
+    func testPlausibleViewportAllowsNormalPaneAndRejectsRestoredOverflow() {
+        let display = CGSize(width: 1_512, height: 949)
+
+        XCTAssertTrue(AlacrittyGridSize.isPlausibleViewport(
+            CGSize(width: 1_508, height: 945), within: display
+        ))
+        XCTAssertFalse(AlacrittyGridSize.isPlausibleViewport(
+            CGSize(width: 100_000, height: 100_000), within: display
+        ))
+    }
+
     func testHiddenRenderingCursorKeepsIndependentIMEAnchor() {
         var cache = AlacrittyCursorCache()
 
