@@ -426,10 +426,7 @@ final class AppKitChromePresentationTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let git = GitStatusModel()
-        git.sync(root: directory.path)
-        _ = try await waitUntil(timeout: 8) {
-            git.hasResolvedStatus && !git.isRefreshing && !git.isBusy
-        } satisfies: { $0 }
+        try await loadGit(git, root: directory.path)
         XCTAssertTrue(git.isRepo)
         XCTAssertGreaterThanOrEqual(git.changedEntries.count, 2)
 
@@ -637,11 +634,8 @@ final class AppKitChromePresentationTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let git = GitStatusModel()
-        git.sync(root: directory.path)
-        _ = try await waitUntil(timeout: 8) {
-            git.hasResolvedStatus && !git.isRefreshing && !git.isBusy
-                && git.changedEntries.contains { $0.path == "gone.txt" }
-        } satisfies: { $0 }
+        try await loadGit(git, root: directory.path)
+        XCTAssertTrue(git.changedEntries.contains { $0.path == "gone.txt" })
 
         let panel = AppKitGitPanelView(frame: NSRect(x: 0, y: 0, width: 280, height: 480))
         configureGitPanel(panel, model: git)
@@ -665,9 +659,7 @@ final class AppKitChromePresentationTests: XCTestCase {
 
         panel.debugAutomaticallyConfirmDiscard = true
         panel.debugRequestDiscard(named: "gone.txt")
-        _ = try await waitUntil(timeout: 8) {
-            git.hasResolvedStatus && !git.isRefreshing && !git.isBusy
-        } satisfies: { $0 }
+        try await waitForGitStatus(git)
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: directory.appendingPathComponent("gone.txt").path
@@ -793,24 +785,6 @@ final class AppKitChromePresentationTests: XCTestCase {
             )
         }
         return directory
-    }
-
-    private struct WaitTimeout: Error {}
-
-    private func waitUntil<T>(
-        timeout: TimeInterval,
-        _ sample: @MainActor () -> T,
-        satisfies predicate: (T) -> Bool
-    ) async throws -> T {
-        let deadline = Date().addingTimeInterval(timeout)
-        var last = sample()
-        while Date() < deadline {
-            if predicate(last) { return last }
-            try await Task.sleep(for: .milliseconds(50))
-            last = sample()
-        }
-        XCTFail("timed out waiting")
-        throw WaitTimeout()
     }
 
     private static func mouseEvent(clickCount: Int) -> NSEvent {

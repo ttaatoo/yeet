@@ -12,6 +12,9 @@ import Foundation
 /// source-control operations without blocking the UI.
 @MainActor
 final class GitStatusModel: nonisolated ObservableObject {
+    /// Includes the worker's ten-second budget and time to publish failure.
+    nonisolated static let statusRefreshTimeout: TimeInterval = 12
+
     nonisolated struct Entry: Identifiable, Equatable, Sendable {
         var id: String { path }
         /// Relative to the repository root, as porcelain v2 reports it.
@@ -373,7 +376,7 @@ final class GitStatusModel: nonisolated ObservableObject {
         // the sidebar must still leave its initial loading state and offer a
         // retry while the stale worker winds down in the background.
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(12))
+            try? await Task.sleep(for: .seconds(Self.statusRefreshTimeout))
             guard let self,
                   self.isRefreshing,
                   self.contextGeneration == generation,

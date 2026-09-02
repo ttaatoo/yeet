@@ -11,6 +11,25 @@ import XCTest
 
 @MainActor
 final class GitInspectorE2ETests: XCTestCase {
+    func testStatusWaitRejectsAFailedRefresh() async throws {
+        let directory = try GitInspectorFixtures.makeTempDirectory(prefix: "yeet-git-broken")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(
+            at: directory.appendingPathComponent(".git"), withIntermediateDirectories: false
+        )
+
+        let git = GitStatusModel()
+        do {
+            try await loadGit(git, root: directory.path)
+            XCTFail("a completed refresh with a Git error must not satisfy the status wait")
+        } catch let error as GitStatusLoadFailed {
+            XCTAssertEqual(error.message, git.statusError)
+        }
+        XCTAssertTrue(git.hasResolvedStatus)
+        XCTAssertFalse(git.isRefreshing)
+        XCTAssertFalse(git.isRepo)
+    }
+
     func testStatusSplitsStagedUnstagedUntrackedAndIgnored() async throws {
         let repo = try GitInspectorFixtures.makeRepository(
             prefix: "yeet-git-status",
@@ -657,10 +676,7 @@ final class GitInspectorE2ETests: XCTestCase {
         )
 
         let git = GitStatusModel()
-        git.sync(root: directory.path)
-        _ = try await waitUntil(timeout: 8, description: "Unicode-path Git status") {
-            git.hasResolvedStatus && !git.isRefreshing && !git.isBusy
-        } satisfies: { $0 }
+        try await loadGit(git, root: directory.path)
 
         let tracked = try XCTUnwrap(
             git.changedEntries.first { $0.path == composedPath || $0.path == decomposedPath }
@@ -686,9 +702,7 @@ final class GitInspectorE2ETests: XCTestCase {
         )
 
         git.discard(tracked)
-        _ = try await waitUntil(timeout: 8, description: "Unicode-path Git status") {
-            git.hasResolvedStatus && !git.isRefreshing && !git.isBusy
-        } satisfies: { $0 }
+        try await waitForGitStatus(git)
         XCTAssertEqual(
             try String(
                 contentsOf: directory.appendingPathComponent(composedPath),
@@ -702,9 +716,7 @@ final class GitInspectorE2ETests: XCTestCase {
 
         let untracked = try XCTUnwrap(git.changedEntries.first { $0.path == "gone.txt" })
         git.discard(untracked)
-        _ = try await waitUntil(timeout: 8, description: "Unicode-path Git status") {
-            git.hasResolvedStatus && !git.isRefreshing && !git.isBusy
-        } satisfies: { $0 }
+        try await waitForGitStatus(git)
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: directory.appendingPathComponent("gone.txt").path

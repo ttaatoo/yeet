@@ -15,6 +15,11 @@ struct GitInspectorTimedOut: Error, CustomStringConvertible {
     var description: String { message }
 }
 
+struct GitStatusLoadFailed: Error, CustomStringConvertible {
+    let message: String
+    var description: String { "git status failed: \(message)" }
+}
+
 struct GitCommandFailed: Error, CustomStringConvertible {
     let command: String
     let status: Int32
@@ -73,6 +78,11 @@ struct GitInspectorRepo {
 }
 
 enum GitInspectorFixtures {
+    // Functional tests must observe the model's success or watchdog failure,
+    // not expire before its twelve-second production deadline. Latency has
+    // separate benchmark checks.
+    nonisolated static let statusTimeout = GitStatusModel.statusRefreshTimeout + 3
+
     static func makeTempDirectory(prefix: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
@@ -181,36 +191,52 @@ extension XCTestCase {
     @MainActor
     func waitUntil<T>(
         timeout: TimeInterval = 8,
-        description: String,
+        description: String = "condition",
         _ sample: @MainActor () -> T,
         satisfies predicate: (T) -> Bool
     ) async throws -> T {
-        let deadline = Date().addingTimeInterval(timeout)
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(timeout))
         var last = sample()
-        while Date() < deadline {
-            if predicate(last) { return last }
+        while !predicate(last) {
+            guard clock.now < deadline else {
+                throw GitInspectorTimedOut(
+                    message: "timed out waiting for \(description); last value: \(String(describing: last))"
+                )
+            }
             try await Task.sleep(for: .milliseconds(50))
             last = sample()
         }
-        throw GitInspectorTimedOut(
-            message: "timed out waiting for \(description); last value: \(String(describing: last))"
-        )
+        // The final sample may be ready even if its main-actor turn ran late.
+        return last
     }
 
     @MainActor
     @discardableResult
     func waitForGitStatus(
         _ git: GitStatusModel,
-        timeout: TimeInterval = 8
+        timeout: TimeInterval = GitInspectorFixtures.statusTimeout
     ) async throws -> GitStatusModel {
-        _ = try await waitUntil(timeout: timeout, description: "git status to resolve") {
-            git.hasResolvedStatus && !git.isRefreshing && !git.isBusy
-        } satisfies: { $0 }
+        let result = try await waitUntil(timeout: timeout, description: "git status to resolve") {
+            (
+                resolved: git.hasResolvedStatus,
+                refreshing: git.isRefreshing,
+                busy: git.isBusy,
+                statusError: git.statusError,
+                operationError: git.lastError
+            )
+        } satisfies: { $0.resolved && !$0.refreshing && !$0.busy }
+        if let error = result.statusError {
+            throw GitStatusLoadFailed(message: error)
+        }
         return git
     }
 
     @MainActor
-    func loadGit(_ git: GitStatusModel, root: String, timeout: TimeInterval = 8) async throws {
+    func loadGit(
+        _ git: GitStatusModel, root: String,
+        timeout: TimeInterval = GitInspectorFixtures.statusTimeout
+    ) async throws {
         git.sync(root: root)
         _ = try await waitForGitStatus(git, timeout: timeout)
     }
