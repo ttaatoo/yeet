@@ -15,6 +15,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+## [0.1.57]
+
 - Restoring a Git project no longer crashes Yeet when its status contains duplicate or Unicode-equivalent paths.
 
 ## [0.1.56]
