@@ -14,6 +14,10 @@ enum InspectorMetrics {
     static let handleWidth: CGFloat = 7
 }
 
+func inspectorThemeToken() -> String {
+    "\(Theme.selectedChromeAccent.rawValue)|\(NSApp.effectiveAppearance.name.rawValue)"
+}
+
 /// Tab pills along the inspector chrome. Display rules live here so tests
 /// can assert selection without mounting the Files/Git panels.
 struct InspectorTabDisplayState: Equatable {

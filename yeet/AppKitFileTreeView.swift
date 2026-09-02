@@ -55,6 +55,21 @@ final class AppKitFileTreePanel: NSView, NSTextFieldDelegate {
     private var fontScale: CGFloat = 1
     private var fontFamily = ""
     private var lastItemPaths: [String] = []
+    private var lastPresentationKey: PresentationKey?
+    private(set) var debugConfigureCount = 0
+
+    private struct PresentationKey: Equatable {
+        var rootPath: String
+        var itemPaths: [String]
+        var renamingPath: String?
+        var draft: FileTreeModel.Draft?
+        var currentFilePath: String?
+        var sessionID: UUID?
+        var fontSize: Double
+        var fontFamily: String
+        var themeToken: String
+        var rootBadge: String?
+    }
 
     override var isFlipped: Bool { true }
 
@@ -108,6 +123,25 @@ final class AppKitFileTreePanel: NSView, NSTextFieldDelegate {
         let settings = AppSettings.shared
         fontScale = CGFloat(settings.filesFontSize / AppSettings.defaultFilesFontSize)
         fontFamily = settings.filesFontFamily
+
+        let key = PresentationKey(
+            rootPath: model.rootPath,
+            itemPaths: model.items.map(\.path),
+            renamingPath: model.renamingPath,
+            draft: model.draft,
+            currentFilePath: currentFilePath,
+            sessionID: session?.id,
+            fontSize: settings.filesFontSize,
+            fontFamily: settings.filesFontFamily,
+            themeToken: inspectorThemeToken(),
+            rootBadge: rootBadge?.text
+        )
+        guard key != lastPresentationKey else {
+            needsLayout = true
+            return
+        }
+        lastPresentationKey = key
+        debugConfigureCount += 1
 
         titleLabel.configure(title: model.rootName, subtitle: model.rootPath, fontScale: 1)
         updateRootBadge(rootBadge)

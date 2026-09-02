@@ -5,7 +5,7 @@
 
 import AppKit
 
-enum AppKitGitSection: Equatable {
+enum AppKitGitSection: Equatable, Hashable {
     case merge, staged, changes, history
 }
 
@@ -149,13 +149,30 @@ final class AppKitGitChangeListView: NSView {
     var onToggleSection: ((AppKitGitSection) -> Void)?
     var onToggleCommit: ((String) -> Void)?
 
+    private struct EntryRowID: Hashable {
+        var section: AppKitGitSection
+        var path: String
+        var origPath: String?
+    }
+
     private var ordered: [NSView] = []
+    private var entryRows: [EntryRowID: AppKitGitEntryRowView] = [:]
+    private var headers: [AppKitGitSection: AppKitGitSectionHeaderView] = [:]
+    private let placeholderView = AppKitInlinePlaceholderView()
     private let commitsView = RecentCommitsNSView()
     private var fileNames: [String] = []
+    private(set) var debugConfigureCount = 0
 
     override var isFlipped: Bool { true }
 
     var debugFileNames: [String] { fileNames }
+    var debugEntryRows: [AppKitGitEntryRowView] {
+        ordered.compactMap { $0 as? AppKitGitEntryRowView }
+    }
+
+    func debugEntryRow(named name: String) -> AppKitGitEntryRowView? {
+        debugEntryRows.first { $0.debugFileName == name }
+    }
 
     func configure(
         merge: [GitStatusModel.Entry],
@@ -189,25 +206,44 @@ final class AppKitGitChangeListView: NSView {
         onUnstageAll: @escaping () -> Void,
         onDiscardAll: @escaping () -> Void
     ) {
-        ordered.forEach { $0.removeFromSuperview() }
+        debugConfigureCount += 1
+        // Identity is path + origPath + section so filter and SwiftUI ticks
+        // patch the same rows instead of dropping first responder and scroll.
         ordered.removeAll(keepingCapacity: true)
         fileNames.removeAll(keepingCapacity: true)
 
+        func header(_ section: AppKitGitSection) -> AppKitGitSectionHeaderView {
+            if let existing = headers[section] { return existing }
+            let created = AppKitGitSectionHeaderView(frame: .zero)
+            headers[section] = created
+            return created
+        }
+
+        func row(section: AppKitGitSection, entry: GitStatusModel.Entry) -> AppKitGitEntryRowView {
+            let id = EntryRowID(section: section, path: entry.path, origPath: entry.origPath)
+            if let existing = entryRows[id] { return existing }
+            let created = AppKitGitEntryRowView(frame: .zero)
+            entryRows[id] = created
+            return created
+        }
+
         let visible = merge.count + staged.count + changes.count
         if totalChangeCount == 0 {
-            addArranged(inlinePlaceholder(
+            placeholderView.configure(
                 icon: ahead > 0 || behind > 0 ? "arrow.triangle.2.circlepath" : "checkmark.circle",
                 text: ahead > 0 || behind > 0
                     ? String(localized: "Working tree clean, sync is pending")
                     : String(localized: "Working tree clean"),
                 fontScale: fontScale
-            ))
+            )
+            addArranged(placeholderView)
         } else if visible == 0 {
-            addArranged(inlinePlaceholder(
+            placeholderView.configure(
                 icon: "line.3.horizontal.decrease",
                 text: String(localized: "No changed files match “\(filterText)”"),
                 fontScale: fontScale
-            ))
+            )
+            addArranged(placeholderView)
         }
 
         func addSection(
@@ -220,8 +256,8 @@ final class AppKitGitChangeListView: NSView {
             kind: AppKitGitEntryKind
         ) {
             guard !entries.isEmpty else { return }
-            let header = AppKitGitSectionHeaderView(frame: .zero)
-            header.configure(
+            let headerView = header(section)
+            headerView.configure(
                 title: title,
                 count: count,
                 isCollapsed: collapsed,
@@ -229,8 +265,8 @@ final class AppKitGitChangeListView: NSView {
                 actionsDisabled: isBusy,
                 fontScale: fontScale
             )
-            header.onToggle = { [weak self] in self?.onToggleSection?(section) }
-            addArranged(header)
+            headerView.onToggle = { [weak self] in self?.onToggleSection?(section) }
+            addArranged(headerView)
             guard !collapsed else { return }
             for entry in entries {
                 let handlers = rowHandler(entry, kind)
@@ -252,14 +288,14 @@ final class AppKitGitChangeListView: NSView {
                     isUnstageLoading: loading?.path == entry.path && loading?.operation == .unstage,
                     isDiscardLoading: loading?.path == entry.path && loading?.operation == .discard
                 )
-                let row = AppKitGitEntryRowView(frame: .zero)
-                row.configure(
+                let rowView = row(section: section, entry: entry)
+                rowView.configure(
                     entry: entry,
                     state: state,
                     fontScale: fontScale,
                     handlers: handlers
                 )
-                addArranged(row)
+                addArranged(rowView)
                 fileNames.append(entry.fileName)
             }
         }
@@ -313,8 +349,8 @@ final class AppKitGitChangeListView: NSView {
         )
 
         if filterText.isEmpty, !commits.isEmpty {
-            let header = AppKitGitSectionHeaderView(frame: .zero)
-            header.configure(
+            let headerView = header(.history)
+            headerView.configure(
                 title: String(localized: "RECENT COMMITS"),
                 count: commits.count,
                 isCollapsed: historyCollapsed,
@@ -322,8 +358,8 @@ final class AppKitGitChangeListView: NSView {
                 actionsDisabled: isBusy,
                 fontScale: fontScale
             )
-            header.onToggle = { [weak self] in self?.onToggleSection?(.history) }
-            addArranged(header)
+            headerView.onToggle = { [weak self] in self?.onToggleSection?(.history) }
+            addArranged(headerView)
             if !historyCollapsed {
                 commitsView.onToggleCommit = { [weak self] id in self?.onToggleCommit?(id) }
                 commitsView.onOpenDiff = openCommitDiff
@@ -338,6 +374,12 @@ final class AppKitGitChangeListView: NSView {
                 addArranged(commitsView)
             }
         }
+
+        let kept = Set(ordered.map { ObjectIdentifier($0) })
+        for view in subviews where !kept.contains(ObjectIdentifier(view)) {
+            view.removeFromSuperview()
+        }
+        entryRows = entryRows.filter { _, row in kept.contains(ObjectIdentifier(row)) }
 
         layoutList()
     }
@@ -376,14 +418,10 @@ final class AppKitGitChangeListView: NSView {
     }
 
     private func addArranged(_ view: NSView) {
-        addSubview(view)
+        if view.superview !== self {
+            addSubview(view)
+        }
         ordered.append(view)
-    }
-
-    private func inlinePlaceholder(icon: String, text: String, fontScale: CGFloat) -> NSView {
-        let view = AppKitInlinePlaceholderView(frame: .zero)
-        view.configure(icon: icon, text: text, fontScale: fontScale)
-        return view
     }
 }
 
@@ -632,6 +670,7 @@ final class AppKitGitEntryRowView: NSView {
     private(set) var state: GitEntryRowDisplayState?
     private var entry: GitStatusModel.Entry?
     private var handlers: AppKitGitChangeListView.RowHandlers?
+    var debugFileName: String? { state?.fileName }
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }

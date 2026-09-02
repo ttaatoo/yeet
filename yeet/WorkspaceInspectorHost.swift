@@ -32,12 +32,16 @@ final class WorkspaceInspectorView: NSView {
     private weak var fileTree: FileTreeModel?
     private weak var info: SessionInfoModel?
 
+    private var selectedTab: RightPanel = .files
     private var placement: HorizontalEdge = .trailing
     private(set) var width: Double = InspectorMetrics.defaultWidth
     var onWidthChange: ((Double) -> Void)?
 
     private var rootSource = Project.PanelRootSource.shell
     private var lastSyncKey: SyncKey?
+    private var lastFilesKey: FilesPanelKey?
+    private var lastGitKey: GitPanelKey?
+    private var lastInfoKey: InfoPanelKey?
     private var applicationIsActive = NSApp.isActive
     private var infoPoll: Timer?
     private var themeObservation: AnyCancellable?
@@ -51,6 +55,52 @@ final class WorkspaceInspectorView: NSView {
         var foreground: String?
         var customDirectory: String?
         var completions: [UUID: UInt64]
+    }
+
+    private struct FilesPanelKey: Equatable {
+        var rootPath: String
+        var itemPaths: [String]
+        var renamingPath: String?
+        var draft: FileTreeModel.Draft?
+        var currentFilePath: String?
+        var sessionID: UUID?
+        var fontSize: Double
+        var fontFamily: String
+        var themeToken: String
+        var rootBadge: String?
+    }
+
+    private struct GitPanelKey: Equatable {
+        var tab: RightPanel
+        var sessionID: UUID?
+        var fontSize: Double
+        var themeToken: String
+        var rootPath: String
+        var repositoryIdentity: String
+        var isRepo: Bool
+        var statusError: String?
+        var branch: String?
+        var headOID: String?
+        var ahead: Int
+        var behind: Int
+        var hasUpstream: Bool
+        var isBusy: Bool
+        var isRefreshing: Bool
+        var isResolvingInitialStatus: Bool
+        var merge: [GitStatusModel.Entry]
+        var staged: [GitStatusModel.Entry]
+        var changes: [GitStatusModel.Entry]
+        var commits: [GitStatusModel.RecentCommit]
+        var hasMoreCommits: Bool
+        var isLoadingMore: Bool
+        var stashCount: Int
+        var repositoryOperation: String?
+    }
+
+    private struct InfoPanelKey: Equatable {
+        var sessionID: UUID?
+        var fontScale: CGFloat
+        var fontSize: Double
     }
 
     override var isFlipped: Bool { true }
@@ -79,6 +129,14 @@ final class WorkspaceInspectorView: NSView {
         bodyView.addSubview(filesPanel)
         bodyView.addSubview(gitPanel)
         bodyView.addSubview(infoContainer)
+
+        tabBar.configure(
+            selected: .files,
+            fontSize: AppSettings.shared.sidebarFontSize
+        ) { [weak self] panel in
+            self?.selectTab(panel)
+        }
+        selectTab(.files)
 
         collapseButton.onAction = { [weak self] in
             self?.manager?.toggleSidebar()
@@ -158,8 +216,9 @@ final class WorkspaceInspectorView: NSView {
 
         let settings = AppSettings.shared
         let sidebarScale = CGFloat(settings.sidebarFontSize / AppSettings.defaultSidebarFontSize)
-        tabBar.configure(selected: manager.panelTab, fontSize: settings.sidebarFontSize) { [weak manager] panel in
-            manager?.panelTab = panel
+        let themeToken = inspectorThemeToken()
+        tabBar.configure(selected: manager.panelTab, fontSize: settings.sidebarFontSize) { [weak self] panel in
+            self?.selectTab(panel)
         }
         collapseButton.configure(
             systemImage: "sidebar.left",
@@ -172,64 +231,117 @@ final class WorkspaceInspectorView: NSView {
             }
             return nil
         }()
-        filesPanel.configure(
-            model: fileTree,
-            git: git,
-            session: manager.selectedSession,
-            rootBadge: rootBadge,
+        // SwiftUI ticks updateNSView on every ObservedObject. Rebuild Files
+        // only when the tree, root, or theme actually changed; Git only when
+        // the change set, theme, or tab did. Filter keystrokes stay inside
+        // the Git panel.
+        let filesKey = FilesPanelKey(
+            rootPath: fileTree.rootPath,
+            itemPaths: fileTree.items.map(\.path),
+            renamingPath: fileTree.renamingPath,
+            draft: fileTree.draft,
             currentFilePath: openFilePath,
-            openFile: { [weak manager] path in manager?.openFile(path) },
-            openToSide: { [weak manager] path in manager?.openFileToSide(path) },
-            onRename: { [weak manager] old, new in manager?.fileRenamed(from: old, to: new) },
-            refreshGitStatus: { [weak git] in git?.refresh() }
+            sessionID: manager.selectedSession?.id,
+            fontSize: settings.filesFontSize,
+            fontFamily: settings.filesFontFamily,
+            themeToken: themeToken,
+            rootBadge: rootBadge?.text
         )
-        gitPanel.configure(
-            model: git,
-            session: manager.selectedSession,
-            fontScale: sidebarScale,
-            openFile: { [weak manager] path in manager?.openFile(path) },
-            openToSide: { [weak manager] path in manager?.openFileToSide(path) },
-            openDiff: { [weak manager, weak git] entry, staged in
-                guard let git else { return }
-                manager?.openDiff(
-                    repoRoot: git.repoRoot,
-                    path: entry.path,
-                    staged: staged,
-                    untracked: entry.isUntracked,
-                    origPath: entry.origPath
-                )
-            },
-            openCommitDiff: { [weak manager, weak git] commit, file in
-                guard let git else { return }
-                manager?.openCommitDiff(
-                    repoRoot: git.repoRoot,
-                    path: file.path,
-                    commitHash: commit.hash,
-                    parentHash: commit.parentHash,
-                    status: file.status,
-                    origPath: file.originalPath
-                )
-            }
+        if filesKey != lastFilesKey {
+            lastFilesKey = filesKey
+            filesPanel.configure(
+                model: fileTree,
+                git: git,
+                session: manager.selectedSession,
+                rootBadge: rootBadge,
+                currentFilePath: openFilePath,
+                openFile: { [weak manager] path in manager?.openFile(path) },
+                openToSide: { [weak manager] path in manager?.openFileToSide(path) },
+                onRename: { [weak manager] old, new in manager?.fileRenamed(from: old, to: new) },
+                refreshGitStatus: { [weak git] in git?.refresh() }
+            )
+        }
+        let gitKey = GitPanelKey(
+            tab: manager.panelTab,
+            sessionID: manager.selectedSession?.id,
+            fontSize: settings.sidebarFontSize,
+            themeToken: themeToken,
+            rootPath: git.rootPath,
+            repositoryIdentity: git.repositoryIdentity,
+            isRepo: git.isRepo,
+            statusError: git.statusError,
+            branch: git.branch,
+            headOID: git.headOID,
+            ahead: git.ahead,
+            behind: git.behind,
+            hasUpstream: git.hasUpstream,
+            isBusy: git.isBusy,
+            isRefreshing: git.isRefreshing,
+            isResolvingInitialStatus: git.isResolvingInitialStatus,
+            merge: git.mergeEntries,
+            staged: git.stagedEntries,
+            changes: git.changedEntries,
+            commits: git.recentCommits,
+            hasMoreCommits: git.hasMoreRecentCommits,
+            isLoadingMore: git.isLoadingMoreCommits,
+            stashCount: git.stashCount,
+            repositoryOperation: git.repositoryOperation
         )
-        let infoRoot = InfoPanelRoot(
-            model: info,
-            session: manager.selectedSession,
+        if gitKey != lastGitKey {
+            lastGitKey = gitKey
+            gitPanel.configure(
+                model: git,
+                session: manager.selectedSession,
+                fontScale: sidebarScale,
+                openFile: { [weak manager] path in manager?.openFile(path) },
+                openToSide: { [weak manager] path in manager?.openFileToSide(path) },
+                openDiff: { [weak manager, weak git] entry, staged in
+                    guard let git else { return }
+                    manager?.openDiff(
+                        repoRoot: git.repoRoot,
+                        path: entry.path,
+                        staged: staged,
+                        untracked: entry.isUntracked,
+                        origPath: entry.origPath
+                    )
+                },
+                openCommitDiff: { [weak manager, weak git] commit, file in
+                    guard let git else { return }
+                    manager?.openCommitDiff(
+                        repoRoot: git.repoRoot,
+                        path: file.path,
+                        commitHash: commit.hash,
+                        parentHash: commit.parentHash,
+                        status: file.status,
+                        origPath: file.originalPath
+                    )
+                }
+            )
+        }
+        let infoKey = InfoPanelKey(
+            sessionID: manager.selectedSession?.id,
             fontScale: sidebarScale,
             fontSize: settings.sidebarFontSize
         )
-        if let infoHost {
-            infoHost.rootView = infoRoot
-        } else {
-            let host = NSHostingView(rootView: infoRoot)
-            host.safeAreaRegions = []
-            infoContainer.addSubview(host)
-            infoHost = host
+        if infoKey != lastInfoKey {
+            lastInfoKey = infoKey
+            let infoRoot = InfoPanelRoot(
+                model: info,
+                session: manager.selectedSession,
+                fontScale: sidebarScale,
+                fontSize: settings.sidebarFontSize
+            )
+            if let infoHost {
+                infoHost.rootView = infoRoot
+            } else {
+                let host = NSHostingView(rootView: infoRoot)
+                host.safeAreaRegions = []
+                infoContainer.addSubview(host)
+                infoHost = host
+            }
         }
 
-        let tab = manager.panelTab
-        filesPanel.isHidden = tab != .files
-        gitPanel.isHidden = tab != .git
-        infoContainer.isHidden = tab != .info
+        selectTab(manager.panelTab)
         leadingHeader.isHidden = placement != .leading
 
         afterViewUpdate { [weak self] in
@@ -241,15 +353,26 @@ final class WorkspaceInspectorView: NSView {
         needsLayout = true
     }
 
-    var debugSelectedTab: RightPanel { manager?.panelTab ?? .files }
+    var debugSelectedTab: RightPanel { selectedTab }
     var debugWidth: Double { width }
     var debugTabTitles: [String] { tabBar.debugTabTitles }
     var debugFilesPanel: AppKitFileTreePanel { filesPanel }
     var debugGitPanel: AppKitGitPanelView { gitPanel }
+    var debugInfoIsHidden: Bool { infoContainer.isHidden }
     var debugResizeHandle: AppKitSidebarResizeHandle { resizeHandle }
 
     func debugSelectTab(_ panel: RightPanel) {
         tabBar.debugSelect(panel)
+    }
+
+    private func selectTab(_ panel: RightPanel) {
+        selectedTab = panel
+        manager?.panelTab = panel
+        filesPanel.isHidden = panel != .files
+        gitPanel.isHidden = panel != .git
+        infoContainer.isHidden = panel != .info
+        updateInfoPolling()
+        needsLayout = true
     }
 
     override func layout() {

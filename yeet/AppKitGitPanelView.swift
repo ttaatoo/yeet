@@ -97,6 +97,9 @@ final class AppKitGitPanelView: NSView, NSTextViewDelegate, NSTextFieldDelegate 
     private var operationTrigger: OperationTrigger?
     private var lastRootPath = ""
     private var lastRepositoryIdentity = ""
+    private var lastBoundSessionID: UUID?
+    private var lastChangeListKey: ChangeListKey?
+    var debugAutomaticallyConfirmDiscard = false
 
     private let header = NSView()
     private let branchIcon = NSImageView(frame: .zero)
@@ -217,10 +220,16 @@ final class AppKitGitPanelView: NSView, NSTextViewDelegate, NSTextFieldDelegate 
             lastRootPath = model.rootPath
             pendingDiscard = nil
             pendingDiscardAll = []
+            lastChangeListKey = nil
         }
         if lastRepositoryIdentity != model.repositoryIdentity {
             lastRepositoryIdentity = model.repositoryIdentity
+            lastChangeListKey = nil
             resetRepositoryDrafts()
+        }
+        if lastBoundSessionID != session?.id {
+            lastBoundSessionID = session?.id
+            lastChangeListKey = nil
         }
         if !model.isBusy { operationTrigger = nil }
         refresh()
@@ -230,6 +239,17 @@ final class AppKitGitPanelView: NSView, NSTextViewDelegate, NSTextFieldDelegate 
     var debugFilterText: String { filterText }
     var debugCommitMessage: String { commitMessage }
     var debugShowsFilter: Bool { showFilter }
+    var debugChangeListConfigureCount: Int { changeList.debugConfigureCount }
+    var debugScrollOrigin: NSPoint { scrollView.contentView.bounds.origin }
+    var debugChangeList: AppKitGitChangeListView { changeList }
+
+    func debugEntryRow(named name: String) -> AppKitGitEntryRowView? {
+        changeList.debugEntryRow(named: name)
+    }
+
+    func debugDiscardFingerprintCount(for entry: GitStatusModel.Entry) -> Int {
+        makePendingDiscard(entry).fingerprints.count
+    }
 
     func debugSetFilter(_ text: String) {
         showFilter = true
@@ -617,7 +637,62 @@ final class AppKitGitPanelView: NSView, NSTextViewDelegate, NSTextFieldDelegate 
         filterClear.isHidden = filterText.isEmpty
     }
 
+    private struct ChangeListKey: Equatable {
+        var merge: [GitStatusModel.Entry]
+        var staged: [GitStatusModel.Entry]
+        var changes: [GitStatusModel.Entry]
+        var commits: [GitStatusModel.RecentCommit]
+        var mergeCollapsed: Bool
+        var stagedCollapsed: Bool
+        var changesCollapsed: Bool
+        var historyCollapsed: Bool
+        var expandedCommitIDs: Set<String>
+        var filterText: String
+        var totalChangeCount: Int
+        var ahead: Int
+        var behind: Int
+        var isBusy: Bool
+        var fontScale: CGFloat
+        var hasMoreCommits: Bool
+        var isLoadingMore: Bool
+        var stageAllLoading: Bool
+        var unstageAllLoading: Bool
+        var discardAllLoading: Bool
+        var loadingPath: String?
+        var loadingOperation: EntryOperationDebug?
+        var theme: ChromeAccent
+    }
+
     private func refreshChangeList(_ model: GitStatusModel) {
+        let loading = loadingEntryDebug()
+        let key = ChangeListKey(
+            merge: filteredMergeEntries,
+            staged: filteredStagedEntries,
+            changes: filteredChangedEntries,
+            commits: filterText.isEmpty ? model.recentCommits : [],
+            mergeCollapsed: mergeCollapsed,
+            stagedCollapsed: stagedCollapsed,
+            changesCollapsed: changesCollapsed,
+            historyCollapsed: historyCollapsed,
+            expandedCommitIDs: expandedCommitIDs,
+            filterText: filterText,
+            totalChangeCount: model.totalChangeCount,
+            ahead: model.ahead,
+            behind: model.behind,
+            isBusy: model.isBusy,
+            fontScale: fontScale,
+            hasMoreCommits: model.hasMoreRecentCommits,
+            isLoadingMore: model.isLoadingMoreCommits,
+            stageAllLoading: operationIsLoading(.stageAll),
+            unstageAllLoading: operationIsLoading(.unstageAll),
+            discardAllLoading: operationIsLoading(.discardAll),
+            loadingPath: loading?.path,
+            loadingOperation: loading?.operation,
+            theme: Theme.selectedChromeAccent
+        )
+        guard key != lastChangeListKey else { return }
+        lastChangeListKey = key
+        let scrollOrigin = scrollView.contentView.bounds.origin
         changeList.configure(
             merge: filteredMergeEntries,
             staged: filteredStagedEntries,
@@ -639,7 +714,7 @@ final class AppKitGitPanelView: NSView, NSTextViewDelegate, NSTextFieldDelegate 
             stageAllLoading: operationIsLoading(.stageAll),
             unstageAllLoading: operationIsLoading(.unstageAll),
             discardAllLoading: operationIsLoading(.discardAll),
-            loadingEntry: loadingEntryDebug(),
+            loadingEntry: loading,
             loadMore: { [weak model] in model?.loadMoreCommits() ?? false },
             openCommitDiff: { [weak self] commit, file in self?.openCommitDiff?(commit, file) },
             rowHandler: { [weak self] entry, kind in
@@ -663,6 +738,7 @@ final class AppKitGitPanelView: NSView, NSTextViewDelegate, NSTextFieldDelegate 
             },
             onDiscardAll: { [weak self] in self?.requestDiscardAll() }
         )
+        scrollView.contentView.scroll(to: scrollOrigin)
     }
 
     private func currentLoadingEntry() -> (path: String, operation: EntryOperation)? {
@@ -1083,6 +1159,10 @@ final class AppKitGitPanelView: NSView, NSTextViewDelegate, NSTextFieldDelegate 
 
     private func confirmPendingDiscard() {
         guard let pending = pendingDiscard else { return }
+        if debugAutomaticallyConfirmDiscard {
+            finishDiscard(pending, approved: true)
+            return
+        }
         Task { @MainActor in
             let approved = await WorkspaceAlert.confirm(
                 message: discardTitle(for: pending.entry),
@@ -1090,19 +1170,24 @@ final class AppKitGitPanelView: NSView, NSTextViewDelegate, NSTextFieldDelegate 
                 confirmTitle: discardActionTitle(for: pending.entry),
                 on: window ?? NSApp.keyWindow ?? NSApp.mainWindow
             )
-            if approved {
-                if discardSnapshotIsCurrent(pending) {
-                    performOperation(
-                        .entry(path: pending.entry.path, operation: .discard)
-                    ) {
-                        model?.discard(pending.entry)
-                    }
-                } else {
-                    model?.cancelStaleDiscard()
-                }
-            }
-            pendingDiscard = nil
+            self.finishDiscard(pending, approved: approved)
         }
+    }
+
+    private func finishDiscard(_ pending: PendingDiscard, approved: Bool) {
+        guard pendingDiscard != nil else { return }
+        if approved {
+            if discardSnapshotIsCurrent(pending) {
+                performOperation(
+                    .entry(path: pending.entry.path, operation: .discard)
+                ) {
+                    model?.discard(pending.entry)
+                }
+            } else {
+                model?.cancelStaleDiscard()
+            }
+        }
+        pendingDiscard = nil
     }
 
     private func requestDiscardAll() {
