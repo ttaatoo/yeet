@@ -49,9 +49,9 @@ This is not official [Kero](https://kero.sh). `brew install egoist/tap/kero` ins
 | Config | `~/.config/kero` | `~/.config/yeet` |
 | CLI | `kero` | `yeet` |
 | Signing | Developer ID | ad-hoc |
-| Updates | Sparkle (`releases.kero.sh`) | Homebrew, zip, or rebuild (no Sparkle) |
+| Updates | Sparkle (`releases.kero.sh`) | Homebrew, zip, or rebuild |
 
-If `~/.config/yeet` is missing, Yeet copies leftover `~/.config/kerox`, otherwise older `~/.config/kero`.
+Yeet stores settings in `~/.config/yeet`; older Kero and Kerox settings are not imported.
 
 ## Contributing
 

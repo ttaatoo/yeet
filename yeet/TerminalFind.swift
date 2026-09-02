@@ -7,6 +7,18 @@ import AppKit
 import Combine
 import Foundation
 
+@MainActor
+protocol TerminalFindSurface: AnyObject {
+    var hasSelection: Bool { get }
+    /// Highlights matches and reports counts through TerminalBackendEvents.
+    func beginFind(_ needle: String)
+    /// Clears the active search and its highlights.
+    func endFind()
+    func stepFind(forward: Bool)
+    /// Resolves selected text inside the terminal, without re-escaping it here.
+    func findSelection()
+}
+
 nonisolated enum TerminalSelectionAvailability: Equatable, Sendable {
     case busy
     case empty
@@ -81,7 +93,7 @@ final class TerminalFind: nonisolated ObservableObject {
 
     /// The session owning this also owns the surface, so an unowned reference
     /// is safe and keeps the session's object graph acyclic.
-    private unowned let surface: any TerminalBackendSurface
+    private unowned let surface: NSView & TerminalFindSurface
 
     /// Set while a needle the backend resolved for us (⌘E's selection) is
     /// being written into `query`, so echoing it back as a fresh search —
@@ -99,7 +111,7 @@ final class TerminalFind: nonisolated ObservableObject {
     /// edit, on empty clear, and when the bar is dismissed.
     private var pendingSearch: DispatchWorkItem?
 
-    init(surface: any TerminalBackendSurface) {
+    init(surface: NSView & TerminalFindSurface) {
         self.surface = surface
     }
 

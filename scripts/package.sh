@@ -171,7 +171,6 @@ xcodebuild \
   CLANG_COVERAGE_MAPPING=NO \
   CLANG_ENABLE_CODE_COVERAGE=NO \
   ENABLE_CODE_COVERAGE=NO \
-  KERO_SU_FEED_URL="" \
   build
 
 APP="$(find "$DERIVED/Build/Products/Release" -maxdepth 1 -name "Yeet.app" -type d | head -n 1)"
@@ -182,17 +181,6 @@ fi
 
 rm -rf "$DEST/Yeet.app"
 cp -R "$APP" "$DEST/Yeet.app"
-
-# Belt-and-suspenders: never ship the official Sparkle appcast or the
-# official EdDSA key on a brew / GitHub Release build of this fork.
-# The official key + https://releases.kero.sh would let Sparkle replace
-# Yeet with notarized egoist Kero.
-PLIST="$DEST/Yeet.app/Contents/Info.plist"
-if [[ -f "$PLIST" ]]; then
-  plutil -replace SUFeedURL -string "" "$PLIST"
-  plutil -replace SUPublicEDKey -string "" "$PLIST"
-  plutil -replace SUEnableAutomaticChecks -bool false "$PLIST"
-fi
 
 RESOURCES="$DEST/Yeet.app/Contents/Resources"
 mkdir -p "$RESOURCES"

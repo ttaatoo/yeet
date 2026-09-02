@@ -426,10 +426,7 @@ final class AppKitChromePresentationTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let git = GitStatusModel()
-        git.sync(root: directory.path)
-        _ = try await waitUntil(timeout: 8) {
-            git.hasResolvedStatus && !git.isRefreshing && !git.isBusy
-        } satisfies: { $0 }
+        try await loadGit(git, root: directory.path)
         XCTAssertTrue(git.isRepo)
         XCTAssertGreaterThanOrEqual(git.changedEntries.count, 2)
 
@@ -519,6 +516,91 @@ final class AppKitChromePresentationTests: XCTestCase {
         withExtendedLifetime(observation) {}
     }
 
+    func testInspectorFollowsProjectFocusWithoutManagerRelay() async throws {
+        let root = try makeTempDirectory(prefix: "yeet-inspector-project-focus")
+        defer { try? FileManager.default.removeItem(at: root) }
+        for name in ["alpha.swift", "beta.swift"] {
+            try "print(1)\n".write(
+                to: root.appendingPathComponent(name), atomically: true, encoding: .utf8
+            )
+        }
+        let project = Project(fallbackName: "focus", createInitialSession: false)
+        let first = PaneTab(content: .file(FileTab(path: root.appendingPathComponent("alpha.swift").path)))
+        let second = PaneTab(content: .file(FileTab(path: root.appendingPathComponent("beta.swift").path)))
+        project.append(first)
+        project.append(second)
+        let manager = TerminalManager()
+        manager.projects = [project]
+        manager.selectedProjectID = project.id
+        manager.isPanelVisible = true
+        manager.panelTab = .files
+        let git = GitStatusModel()
+        let tree = FileTreeModel()
+        let info = SessionInfoModel()
+        tree.sync(root: root.path)
+        _ = try await waitUntil(timeout: 5) { tree.items.count } satisfies: { $0 == 2 }
+
+        let inspector = WorkspaceInspectorView(
+            frame: NSRect(x: 0, y: 0, width: 240, height: 400)
+        )
+        inspector.configure(
+            manager: manager, git: git, fileTree: tree, info: info,
+            placement: .trailing, width: 240, onWidthChange: { _ in }
+        )
+        let alphaRow = try XCTUnwrap(inspector.debugFilesPanel.debugRow(at: 0))
+        let betaRow = try XCTUnwrap(inspector.debugFilesPanel.debugRow(at: 1))
+        XCTAssertFalse(try XCTUnwrap(alphaRow.debugState).isCurrent)
+        XCTAssertTrue(try XCTUnwrap(betaRow.debugState).isCurrent)
+        var managerPublications = 0
+        let observation = manager.objectWillChange.sink { managerPublications += 1 }
+
+        project.selectedTabID = first.id
+        await Self.drainMainQueue(times: 3)
+
+        XCTAssertTrue(try XCTUnwrap(alphaRow.debugState).isCurrent)
+        XCTAssertFalse(try XCTUnwrap(betaRow.debugState).isCurrent)
+        XCTAssertEqual(managerPublications, 0)
+        withExtendedLifetime(observation) {}
+    }
+
+    func testInspectorFollowsProjectDirectoryWithoutManagerRelay() async throws {
+        let root = try makeTempDirectory(prefix: "yeet-inspector-project-directory")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = root.appendingPathComponent("first", isDirectory: true)
+        let second = root.appendingPathComponent("second", isDirectory: true)
+        for directory in [first, second] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        let project = Project(fallbackName: "directory", createInitialSession: false)
+        let session = project.newSession(directory: root.path)
+        defer { session.terminate() }
+        project.customDirectory = first.path
+        let manager = TerminalManager()
+        manager.projects = [project]
+        manager.selectedProjectID = project.id
+        manager.isPanelVisible = true
+        manager.panelTab = .files
+        let git = GitStatusModel()
+        let tree = FileTreeModel()
+        let info = SessionInfoModel()
+        let inspector = WorkspaceInspectorView(
+            frame: NSRect(x: 0, y: 0, width: 240, height: 400)
+        )
+        inspector.configure(
+            manager: manager, git: git, fileTree: tree, info: info,
+            placement: .trailing, width: 240, onWidthChange: { _ in }
+        )
+        _ = try await waitUntil(timeout: 5) { tree.rootPath } satisfies: { $0 == first.path }
+        var managerPublications = 0
+        let observation = manager.objectWillChange.sink { managerPublications += 1 }
+
+        project.customDirectory = second.path
+        _ = try await waitUntil(timeout: 5) { tree.rootPath } satisfies: { $0 == second.path }
+
+        XCTAssertEqual(managerPublications, 0)
+        withExtendedLifetime(observation) {}
+    }
+
     func testFileTreeRowsKeepIdentityAcrossReconfigure() async throws {
         let root = try makeTempDirectory(prefix: "yeet-files-row-reuse")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -552,11 +634,8 @@ final class AppKitChromePresentationTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let git = GitStatusModel()
-        git.sync(root: directory.path)
-        _ = try await waitUntil(timeout: 8) {
-            git.hasResolvedStatus && !git.isRefreshing && !git.isBusy
-                && git.changedEntries.contains { $0.path == "gone.txt" }
-        } satisfies: { $0 }
+        try await loadGit(git, root: directory.path)
+        XCTAssertTrue(git.changedEntries.contains { $0.path == "gone.txt" })
 
         let panel = AppKitGitPanelView(frame: NSRect(x: 0, y: 0, width: 280, height: 480))
         configureGitPanel(panel, model: git)
@@ -580,9 +659,7 @@ final class AppKitChromePresentationTests: XCTestCase {
 
         panel.debugAutomaticallyConfirmDiscard = true
         panel.debugRequestDiscard(named: "gone.txt")
-        _ = try await waitUntil(timeout: 8) {
-            git.hasResolvedStatus && !git.isRefreshing && !git.isBusy
-        } satisfies: { $0 }
+        try await waitForGitStatus(git)
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: directory.appendingPathComponent("gone.txt").path
@@ -708,24 +785,6 @@ final class AppKitChromePresentationTests: XCTestCase {
             )
         }
         return directory
-    }
-
-    private struct WaitTimeout: Error {}
-
-    private func waitUntil<T>(
-        timeout: TimeInterval,
-        _ sample: @MainActor () -> T,
-        satisfies predicate: (T) -> Bool
-    ) async throws -> T {
-        let deadline = Date().addingTimeInterval(timeout)
-        var last = sample()
-        while Date() < deadline {
-            if predicate(last) { return last }
-            try await Task.sleep(for: .milliseconds(50))
-            last = sample()
-        }
-        XCTFail("timed out waiting")
-        throw WaitTimeout()
     }
 
     private static func mouseEvent(clickCount: Int) -> NSEvent {

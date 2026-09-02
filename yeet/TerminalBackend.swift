@@ -5,122 +5,18 @@
 
 import AppKit
 
-/// Everything a backend needs to start one pane's shell. Kero resolves the
-/// login shell, the PID/replay shim, and the environment once, up front; how a
-/// backend spawns a PTY from there is its own business.
+/// The program, arguments, directory, and environment for one terminal PTY.
+/// TerminalSession resolves the login shell and replay script before launch.
 struct TerminalLaunch {
-    /// Program to exec, and the arguments after argv[0] — for backends that
-    /// spawn the PTY themselves.
+    /// Program to exec and the arguments after argv[0].
     let program: String
     let arguments: [String]
-    /// The same launch as one command line, for backends configured with a
-    /// shell string rather than an argv.
-    let commandLine: String
     let workingDirectory: String
     let environment: [String: String]
 }
 
-/// What Kero needs from a terminal surface, in Kero's vocabulary rather than
-/// any one emulator's.
-///
-/// A surface is an `NSView` because panes reparent the same instance as splits
-/// and tabs change (see `TerminalHostView`) — that is what keeps PTY state,
-/// selection, and scrollback alive across layout changes. Everything the
-/// terminal reports back travels the other way, through
-/// ``TerminalBackendEvents``.
-@MainActor
-protocol TerminalBackendSurface: NSView {
-    /// The session listening to this surface. Implementations hold it weakly:
-    /// the session owns the surface, not the reverse.
-    var events: (any TerminalBackendEvents)? { get set }
-
-    /// Fired whenever direct interaction makes this pane the active one.
-    var onBecomeFirstResponder: (() -> Void)? { get set }
-
-    /// Target for the pane-split items in the surface's context menu.
-    var splitTarget: SplitMenuTarget { get }
-
-    /// True only while Kero is active, its window is key, and this exact
-    /// surface owns the first responder.
-    var hasEffectiveTerminalFocus: Bool { get }
-
-    /// PID of the surface's foreground process group leader, when known.
-    var foregroundPid: pid_t? { get }
-
-    /// Whether anything is selected in the grid.
-    var hasSelection: Bool { get }
-
-    /// Whether this pane draws. Parked panes stay attached so PTY events keep
-    /// draining, but should release renderer memory while nothing composites
-    /// them.
-    func setSurfaceVisible(_ visible: Bool)
-
-    /// Re-reads `AppSettings` and `Theme`. Called whenever a live pane needs
-    /// to pick up a new font, color theme, or input setting in place.
-    func applyAppearance()
-
-    /// Releases the emulator and its child process bookkeeping. The view
-    /// itself outlives this call so teardown never pulls a pane out from
-    /// under the layout mid-frame.
-    func detach()
-
-    func sendText(_ text: String)
-
-    /// Sends line-oriented wheel input to the foreground terminal application.
-    /// Returns false when the current terminal mode would consume scrolling as
-    /// host scrollback instead. Automation uses this only to page a settled
-    /// full-screen agent transcript and restores the application to the bottom.
-    func sendApplicationScroll(lines: Int) -> Bool
-
-    /// Plain UTF-8 text for the current viewport. Implementations keep this
-    /// bounded and avoid walking full scrollback; use an in-memory snapshot
-    /// when the backend exposes one and a bounded screen export otherwise.
-    func readVisibleText(maxLines: Int, maxColumns: Int) -> String?
-
-    /// Clears the screen and scrollback, then repaints the shell's prompt at
-    /// the top.
-    func clearScreen()
-
-    /// Scrolls the viewport to `fraction` of the way through the scrollback,
-    /// 0 at the oldest row and 1 at the live prompt. This is the whole of what
-    /// the overlay scrollbar's drag needs, so row arithmetic stays with the
-    /// backend that knows its own buffer.
-    func scroll(toFraction fraction: Double)
-
-    /// Starts or replaces the find for `needle`. The backend highlights the
-    /// matches itself and counts them back through ``TerminalBackendEvents``.
-    ///
-    /// Named for Kero's UI (⌘F, `TerminalFind`) rather than for any backend's
-    /// own spelling of "search".
-    func beginFind(_ needle: String)
-
-    /// Ends the active find and clears its highlights.
-    func endFind()
-
-    /// Moves the selection to the next or previous match.
-    func stepFind(forward: Bool)
-
-    /// Starts a find for whatever is selected in the grid, resolving the
-    /// needle backend-side so Kero never has to read it out and re-escape it.
-    func findSelection()
-
-    /// Writes the screen and scrollback to a temporary file as a VT stream and
-    /// returns its path, for `TerminalHistorySerializer`.
-    ///
-    /// The file must be the only entry in a fresh subdirectory of the process
-    /// temporary directory: Kero validates that before reading, and deletes
-    /// both the file and its directory afterwards.
-    func exportScreenFile() -> String?
-
-    /// Same contract as ``exportScreenFile()``, for the scrollback above the
-    /// viewport alone. Nil when there is none — which is also how Kero tells a
-    /// scrolled shell from a full-screen TUI.
-    func exportScrollbackFile() -> String?
-}
-
-/// What a terminal surface reports back to the session that owns it. Each
-/// backend translates its own callbacks into these, so `TerminalSession` never
-/// names an emulator's types.
+/// What Alacritty reports to the session that owns it. The session applies
+/// app policy for notifications, links, clipboard access, and process exit.
 ///
 /// Delivery rule: invoke these only from a main-queue dispatch point (an event
 /// bounce, a timer, a Task) — never synchronously out of an `NSView` lifecycle

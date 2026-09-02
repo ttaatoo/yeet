@@ -9,10 +9,6 @@ struct keroApp: App {
     @NSApplicationDelegateAdaptor(KeroApplicationDelegate.self)
     private var applicationDelegate
 
-    // Held here so Sparkle can start at launch when a feed is configured.
-    // Packaged Yeet builds leave the feed empty and do not start it.
-    @StateObject private var updater = Updater.shared
-
     init() {
         TerminalFont.registerBundledFonts()
         TerminalNotificationService.shared.configure()
@@ -29,11 +25,6 @@ struct keroApp: App {
         .windowBackgroundDragBehavior(.disabled)
         .defaultSize(width: 900, height: 600)
         .commands {
-            CommandGroup(after: .appInfo) {
-                if updater.hasUpdateFeed {
-                    CheckForUpdatesView(updater: updater)
-                }
-            }
             KeroCommands()
         }
 
@@ -53,6 +44,7 @@ private struct WindowRootView: View {
     var body: some View {
         ContentView(manager: manager)
             .focusedSceneObject(manager)
+            .focusedSceneObject(manager.selectedProject)
             .onAppear {
                 TerminalManager.openRestoredWindows {
                     openWindow(id: "main")
@@ -67,6 +59,7 @@ private struct WindowRootView: View {
 /// Menu commands routed to the focused window's manager.
 private struct KeroCommands: Commands {
     @FocusedObject private var manager: TerminalManager?
+    @FocusedObject private var project: Project?
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -122,7 +115,7 @@ private struct KeroCommands: Commands {
 
         CommandGroup(after: .pasteboard) {
             // SwiftUI's Edit menu ships no Find submenu, so Kero owns these
-            // outright. They act on the focused pane — Ghostty's search in a
+            // outright. They act on the focused pane — Alacritty's search in a
             // terminal, STTextView's find bar in a file editor — rather than on
             // the first responder, which keeps them live while the find bar's
             // text field has keyboard focus. ⇧⌘G is already Toggle Git Panel,
@@ -132,30 +125,30 @@ private struct KeroCommands: Commands {
                     manager?.performFindAction(.show)
                 }
                 .keyboardShortcut("f", modifiers: .command)
-                .disabled(manager?.canFind != true)
+                .disabled(project?.canFind != true)
 
                 Button("Find and Replace…") {
                     manager?.performFindAction(.replace)
                 }
                 .keyboardShortcut("f", modifiers: [.command, .option])
-                .disabled(manager?.canReplace != true)
+                .disabled(project?.canReplace != true)
 
                 Button("Find Next") {
                     manager?.performFindAction(.next)
                 }
                 .keyboardShortcut("g", modifiers: .command)
-                .disabled(manager?.canFind != true)
+                .disabled(project?.canFind != true)
 
                 Button("Find Previous") {
                     manager?.performFindAction(.previous)
                 }
-                .disabled(manager?.canFind != true)
+                .disabled(project?.canFind != true)
 
                 Button("Use Selection for Find") {
                     manager?.performFindAction(.useSelection)
                 }
                 .keyboardShortcut("e", modifiers: .command)
-                .disabled(manager?.canFind != true)
+                .disabled(project?.canFind != true)
             }
 
             Divider()
@@ -164,7 +157,7 @@ private struct KeroCommands: Commands {
                 manager?.clearActiveTerminal()
             }
             .keyboardShortcut("k", modifiers: .command)
-            .disabled(manager?.canClearActiveTerminal != true)
+            .disabled(project?.canClearActiveTerminal != true)
         }
 
         // Frees ⌘P from the default Print item for the command palette.
@@ -189,25 +182,25 @@ private struct KeroCommands: Commands {
                 manager?.toggleSidebar()
             }
             .keyboardShortcut("b", modifiers: [.command, .shift])
-            .disabled(manager?.selectedProject == nil)
+            .disabled(project == nil)
 
             Button("Toggle Files Panel") {
                 manager?.togglePanel(.files)
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
-            .disabled(manager?.selectedProject == nil)
+            .disabled(project == nil)
 
             Button("Toggle Git Panel") {
                 manager?.togglePanel(.git)
             }
             .keyboardShortcut("g", modifiers: [.command, .shift])
-            .disabled(manager?.selectedProject == nil)
+            .disabled(project == nil)
 
             Button("Toggle Info Panel") {
                 manager?.togglePanel(.info)
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
-            .disabled(manager?.selectedProject == nil)
+            .disabled(project == nil)
         }
 
         CommandMenu("Projects") {
@@ -226,10 +219,9 @@ private struct KeroCommands: Commands {
             Divider()
 
             ForEach(Array((manager?.projects ?? []).prefix(9).enumerated()), id: \.element.id) { index, project in
-                Button(project.name) {
+                ProjectMenuItem(project: project, index: index) {
                     manager?.selectProject(index: index)
                 }
-                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
             }
         }
 
@@ -238,33 +230,35 @@ private struct KeroCommands: Commands {
                 manager?.focusBrowserAddressBar()
             }
             .keyboardShortcut("l", modifiers: .command)
-            .disabled(manager?.hasSelectedBrowser != true)
+            .disabled(project?.hasSelectedBrowser != true)
 
             Button("Reload Page") {
                 manager?.reloadSelectedBrowser()
             }
             .keyboardShortcut("r", modifiers: .command)
-            .disabled(manager?.hasSelectedBrowser != true)
+            .disabled(project?.hasSelectedBrowser != true)
 
             Button("Stop Loading") {
                 manager?.stopSelectedBrowser()
             }
-            .disabled(manager?.hasSelectedBrowser != true)
+            .disabled(project?.hasSelectedBrowser != true)
 
             Divider()
 
             Button("Open in Default Browser") {
                 manager?.openSelectedPageInDefaultBrowser()
             }
-            .disabled(manager?.hasSelectedBrowser != true)
+            .disabled(project?.hasSelectedBrowser != true)
         }
 
         CommandMenu("Agents") {
-            Button("Next Agent Needing Attention") {
-                manager?.focusNextAgentAttention()
+            if let manager {
+                AgentAttentionMenuItem(manager: manager)
+            } else {
+                Button("Next Agent Needing Attention") {}
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
+                    .disabled(true)
             }
-            .keyboardShortcut("a", modifiers: [.command, .shift])
-            .disabled(manager?.hasAgentAttention != true)
         }
 
         CommandMenu("Tabs") {
@@ -272,23 +266,23 @@ private struct KeroCommands: Commands {
                 manager?.splitRight()
             }
             .keyboardShortcut("d", modifiers: .command)
-            .disabled(manager?.canSplit != true)
+            .disabled(project?.canSplit != true)
 
             Button("Split Down") {
                 manager?.splitDown()
             }
             .keyboardShortcut("d", modifiers: [.command, .shift])
-            .disabled(manager?.canSplit != true)
+            .disabled(project?.canSplit != true)
 
             Button("Split Left") {
                 manager?.splitLeft()
             }
-            .disabled(manager?.canSplit != true)
+            .disabled(project?.canSplit != true)
 
             Button("Split Up") {
                 manager?.splitUp()
             }
-            .disabled(manager?.canSplit != true)
+            .disabled(project?.canSplit != true)
 
             Divider()
 
@@ -334,38 +328,38 @@ private struct KeroCommands: Commands {
                 manager?.togglePaneZoom()
             }
             .keyboardShortcut(.return, modifiers: [.command, .shift])
-            .disabled(manager?.hasSplitPanes != true)
+            .disabled(project?.hasSplitPanes != true)
 
             Button("Equalize Panes") {
                 manager?.equalizePanes()
             }
             .keyboardShortcut("=", modifiers: [.command, .control])
-            .disabled(manager?.hasSplitPanes != true)
+            .disabled(project?.hasSplitPanes != true)
 
             Menu("Resize Pane") {
                 Button("Up") {
                     manager?.resizePaneUp()
                 }
                 .keyboardShortcut(.upArrow, modifiers: [.command, .control])
-                .disabled(manager?.hasSplitPanes != true)
+                .disabled(project?.hasSplitPanes != true)
 
                 Button("Down") {
                     manager?.resizePaneDown()
                 }
                 .keyboardShortcut(.downArrow, modifiers: [.command, .control])
-                .disabled(manager?.hasSplitPanes != true)
+                .disabled(project?.hasSplitPanes != true)
 
                 Button("Left") {
                     manager?.resizePaneLeft()
                 }
                 .keyboardShortcut(.leftArrow, modifiers: [.command, .control])
-                .disabled(manager?.hasSplitPanes != true)
+                .disabled(project?.hasSplitPanes != true)
 
                 Button("Right") {
                     manager?.resizePaneRight()
                 }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .control])
-                .disabled(manager?.hasSplitPanes != true)
+                .disabled(project?.hasSplitPanes != true)
             }
 
             Divider()
@@ -384,12 +378,50 @@ private struct KeroCommands: Commands {
 
             Divider()
 
-            ForEach(Array((manager?.selectedProject?.tabs ?? []).prefix(9).enumerated()), id: \.element.id) { index, tab in
+            ForEach(Array((project?.tabs ?? []).prefix(9).enumerated()), id: \.element.id) { index, tab in
                 Button(tab.displayTitle ?? String(localized: "Tab \(index + 1)")) {
                     manager?.selectTab(index: index)
                 }
                 .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .control)
             }
         }
+    }
+}
+
+/// Background projects can be renamed without changing the window selection.
+/// Each menu label observes its project instead of the window manager.
+private struct ProjectMenuItem: View {
+    @ObservedObject var project: Project
+    let index: Int
+    let select: () -> Void
+
+    var body: some View {
+        Button(project.name, action: select)
+            .keyboardShortcut(
+                KeyEquivalent(Character("\(index + 1)")), modifiers: .command
+            )
+    }
+}
+
+/// Attention can arrive in any project. Its menu item owns the collection
+/// observation so a background agent cannot invalidate the whole workspace.
+private struct AgentAttentionMenuItem: View {
+    @ObservedObject var manager: TerminalManager
+    @StateObject private var projects: WorkspaceProjectSnapshotStore
+
+    init(manager: TerminalManager) {
+        self.manager = manager
+        _projects = StateObject(
+            wrappedValue: WorkspaceProjectSnapshotStore(projects: manager.projects)
+        )
+    }
+
+    var body: some View {
+        Button("Next Agent Needing Attention") {
+            manager.focusNextAgentAttention()
+        }
+        .keyboardShortcut("a", modifiers: [.command, .shift])
+        .disabled(TerminalManager.agentAttentionRefs(in: projects.projects.map(\.project)).isEmpty)
+        .onReceive(manager.$projects) { projects.updateProjects($0) }
     }
 }

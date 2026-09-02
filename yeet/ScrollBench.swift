@@ -750,7 +750,6 @@ private final class ScrollBenchRunner: NSObject {
         let launch = TerminalLaunch(
             program: "/bin/zsh",
             arguments: ["-c", scenario.command],
-            commandLine: scenario.command,
             workingDirectory: NSHomeDirectory(),
             environment: ["TERM": "xterm-256color"]
         )

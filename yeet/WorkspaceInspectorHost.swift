@@ -45,6 +45,8 @@ final class WorkspaceInspectorView: NSView {
     private var applicationIsActive = NSApp.isActive
     private var infoPoll: Timer?
     private var themeObservation: AnyCancellable?
+    private weak var observedProject: Project?
+    private var projectObservation: AnyCancellable?
     private var activeObservers: [NSObjectProtocol] = []
     private var refreshQueued = false
 
@@ -215,6 +217,15 @@ final class WorkspaceInspectorView: NSView {
         self.onWidthChange = onWidthChange
         resizeHandle.width = self.width
         resizeHandle.edge = placement == .leading ? .trailing : .leading
+
+        if observedProject !== manager.selectedProject {
+            observedProject = manager.selectedProject
+            projectObservation = observedProject?.objectWillChange.sink { [weak self] _ in
+                // Project publishes before its setter completes. Read the new
+                // focus and directory on the next turn without a manager relay.
+                self?.scheduleRefresh()
+            }
+        }
 
         let settings = AppSettings.shared
         let sidebarScale = CGFloat(settings.sidebarFontSize / AppSettings.defaultSidebarFontSize)
@@ -460,8 +471,24 @@ final class WorkspaceInspectorView: NSView {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.refreshQueued = false
-            self.refreshChrome()
-            self.needsLayout = true
+            if let manager = self.manager,
+               let git = self.git,
+               let fileTree = self.fileTree,
+               let info = self.info,
+               let onWidthChange = self.onWidthChange {
+                self.configure(
+                    manager: manager,
+                    git: git,
+                    fileTree: fileTree,
+                    info: info,
+                    placement: self.placement,
+                    width: self.width,
+                    onWidthChange: onWidthChange
+                )
+            } else {
+                self.refreshChrome()
+                self.needsLayout = true
+            }
         }
     }
 

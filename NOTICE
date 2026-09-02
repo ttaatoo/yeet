@@ -48,11 +48,6 @@ alacritty_terminal (Alacritty VT emulator crate)
   Path: Vendor/alacritty-bridge/ALACRITTY-LICENSE-APACHE
         Vendor/alacritty-bridge/ALACRITTY-LICENSE-MIT
 
-Sparkle (linked; packaged Yeet builds leave the update feed empty)
-  Copyright Sparkle Project
-  License: MIT
-  https://github.com/sparkle-project/Sparkle
-
 PierreDiffsSwift
   https://github.com/egoist-labs/PierreDiffsSwift
 

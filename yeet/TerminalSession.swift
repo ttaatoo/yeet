@@ -13,9 +13,8 @@ import Foundation
 /// exec an explicit argv directly. SwiftUI only reparents the same surface, so
 /// PTY state, selection, and scrollback survive tab and split-layout changes.
 ///
-/// Which emulator draws that surface is `TerminalBackend`'s business: this
-/// type talks to ``TerminalBackendSurface`` and hears back through
-/// ``TerminalBackendEvents``, and names no emulator's types itself.
+/// Yeet currently has one terminal implementation, Alacritty. Terminal
+/// callbacks still travel through ``TerminalBackendEvents``.
 @MainActor
 final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated Identifiable {
     nonisolated let id: UUID
@@ -29,7 +28,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     /// reconciles foreground process identity with explicit lifecycle events.
     @Published var agentStatus: KeroAgentStatus?
 
-    let surface: any TerminalBackendSurface
+    let surface: AlacrittyTerminalView
     let overlayScrollbar = OverlayScrollbarView()
     /// Find-in-terminal state for this session's pane (⌘F).
     let find: TerminalFind
@@ -50,10 +49,13 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     var terminalIsAtLiveBottom = true
     let agentObservation = KeroAgentObservationState()
     private var cachedForegroundDirectory: (pid: pid_t, path: String?)?
+    /// Stable key into the terminal history sidecar.
+    var historyKey: String?
 
     init(
         initialDirectory: String? = nil,
         restoredHistory: String? = nil,
+        historyKey: String? = nil,
         commandArguments: [String]? = nil,
         environmentPath: String? = nil
     ) {
@@ -71,7 +73,6 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         let launch = TerminalLaunch(
             program: "/bin/sh",
             arguments: ["-c", script],
-            commandLine: "/bin/sh -c \(POSIXShell.quote(script))",
             workingDirectory: directory,
             environment: Self.surfaceEnvironment(
                 pathOverride: environmentPath,
@@ -90,6 +91,7 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         self.surface = AlacrittyTerminalView(launch: launch)
         find = TerminalFind(surface: surface)
         lastHistorySnapshot = restoredHistory
+        self.historyKey = historyKey
         super.init()
 
         surface.events = self

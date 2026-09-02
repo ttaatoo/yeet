@@ -113,11 +113,6 @@ final class ThemeChanges: nonisolated ObservableObject {}
 enum Theme {
     nonisolated static let defaultDarkThemeName = "Yeet Dark"
     nonisolated static let defaultLightThemeName = "Yeet Light"
-    /// Names written by earlier builds. `definition(named:)` and
-    /// `isCommonTheme` still accept them so an old `config.toml` keeps its
-    /// built-in theme instead of falling through to a catalog row.
-    nonisolated static let legacyDefaultDarkThemeName = "Default Dark"
-    nonisolated static let legacyDefaultLightThemeName = "Default Light"
 
     /// Mascot body; Yeet Dark / Yeet Light selection and Coral chrome.
     nonisolated static let accentHex = "FF4D2E"
@@ -251,11 +246,11 @@ enum Theme {
     }
 
     nonisolated static func isDefaultDarkName(_ name: String) -> Bool {
-        name == defaultDarkThemeName || name == legacyDefaultDarkThemeName
+        name == defaultDarkThemeName
     }
 
     nonisolated static func isDefaultLightName(_ name: String) -> Bool {
-        name == defaultLightThemeName || name == legacyDefaultLightThemeName
+        name == defaultLightThemeName
     }
 
     /// The selected definitions, mirrored out of `AppSettings` because the

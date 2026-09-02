@@ -68,9 +68,8 @@ installed Yeet without clobbering it: settings go to
 `~/.config/yeet-dev/config.toml`, and the session snapshot and sidebar widths
 live under the separate bundle id. Release is `sh.yeet`
 and `~/.config/yeet`, so it also sits beside official Kero (`sh.kero`).
-If `~/.config/yeet` is missing, leftover `~/.config/kerox` (then older
-`~/.config/kero`) is copied in; Debug does the same with `yeet-dev` /
-`kerox-dev` / `kero-dev`. Application Support history follows the same idea.
+Yeet creates its configuration directory when needed. Older Kero and Kerox
+configuration and history are not imported.
 
 ## Website and docs
 

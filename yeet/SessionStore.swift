@@ -13,9 +13,8 @@ import Foundation
 /// from disk.
 struct SessionSnapshot: Codable {
     struct ProjectSnapshot: Codable {
-        /// A single pane's content — the terminal, file, browser, or diff it
-        /// holds. The original case shapes stay unchanged, so old saved tabs
-        /// still decode; see `TabSnapshot`.
+        /// A single pane's content: the terminal, file, browser, or diff it
+        /// holds. Optional fields added after v0.1.47 keep that format readable.
         enum PaneContentSnapshot: Codable {
             /// `agentKind`/`agentSessionID` are set only when a coding agent
             /// was live in the pane at save time and reported its native
@@ -181,11 +180,6 @@ struct SessionSnapshot: Codable {
             var historyKey: String?
         }
 
-        struct ColumnSnapshot: Codable {
-            var panes: [PaneSnapshot]
-            var weight: Double
-        }
-
         /// The persisted recursive pane tree. Fractions belong to individual
         /// splits, so a child can be divided on either axis without affecting
         /// its siblings.
@@ -200,8 +194,7 @@ struct SessionSnapshot: Codable {
         }
 
         /// One tab's recursive layout plus the focused leaf's tree-order
-        /// position. Decodes both the former column/row format and the original
-        /// pre-split single-content format.
+        /// position.
         struct TabSnapshot: Codable {
             var layout: LayoutSnapshot
             var focusedPaneIndex: Int
@@ -225,56 +218,17 @@ struct SessionSnapshot: Codable {
 
             enum CodingKeys: String, CodingKey {
                 case layout, focusedPaneIndex, customName, contextSessionIndex
-                case columns, focusedColumn, focusedRow
             }
 
             init(from decoder: any Decoder) throws {
-                if let container = try? decoder.container(keyedBy: CodingKeys.self),
-                   container.contains(.layout) {
-                    layout = try container.decode(LayoutSnapshot.self, forKey: .layout)
-                    focusedPaneIndex =
-                        (try? container.decode(Int.self, forKey: .focusedPaneIndex)) ?? 0
-                    customName = try? container.decode(String.self, forKey: .customName)
-                    contextSessionIndex = try? container.decode(
-                        Int.self, forKey: .contextSessionIndex
-                    )
-                    return
-                }
-                if let container = try? decoder.container(keyedBy: CodingKeys.self),
-                   let columns = try? container.decode(
-                       [ColumnSnapshot].self, forKey: .columns
-                   ), !columns.isEmpty {
-                    let nonEmptyColumns = columns.filter { !$0.panes.isEmpty }
-                    guard !nonEmptyColumns.isEmpty else {
-                        throw DecodingError.dataCorruptedError(
-                            forKey: .columns,
-                            in: container,
-                            debugDescription: "A pane layout must contain at least one pane"
-                        )
-                    }
-                    let focusedColumn =
-                        (try? container.decode(Int.self, forKey: .focusedColumn)) ?? 0
-                    let focusedRow =
-                        (try? container.decode(Int.self, forKey: .focusedRow)) ?? 0
-                    layout = Self.layout(from: nonEmptyColumns)
-                    let clampedColumn = min(max(0, focusedColumn), columns.count - 1)
-                    focusedPaneIndex = columns[..<clampedColumn]
-                        .reduce(0) { $0 + $1.panes.count }
-                        + min(
-                            max(0, focusedRow),
-                            max(0, columns[clampedColumn].panes.count - 1)
-                        )
-                    customName = try? container.decode(String.self, forKey: .customName)
-                    contextSessionIndex = nil
-                    return
-                }
-                // Legacy: the tab was a single content enum. Wrap it in a
-                // one-pane layout.
-                let content = try PaneContentSnapshot(from: decoder)
-                layout = .pane(PaneSnapshot(content: content, weight: 1))
-                focusedPaneIndex = 0
-                customName = nil
-                contextSessionIndex = nil
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                layout = try container.decode(LayoutSnapshot.self, forKey: .layout)
+                focusedPaneIndex =
+                    (try? container.decode(Int.self, forKey: .focusedPaneIndex)) ?? 0
+                customName = try? container.decode(String.self, forKey: .customName)
+                contextSessionIndex = try? container.decode(
+                    Int.self, forKey: .contextSessionIndex
+                )
             }
 
             func encode(to encoder: any Encoder) throws {
@@ -284,46 +238,6 @@ struct SessionSnapshot: Codable {
                 try container.encodeIfPresent(customName, forKey: .customName)
                 try container.encodeIfPresent(
                     contextSessionIndex, forKey: .contextSessionIndex
-                )
-            }
-
-            /// Converts the former row-of-columns layout to an equivalent
-            /// recursive tree so existing saved sessions continue to restore.
-            private static func layout(from columns: [ColumnSnapshot]) -> LayoutSnapshot {
-                let columnLayouts = columns.map { column in
-                    (
-                        node: stack(
-                            column.panes.map { (.pane($0), $0.weight) },
-                            axis: .vertical
-                        ),
-                        weight: column.weight
-                    )
-                }
-                return stack(
-                    columnLayouts.map { ($0.node, $0.weight) },
-                    axis: .horizontal
-                )
-            }
-
-            /// Builds a binary tree that preserves an n-item weighted stack.
-            private static func stack(
-                _ nodes: [(LayoutSnapshot, Double)], axis: PaneSplitAxis
-            ) -> LayoutSnapshot {
-                precondition(!nodes.isEmpty)
-                guard nodes.count > 1 else { return nodes[0].0 }
-                let firstWeight = max(0, nodes[0].1)
-                let remainingWeight = nodes.dropFirst().reduce(0) {
-                    $0 + max(0, $1.1)
-                }
-                let total = firstWeight + remainingWeight
-                let fraction = total > 0
-                    ? firstWeight / total
-                    : 1 / Double(nodes.count)
-                return .split(
-                    axis: axis,
-                    fraction: fraction,
-                    first: nodes[0].0,
-                    second: stack(Array(nodes.dropFirst()), axis: axis)
                 )
             }
         }
@@ -347,34 +261,93 @@ struct SessionSnapshot: Codable {
 }
 
 /// Persisted top level: one `SessionSnapshot` per open window, in
-/// window-creation order.
+/// window-creation order. The only unversioned input supported is the
+/// recursive multi-window format written by v0.1.47 and later.
 private struct AppSnapshot: Codable {
+    static let currentVersion = 1
+    var version: Int
+    var generation: String?
     var windows: [SessionSnapshot]
+
+    init(windows: [SessionSnapshot], generation: String? = nil) {
+        version = Self.currentVersion
+        self.generation = generation
+        self.windows = windows
+    }
+
+    enum CodingKeys: String, CodingKey { case version, generation, windows }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let version = try container.decodeIfPresent(Int.self, forKey: .version)
+            ?? Self.currentVersion
+        guard version == Self.currentVersion else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .version, in: container,
+                debugDescription: "Unsupported workspace snapshot version \(version)"
+            )
+        }
+        self.version = version
+        generation = try container.decodeIfPresent(String.self, forKey: .generation)
+        windows = try container.decode([SessionSnapshot].self, forKey: .windows)
+    }
 }
 
 enum SessionStore {
     private static let key = "sessionSnapshot"
+    private static let recoveryKey = "sessionSnapshotRecovery"
 
-    static func save(_ windows: [SessionSnapshot]) {
+    struct Loaded {
+        let windows: [SessionSnapshot]
+        let generation: String?
+    }
+
+    @discardableResult
+    static func save(
+        _ windows: [SessionSnapshot],
+        generation: String? = nil,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
         do {
-            let data = try JSONEncoder().encode(AppSnapshot(windows: windows))
-            UserDefaults.standard.set(data, forKey: key)
+            let data = try encode(windows, generation: generation)
+            commit(data, defaults: defaults)
+            return true
         } catch {
             // A failed encode must be visible: silent success at quit would
             // look like the session was saved when it was not.
             NSLog("SessionStore: failed to encode snapshot: \(error)")
+            return false
         }
     }
 
-    static func load() -> [SessionSnapshot] {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
-        if let app = try? JSONDecoder().decode(AppSnapshot.self, from: data) {
-            return app.windows
+    /// Publishes a layout that the workspace owner has already encoded and
+    /// saved with its history. Do not re-encode after changing the sidecar.
+    static func commit(_ data: Data, defaults: UserDefaults) {
+        defaults.set(data, forKey: key)
+    }
+
+    static func load(defaults: UserDefaults = .standard) -> Loaded {
+        guard let data = defaults.data(forKey: key) else {
+            return Loaded(windows: [], generation: nil)
         }
-        // Pre-multi-window format: the snapshot of a single window.
-        if let single = try? JSONDecoder().decode(SessionSnapshot.self, from: data) {
-            return [single]
+        if let loaded = try? decode(data) {
+            return loaded
         }
-        return []
+        // The next autosave can replace the active key. Keep the rejected
+        // bytes separately so starting a fresh workspace does not erase them.
+        defaults.set(data, forKey: recoveryKey)
+        NSLog("SessionStore: unsupported or corrupt workspace snapshot; copied to \(recoveryKey)")
+        return Loaded(windows: [], generation: nil)
+    }
+
+    static func encode(
+        _ windows: [SessionSnapshot], generation: String?
+    ) throws -> Data {
+        try JSONEncoder().encode(AppSnapshot(windows: windows, generation: generation))
+    }
+
+    static func decode(_ data: Data) throws -> Loaded {
+        let app = try JSONDecoder().decode(AppSnapshot.self, from: data)
+        return Loaded(windows: app.windows, generation: app.generation)
     }
 }

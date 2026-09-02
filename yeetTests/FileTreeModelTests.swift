@@ -11,29 +11,17 @@ import XCTest
 
 final class FileTreeModelTests: XCTestCase {
     func testSnapshotListsFilesAndHidesGitDirectory() throws {
-        let root = try makeTempDirectory(prefix: "yeet-tree-snap")
-        defer { try? FileManager.default.removeItem(at: root) }
-        try "a\n".write(
-            to: root.appendingPathComponent("alpha.txt"),
-            atomically: true,
-            encoding: .utf8
+        let repo = try GitInspectorFixtures.makeRepository(
+            prefix: "yeet-tree-snap",
+            files: [
+                "alpha.txt": "a\n",
+                "src/main.swift": "print(1)\n",
+            ]
         )
-        try FileManager.default.createDirectory(
-            at: root.appendingPathComponent("src"),
-            withIntermediateDirectories: true
-        )
-        try "print(1)\n".write(
-            to: root.appendingPathComponent("src/main.swift"),
-            atomically: true,
-            encoding: .utf8
-        )
-        try FileManager.default.createDirectory(
-            at: root.appendingPathComponent(".git"),
-            withIntermediateDirectories: true
-        )
+        defer { try? FileManager.default.removeItem(at: repo.root) }
 
         let items = FileTreeModel.snapshot(
-            root: root.path, expanded: [], draft: nil
+            root: repo.path, expanded: [], draft: nil
         )
         XCTAssertTrue(items.contains { $0.name == "alpha.txt" && !$0.isDirectory })
         XCTAssertTrue(items.contains { $0.name == "src" && $0.isDirectory && $0.depth == 0 })
@@ -42,21 +30,15 @@ final class FileTreeModelTests: XCTestCase {
     }
 
     func testSnapshotIncludesChildrenOfExpandedDirectories() throws {
-        let root = try makeTempDirectory(prefix: "yeet-tree-expand")
-        defer { try? FileManager.default.removeItem(at: root) }
-        try FileManager.default.createDirectory(
-            at: root.appendingPathComponent("src"),
-            withIntermediateDirectories: true
+        let repo = try GitInspectorFixtures.makeRepository(
+            prefix: "yeet-tree-expand",
+            files: ["src/main.swift": "print(1)\n"]
         )
-        try "print(1)\n".write(
-            to: root.appendingPathComponent("src/main.swift"),
-            atomically: true,
-            encoding: .utf8
-        )
+        defer { try? FileManager.default.removeItem(at: repo.root) }
 
-        let src = root.appendingPathComponent("src").path
+        let src = repo.url("src").path
         let items = FileTreeModel.snapshot(
-            root: root.path, expanded: [src], draft: nil
+            root: repo.path, expanded: [src], draft: nil
         )
         XCTAssertTrue(items.contains { $0.name == "src" && $0.isDirectory })
         XCTAssertTrue(items.contains {
@@ -65,18 +47,16 @@ final class FileTreeModelTests: XCTestCase {
     }
 
     func testSnapshotInsertsDraftRowAtTopOfParent() throws {
-        let root = try makeTempDirectory(prefix: "yeet-tree-draft")
-        defer { try? FileManager.default.removeItem(at: root) }
-        try "k\n".write(
-            to: root.appendingPathComponent("kept.txt"),
-            atomically: true,
-            encoding: .utf8
+        let repo = try GitInspectorFixtures.makeRepository(
+            prefix: "yeet-tree-draft",
+            files: ["kept.txt": "k\n"]
         )
+        defer { try? FileManager.default.removeItem(at: repo.root) }
 
         let items = FileTreeModel.snapshot(
-            root: root.path,
+            root: repo.path,
             expanded: [],
-            draft: FileTreeModel.Draft(parentDir: root.path, isDirectory: false)
+            draft: FileTreeModel.Draft(parentDir: repo.path, isDirectory: false)
         )
         XCTAssertEqual(items.first?.isDraft, true)
         XCTAssertTrue(items.contains { $0.name == "kept.txt" })
@@ -84,21 +64,15 @@ final class FileTreeModelTests: XCTestCase {
 
     @MainActor
     func testToggleExpandsThenCollapsesDirectory() async throws {
-        let root = try makeTempDirectory(prefix: "yeet-tree-toggle")
-        defer { try? FileManager.default.removeItem(at: root) }
-        try FileManager.default.createDirectory(
-            at: root.appendingPathComponent("src"),
-            withIntermediateDirectories: true
+        let repo = try GitInspectorFixtures.makeRepository(
+            prefix: "yeet-tree-toggle",
+            files: ["src/main.swift": "print(1)\n"]
         )
-        try "print(1)\n".write(
-            to: root.appendingPathComponent("src/main.swift"),
-            atomically: true,
-            encoding: .utf8
-        )
+        defer { try? FileManager.default.removeItem(at: repo.root) }
 
         let tree = FileTreeModel()
-        tree.sync(root: root.path)
-        let collapsed = try await waitUntil(timeout: 5) {
+        tree.sync(root: repo.path)
+        let collapsed = try await waitUntil(description: "root listing") {
             tree.items
         } satisfies: { items in
             items.contains { $0.name == "src" && $0.isDirectory }
@@ -107,7 +81,7 @@ final class FileTreeModelTests: XCTestCase {
         XCTAssertFalse(tree.isExpanded(folder))
 
         tree.toggle(folder)
-        let expanded = try await waitUntil(timeout: 5) {
+        let expanded = try await waitUntil(description: "expanded src") {
             tree.items
         } satisfies: { items in
             items.contains { $0.name == "main.swift" }
@@ -116,36 +90,12 @@ final class FileTreeModelTests: XCTestCase {
         XCTAssertTrue(expanded.contains { $0.name == "main.swift" && $0.depth == 1 })
 
         tree.toggle(folder)
-        let recollapsed = try await waitUntil(timeout: 5) {
+        let recollapsed = try await waitUntil(description: "collapsed src") {
             tree.items
         } satisfies: { items in
             !items.contains { $0.name == "main.swift" }
         }
         XCTAssertFalse(tree.isExpanded(folder))
         XCTAssertTrue(recollapsed.contains { $0.name == "src" })
-    }
-}
-
-private extension FileTreeModelTests {
-    func makeTempDirectory(prefix: String) throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
-
-    func waitUntil<T>(
-        timeout: TimeInterval,
-        _ sample: @MainActor () -> T,
-        satisfies predicate: (T) -> Bool
-    ) async throws -> T {
-        let deadline = Date().addingTimeInterval(timeout)
-        var last = sample()
-        while Date() < deadline {
-            if predicate(last) { return last }
-            try await Task.sleep(for: .milliseconds(50))
-            last = sample()
-        }
-        return last
     }
 }

@@ -98,10 +98,7 @@ final class WorkspaceE2ETests: XCTestCase {
         )
 
         let git = GitStatusModel()
-        git.sync(root: directory.path)
-        _ = try await waitUntil(timeout: 8) {
-            git.hasResolvedStatus
-        } satisfies: { $0 }
+        try await loadGit(git, root: directory.path)
 
         XCTAssertTrue(git.isRepo)
         XCTAssertEqual(git.branch, "main")
@@ -117,10 +114,7 @@ final class WorkspaceE2ETests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let git = GitStatusModel()
-        git.sync(root: directory.path)
-        _ = try await waitUntil(timeout: 8) {
-            git.hasResolvedStatus
-        } satisfies: { $0 }
+        try await loadGit(git, root: directory.path)
 
         XCTAssertFalse(git.isRepo)
         XCTAssertTrue(git.changedEntries.isEmpty)
@@ -200,20 +194,5 @@ private extension WorkspaceE2ETests {
         )
         XCTAssertEqual(commit.status, 0, commit.stderr)
         return directory
-    }
-
-    func waitUntil<T>(
-        timeout: TimeInterval,
-        _ sample: @MainActor () -> T,
-        satisfies predicate: (T) -> Bool
-    ) async throws -> T {
-        let deadline = Date().addingTimeInterval(timeout)
-        var last = sample()
-        while Date() < deadline {
-            if predicate(last) { return last }
-            try await Task.sleep(for: .milliseconds(50))
-            last = sample()
-        }
-        return last
     }
 }

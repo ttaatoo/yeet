@@ -39,6 +39,9 @@ bun install && cd web && bun run typecheck
 
 # STTextView scroll-perf gate (vendored patches must keep ≥114 FPS)
 scripts/bench-file-render.sh
+
+# Git inspector data-path bench (133 staged / 3 unstaged / 60 commits → JSON)
+scripts/bench-git-inspector.sh
 ```
 
 Debug builds are `sh.yeet.dev` with state in `~/.config/yeet-dev`, so they run beside an

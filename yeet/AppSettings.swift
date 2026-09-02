@@ -89,28 +89,6 @@ enum ToolbarVisibility: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// Copies leftover Kerox (then older Kero) directories into Yeet paths when
-/// the Yeet directory does not exist yet. Used for `~/.config/yeet` and
-/// Application Support history so a rebrand does not drop existing settings.
-nonisolated enum LegacyIdentityStore {
-    static func adoptIfMissing(destination: URL, leftovers: [URL]) {
-        let fm = FileManager.default
-        if fm.fileExists(atPath: destination.path) { return }
-        for leftover in leftovers where fm.fileExists(atPath: leftover.path) {
-            do {
-                try fm.createDirectory(
-                    at: destination.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-                try fm.copyItem(at: leftover, to: destination)
-                return
-            } catch {
-                NSLog("yeet: failed to copy leftover \(leftover.path) → \(destination.path): \(error)")
-            }
-        }
-    }
-}
-
 /// User-configurable settings, persisted to `$HOME/.config/yeet/config.toml`.
 /// Views observe this directly; `TerminalManager` re-themes live sessions on
 /// any change.
@@ -121,29 +99,17 @@ final class AppSettings: nonisolated ObservableObject {
     /// Development (Debug) builds store their config under `~/.config/yeet-dev`
     /// instead of `~/.config/yeet`, so running a dev build alongside an
     /// installed production build doesn't clobber its settings. This mirrors
-    /// the separate `sh.yeet.dev` bundle identifier that keeps the two apps'
-    /// `UserDefaults` (session snapshot, sidebar widths, Sparkle) apart —
-    /// and keeps this app off official Kero's `sh.kero` / `~/.config/kero`.
-    ///
-    /// If the Yeet directory is missing, leftover `~/.config/kerox`
-    /// (then older `~/.config/kero`) is copied in. Debug uses `yeet-dev`
-    /// with leftover `kerox-dev`, then `kero-dev`.
+    /// the separate `sh.yeet.dev` bundle identifier that keeps each app's
+    /// session state and sidebar widths in its own `UserDefaults` domain.
+    /// This keeps the app off official Kero's `sh.kero` / `~/.config/kero`.
     static let configURL: URL = {
         #if DEBUG
         let directory = "yeet-dev"
-        let leftovers = ["kerox-dev", "kero-dev"]
         #else
         let directory = "yeet"
-        let leftovers = ["kerox", "kero"]
         #endif
         let home = FileManager.default.homeDirectoryForCurrentUser
         let destDir = home.appendingPathComponent(".config/\(directory)", isDirectory: true)
-        LegacyIdentityStore.adoptIfMissing(
-            destination: destDir,
-            leftovers: leftovers.map {
-                home.appendingPathComponent(".config/\($0)", isDirectory: true)
-            }
-        )
         return destDir.appendingPathComponent("config.toml")
     }()
 
@@ -332,7 +298,7 @@ final class AppSettings: nonisolated ObservableObject {
         language = savedLanguage
 
         let existing = TOML.parse(at: Self.configURL)
-        let toml = existing ?? Self.legacyDefaults()
+        let toml = existing ?? [:]
         theme = toml["theme"]?.string.flatMap(AppTheme.init(rawValue:)) ?? .system
         themeDark = Self.knownTheme(
             toml["theme-dark"]?.string,
@@ -603,18 +569,6 @@ final class AppSettings: nonisolated ObservableObject {
         return succeeded
     }
 
-    /// Settings from releases that stored config in UserDefaults.
-    private static func legacyDefaults() -> [String: TOML.Value] {
-        var toml: [String: TOML.Value] = [:]
-        let defaults = UserDefaults.standard
-        if let family = defaults.string(forKey: "terminalFontFamily") {
-            toml["font-family"] = .string(family)
-        }
-        if defaults.object(forKey: "terminalFontSize") != nil {
-            toml["font-size"] = .number(defaults.double(forKey: "terminalFontSize"))
-        }
-        return toml
-    }
 }
 
 /// Minimal TOML support covering what the config file uses: flat and dotted

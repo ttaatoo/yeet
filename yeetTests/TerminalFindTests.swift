@@ -57,27 +57,12 @@ final class TerminalFindTests: XCTestCase {
 }
 
 @MainActor
-private final class TerminalFindTestSurface: NSView, TerminalBackendSurface {
-    weak var events: (any TerminalBackendEvents)?
-    var onBecomeFirstResponder: (() -> Void)?
-    let splitTarget = SplitMenuTarget()
-    var hasEffectiveTerminalFocus = false
-    var foregroundPid: pid_t?
+private final class TerminalFindTestSurface: NSView, TerminalFindSurface {
     var hasSelection = false
     private(set) var stepFindCalls = 0
 
-    func setSurfaceVisible(_: Bool) {}
-    func applyAppearance() {}
-    func detach() {}
-    func sendText(_: String) {}
-    func sendApplicationScroll(lines _: Int) -> Bool { false }
-    func readVisibleText(maxLines _: Int, maxColumns _: Int) -> String? { nil }
-    func clearScreen() {}
-    func scroll(toFraction _: Double) {}
     func beginFind(_: String) {}
     func endFind() {}
     func stepFind(forward _: Bool) { stepFindCalls += 1 }
     func findSelection() {}
-    func exportScreenFile() -> String? { nil }
-    func exportScrollbackFile() -> String? { nil }
 }

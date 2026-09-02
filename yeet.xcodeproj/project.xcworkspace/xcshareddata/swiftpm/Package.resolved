@@ -1,5 +1,5 @@
 {
-  "originHash" : "635d9dc3d55584b055aa46662767953d384ce2d83c68525b607ec04fc243ce1d",
+  "originHash" : "f84c456b3b94adcd10757077aec66deca8724ebad298abedef729d84fb77a567",
   "pins" : [
     {
       "identity" : "coretextswift",
@@ -20,15 +20,6 @@
       }
     },
     {
-      "identity" : "neon",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kylemacomber/Neon",
-      "state" : {
-        "branch" : "ce8d252",
-        "revision" : "ce8d252c8fd53ea0b6960e02c423315eef11f141"
-      }
-    },
-    {
       "identity" : "pierrediffsswift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/egoist-labs/PierreDiffsSwift",
@@ -44,24 +35,6 @@
       "state" : {
         "revision" : "5ff7f3363f7a08f77e0d761e38e6add31c2136e1",
         "version" : "1.8.1"
-      }
-    },
-    {
-      "identity" : "sparkle",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/sparkle-project/Sparkle",
-      "state" : {
-        "revision" : "b6496a74a087257ef5e6da1c5b29a447a60f5bd7",
-        "version" : "2.9.4"
-      }
-    },
-    {
-      "identity" : "sttextkitplus",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/krzyzanowskim/STTextKitPlus",
-      "state" : {
-        "revision" : "2ee74906f4d753458eeaa9a2f6d4538aacb86a1d",
-        "version" : "0.3.0"
       }
     },
     {

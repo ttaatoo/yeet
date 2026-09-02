@@ -15,7 +15,6 @@ enum SidebarMetrics {
 /// is the physical edge; ⌘B and the width key stay bound to this panel.
 struct SidebarView: View {
     @ObservedObject var manager: TerminalManager
-    let bottomBarHeight: CGFloat
     var placement: HorizontalEdge = .leading
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var themeChanges = Theme.changes
@@ -89,24 +88,16 @@ struct SidebarView: View {
                 .padding(.top, 8)
             }
 
-            HStack(spacing: 2) {
-                SidebarFooterButton(
-                    systemImage: "plus",
-                    tooltip: "New Project (⌘N)"
-                ) { manager.newProject() }
-                Spacer()
-                SidebarFooterButton(
-                    systemImage: "gearshape",
-                    tooltip: "Settings (⌘,)",
-                    tooltipAlignment: .trailing
-                ) { openSettings() }
-            }
-            .padding(.horizontal, 8)
-            .frame(height: bottomBarHeight)
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(Color(nsColor: Theme.chromeDivider))
-                    .frame(height: 1)
+            if let project = manager.selectedProject {
+                ProjectSidebarFooter(
+                    project: project, manager: manager,
+                    openSettings: { openSettings() }
+                )
+            } else {
+                SidebarFooterContent(
+                    manager: manager, openSettings: { openSettings() },
+                    height: BottomToolbarLayout.idealHeight
+                )
             }
         }
         .frame(width: width)
@@ -157,6 +148,49 @@ struct SidebarView: View {
     private func endProjectDrag() {
         draggedProjectID = nil
         NSCursor.arrow.set()
+    }
+}
+
+private struct ProjectSidebarFooter: View {
+    @ObservedObject var project: Project
+    let manager: TerminalManager
+    let openSettings: () -> Void
+
+    var body: some View {
+        SidebarFooterContent(
+            manager: manager,
+            openSettings: openSettings,
+            height: BottomToolbarLayout.height(for: project.selectedSession)
+        )
+    }
+}
+
+private struct SidebarFooterContent: View {
+    let manager: TerminalManager
+    @ObservedObject private var themeChanges = Theme.changes
+    let openSettings: () -> Void
+    let height: CGFloat
+
+    var body: some View {
+        HStack(spacing: 2) {
+            SidebarFooterButton(systemImage: "plus", tooltip: "New Project (⌘N)") {
+                manager.newProject()
+            }
+            Spacer()
+            SidebarFooterButton(
+                systemImage: "gearshape",
+                tooltip: "Settings (⌘,)",
+                tooltipAlignment: .trailing,
+                action: openSettings
+            )
+        }
+        .padding(.horizontal, 8)
+        .frame(height: height)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color(nsColor: Theme.chromeDivider))
+                .frame(height: 1)
+        }
     }
 }
 

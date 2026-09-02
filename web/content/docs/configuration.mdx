@@ -10,11 +10,10 @@ Most persistent Yeet settings live in one file:
 ```
 
 Debug builds use `~/.config/yeet-dev/config.toml`. If the Yeet directory is
-missing, leftover `~/.config/kerox` (then older `~/.config/kero`) is copied in.
+missing, Yeet creates it. Older Kero and Kerox settings are not imported.
 
-The Settings window (<kbd>Cmd</kbd>+<kbd>,</kbd>) writes this same file. A few
-macOS-owned settings—language and automatic updates—live elsewhere and are
-listed at the end of this page.
+The Settings window (<kbd>Cmd</kbd>+<kbd>,</kbd>) writes this same file. Language
+and workspace state live elsewhere, as listed at the end of this page.
 
 ## How the file behaves
 
@@ -52,8 +51,7 @@ The color theme for each appearance. A theme recolors terminal panes, the
 editor, and diffs. Dark chrome (the project list and the Files/Git inspector)
 is a solid warm near-black panel one step lighter than the terminal canvas,
 so the two sidebars match after a swap. Light chrome stays a solid panel from
-the selected light theme. `"Default Dark"` and `"Default Light"` still resolve
-to Yeet Dark and Yeet Light. The selected-project stripe and agent indicator
+the selected light theme. The selected-project stripe and agent indicator
 follow `chrome-accent`, not the catalog theme.
 
 Settings lists the curated theme catalog. A hand-written name must match one
@@ -239,9 +237,6 @@ Every key is optional. Delete a key to return that setting to its default.
 - **Language.** Settings offers System Default, English, Simplified Chinese,
   and Japanese. The choice uses macOS's per-app language preference and needs a
   relaunch, so it lives in Yeet's preferences rather than TOML.
-- **Automatic update checks.** Packaged Yeet has no Sparkle feed, so Settings
-  does not show update controls. Rebuild from source, or use Homebrew / a
-  GitHub Release zip when that asset exists.
 - **Window and layout state.** Window size, sidebar widths, selected panels,
   projects, tabs, panes, browser URLs, and diff control preferences live in
   Yeet's macOS preferences and session snapshot.

@@ -42,9 +42,7 @@ Users upgrade with:
 git -C "$(brew --repo ttaatoo/yeet)" pull && brew upgrade --cask ttaatoo/yeet/yeet
 ```
 
-Packaged Release builds clear `SUFeedURL` and `SUPublicEDKey` so Sparkle
-cannot replace Yeet with official egoist Kero. Debug uses the same empty
-feed and empty key. Keep `yeet.xcodeproj` at Xcode 16 project format
+Yeet does not link an in-app updater. Keep `yeet.xcodeproj` at Xcode 16 project format
 (`objectVersion = 77`). Xcode 27 writes format `110`, which 26.5 cannot
 open.
 
