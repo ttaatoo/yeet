@@ -673,7 +673,7 @@ enum KeroAutomationCommandLine {
         var target = AgentTarget()
         var prompt: String?
         var wait = false
-        var timeoutMS = 120_000
+        var timeoutMS = KeroAgentWait.defaultTimeoutMS
         var positional: [String] = []
         var index = 0
         while index < arguments.count {
@@ -711,7 +711,7 @@ enum KeroAutomationCommandLine {
         let submitted = try connection.automationRequest(method: "agent.prompt", params: params)
         guard wait else { return submitted }
         try validateTimeout(timeoutMS)
-        return try pollAgent(
+        return try requestAgentWait(
             target: stableTarget(from: submitted, fallback: target),
             states: [.idle, .done, .blocked],
             timeoutMS: timeoutMS,
@@ -754,7 +754,7 @@ enum KeroAutomationCommandLine {
     ) throws -> KeroJSONValue {
         var targetArgs: [String] = []
         var stateNames = "idle,done,blocked"
-        var timeoutMS = 120_000
+        var timeoutMS = KeroAgentWait.defaultTimeoutMS
         var index = 0
         while index < arguments.count {
             switch arguments[index] {
@@ -767,7 +767,7 @@ enum KeroAutomationCommandLine {
         let target = try parseAgentTarget(targetArgs, command: "+agent wait")
         let states = try parseAgentStates(stateNames)
         try validateTimeout(timeoutMS)
-        return try pollAgent(
+        return try requestAgentWait(
             target: target,
             states: states,
             timeoutMS: timeoutMS,
@@ -775,25 +775,21 @@ enum KeroAutomationCommandLine {
         )
     }
 
-    private static func pollAgent(
+    private static func requestAgentWait(
         target: AgentTarget,
         states: Set<KeroAgentPhase>,
         timeoutMS: Int,
         connection: AppConnection
     ) throws -> KeroJSONValue {
-        let deadline = Date().addingTimeInterval(Double(timeoutMS) / 1_000)
-        repeat {
-            let result = try connection.automationRequest(
-                method: "agent.get", params: target.params
-            )
-            if let name = result.objectValue?["agent"]?.objectValue?["state"]?.stringValue,
-               let phase = KeroAgentPhase(rawValue: name), states.contains(phase) {
-                return result
-            }
-            Thread.sleep(forTimeInterval: 0.1)
-        } while Date() < deadline
-        throw CLIError.message(
-            "Timed out waiting for agent state \(states.map(\.rawValue).sorted().joined(separator: ", "))."
+        var params = target.params
+        params["states"] = .array(
+            states.map(\.rawValue).sorted().map(KeroJSONValue.string)
+        )
+        params["timeout_ms"] = .number(Double(timeoutMS))
+        return try connection.automationRequest(
+            method: "agent.wait",
+            params: params,
+            timeout: KeroAgentWait.socketTimeout(timeoutMS: timeoutMS)
         )
     }
 
@@ -970,7 +966,9 @@ enum KeroAutomationCommandLine {
     }
 
     private static func validateTimeout(_ milliseconds: Int) throws {
-        guard (100...3_600_000).contains(milliseconds) else {
+        guard (KeroAgentWait.minimumTimeoutMS...KeroAgentWait.maximumTimeoutMS)
+            .contains(milliseconds)
+        else {
             throw CLIError.message("Timeout must be between 100 and 3600000 milliseconds.")
         }
     }
@@ -1035,6 +1033,9 @@ enum KeroAutomationCommandLine {
         Guarded prompts accept agents in created, working, idle, or done. While
         an agent is working, its CLI decides whether input steers the active
         turn or queues it. Use +pane send only when raw input is intentional.
+        `wait` and `prompt --wait` call Yeet's `agent.wait` method and stay
+        connected until a requested state matches, the agent disappears, or
+        the timeout returns `wait_timeout`.
         Yeet never infers lifecycle from rendered terminal text. After Yeet
         submits a prompt, only a provider-native hook or plugin can advance it
         to blocked, idle, or done. A reported idle background agent appears as

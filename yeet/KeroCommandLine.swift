@@ -197,10 +197,15 @@ final class AppConnection {
         )
         let response: KeroAutomationResponse
         do {
+            // `agent.wait` can hold the connection for timeout_ms. The 5s
+            // default would otherwise surface as a hung or transport error.
+            let exchangeTimeout = method == "agent.wait"
+                ? max(timeout, KeroAgentWait.socketTimeout(for: request))
+                : timeout
             response = try KeroAutomationSocketServer.exchange(
                 path: automationSocketPath,
                 request: request,
-                timeout: timeout
+                timeout: exchangeTimeout
             )
         } catch {
             // Swift errors that only implement CustomStringConvertible can

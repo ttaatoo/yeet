@@ -13,7 +13,8 @@ input as separate actions.
 
 1. Require `YEET_AUTOMATION=1`. If it is absent, explain that the command must
    run inside a newly opened Yeet terminal.
-2. Run `yeet +pane protocol` before a multi-step workflow.
+2. Run `yeet +pane protocol` before a multi-step workflow. The result lists
+   socket methods, including first-class `agent.wait`.
 3. Treat successful command output as JSON. Record returned `pane_id` values;
    do not infer pane IDs from titles or screen position.
 4. Stay within the invoking terminal's project. Yeet intentionally rejects
@@ -134,6 +135,13 @@ rendered terminal screen. `done` is the unseen presentation of integration-
 reported idle, not a state the model must announce. For an agent without an
 active integration, do not use `agent wait` as proof of progress or completion;
 read its pane and verify the project outcome directly.
+
+`yeet +agent wait` is the `agent.wait` socket method, not a CLI poll of
+`agent.get`. Yeet holds the connection until a requested phase matches, the
+agent disappears (`agent_not_found`), or `timeout_ms` elapses (`wait_timeout`).
+Default states are `idle`, `done`, and `blocked`; default `timeout_ms` is
+120000 (100–3600000). Clients must keep that socket open for the whole
+interval. Yeet never classifies terminal text to end the wait.
 
 Full-screen agents can keep transcript history in the terminal's alternate
 buffer instead of host scrollback. After `wait` reaches `idle` or `done`, use an
