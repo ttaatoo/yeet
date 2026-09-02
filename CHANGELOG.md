@@ -15,6 +15,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Restoring a Git project no longer crashes Yeet when its status contains duplicate or Unicode-equivalent paths.
+
 ## [0.1.56]
 
 - `yeet +agent wait` and `yeet +agent prompt --wait` wait inside Yeet for a provider-reported or recognized agent state instead of polling from the CLI. A timeout is the structured error `wait_timeout`.
