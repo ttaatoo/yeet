@@ -23,11 +23,15 @@
 import AppKit
 import STTextKitPlus
 import STTextViewCommon
+
+private struct MainQueueNotification: @unchecked Sendable {
+    let value: Notification
+}
 import AVFoundation
 
 /// A TextKit2 text view without NSTextView baggage
 @objc
-open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
+open class STTextView: NSView, @MainActor NSTextInput, @MainActor NSTextContent, STTextViewProtocol {
     /// Posted before an object performs any operation that changes characters or formatting attributes.
     public static let textWillChangeNotification = NSNotification.Name("NSTextWillChangeNotification")
 
@@ -769,12 +773,10 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
         fatalError("init(coder:) has not been implemented")
     }
 
-    deinit {
+    isolated deinit {
         guard !plugins.isEmpty else { return }
-        Task { @MainActor [plugins] in
-            for plugin in plugins {
-                plugin.instance.tearDown()
-            }
+        for plugin in plugins {
+            plugin.instance.tearDown()
         }
     }
 
@@ -788,34 +790,39 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
             NotificationCenter.default.removeObserver(didChangeSelectionNotificationObserver)
         }
         didChangeSelectionNotificationObserver = NotificationCenter.default.addObserver(forName: STTextLayoutManager.didChangeSelectionNotification, object: textLayoutManager, queue: .main) { [weak self] notification in
-            guard let self else { return }
+            let notification = MainQueueNotification(value: notification)
+            MainActor.assumeIsolated {
+                guard let self else { return }
 
-            _yankingManager.selectionChanged()
+                self._yankingManager.selectionChanged()
 
-            let textViewNotification = Notification(name: Self.didChangeSelectionNotification, object: self, userInfo: notification.userInfo)
+                let textViewNotification = Notification(name: Self.didChangeSelectionNotification, object: self, userInfo: notification.value.userInfo)
 
-            NotificationCenter.default.post(textViewNotification)
-            self.delegateProxy.textViewDidChangeSelection(textViewNotification)
+                NotificationCenter.default.post(textViewNotification)
+                self.delegateProxy.textViewDidChangeSelection(textViewNotification)
 
-            NSAccessibility.post(element: self, notification: .selectedTextChanged)
+                NSAccessibility.post(element: self, notification: .selectedTextChanged)
 
-            // Cancel completinon on selection change
-            if self.shouldDimissCompletionOnSelectionChange {
-                if NSApp.currentEvent == nil ||
-                    (NSApp.currentEvent?.type != .keyDown && NSApp.currentEvent?.type != .keyUp) ||
-                    NSApp.currentEvent?.characters == nil ||
-                    !(NSApp.currentEvent?.characters?.contains(where: \.isLetter) ?? false) {
-                    self.cancelComplete(textViewNotification.object)
+                // Cancel completinon on selection change
+                if self.shouldDimissCompletionOnSelectionChange {
+                    if NSApp.currentEvent == nil ||
+                        (NSApp.currentEvent?.type != .keyDown && NSApp.currentEvent?.type != .keyUp) ||
+                        NSApp.currentEvent?.characters == nil ||
+                        !(NSApp.currentEvent?.characters?.contains(where: \.isLetter) ?? false) {
+                        self.cancelComplete(textViewNotification.object)
+                    }
                 }
-            }
 
-            // textCheckingController.didChangeSelectedRange()
+                // textCheckingController.didChangeSelectedRange()
+            }
         }
 
         _usageBoundsForTextContainerObserver = nil
         _usageBoundsForTextContainerObserver = textLayoutManager.observe(\.usageBoundsForTextContainer, options: [.initial, .new]) { [weak self] _, _ in
-            // FB13291926: Notification no longer works. Fixed again in macOS 15.6
-            self?.needsUpdateConstraints = true
+            MainActor.assumeIsolated {
+                // FB13291926: Notification no longer works. Fixed again in macOS 15.6
+                self?.needsUpdateConstraints = true
+            }
         }
     }
 
@@ -1801,27 +1808,32 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
 
 // MARK: - NSViewInvalidating
 
+@MainActor
 private extension NSViewInvalidating where Self == STTextView.Invalidations.InsertionPoint {
     static var insertionPoint: STTextView.Invalidations.InsertionPoint {
         STTextView.Invalidations.InsertionPoint()
     }
 }
 
+@MainActor
 private extension NSViewInvalidating where Self == STTextView.Invalidations.CursorRects {
     static var cursorRects: STTextView.Invalidations.CursorRects {
         STTextView.Invalidations.CursorRects()
     }
 }
 
+@MainActor
 private extension NSViewInvalidating where Self == STTextView.Invalidations.LayoutViewport {
     static var layoutViewport: STTextView.Invalidations.LayoutViewport {
         STTextView.Invalidations.LayoutViewport()
     }
 }
 
+@MainActor
 private extension STTextView.Invalidations {
 
-    struct InsertionPoint: NSViewInvalidating {
+    @MainActor
+    struct InsertionPoint: @MainActor NSViewInvalidating {
 
         func invalidate(view: NSView) {
             guard let textView = view as? STTextView else {
@@ -1832,14 +1844,16 @@ private extension STTextView.Invalidations {
         }
     }
 
-    struct CursorRects: NSViewInvalidating {
+    @MainActor
+    struct CursorRects: @MainActor NSViewInvalidating {
 
         func invalidate(view: NSView) {
             view.window?.invalidateCursorRects(for: view)
         }
     }
 
-    struct LayoutViewport: NSViewInvalidating {
+    @MainActor
+    struct LayoutViewport: @MainActor NSViewInvalidating {
 
         func invalidate(view: NSView) {
             guard let textView = view as? STTextView else {

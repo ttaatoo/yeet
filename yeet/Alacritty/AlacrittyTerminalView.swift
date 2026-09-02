@@ -666,7 +666,7 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
         start(launch: launch)
     }
 
-    deinit {
+    isolated deinit {
         isDetached = true
         stopDisplayLink()
         directoryTimer?.invalidate()
@@ -1137,9 +1137,12 @@ final class AlacrittyTerminalView: NSView, TerminalBackendSurface,
             guard !renderScheduled else { return }
             renderScheduled = true
             RunLoop.main.perform(inModes: [.common]) { [weak self] in
-                guard let self else { return }
-                renderScheduled = false
-                refreshFrozenFrame()
+                let terminalView = self
+                assumeMainActor {
+                    guard let terminalView else { return }
+                    terminalView.renderScheduled = false
+                    terminalView.refreshFrozenFrame()
+                }
             }
             return
         }

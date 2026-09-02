@@ -309,7 +309,7 @@ enum KeroAgentIntegrations {
 
     // MARK: - Merged hook integrations
 
-    private static let mergedEntryMarker = "_yeet"
+    private nonisolated static let mergedEntryMarker = "_yeet"
 
     /// Reads the shared JSON config. A missing file is an empty object —
     /// Codex users may not have a `hooks.json` until Yeet creates one.
@@ -342,7 +342,7 @@ enum KeroAgentIntegrations {
         return hooks
     }
 
-    private static func isYeetHookGroup(_ entry: Any) -> Bool {
+    private nonisolated static func isYeetHookGroup(_ entry: Any) -> Bool {
         (entry as? [String: Any])?[mergedEntryMarker] as? Bool == true
     }
 

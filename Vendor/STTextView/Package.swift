@@ -12,7 +12,7 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/krzyzanowskim/STTextKitPlus", from: "0.2.0"),
+        .package(path: "../STTextKitPlus"),
         .package(url: "https://github.com/krzyzanowskim/CoreTextSwift", from: "0.2.0")
     ],
     targets: [

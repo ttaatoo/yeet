@@ -4,7 +4,7 @@
 import AppKit
 import STTextKitPlus
 
-extension STTextView: NSTextViewportLayoutControllerDelegate {
+extension STTextView: @MainActor NSTextViewportLayoutControllerDelegate {
 
     public func textViewportLayoutControllerWillLayout(_ textViewportLayoutController: NSTextViewportLayoutController) {
         lastUsedFragmentViews = Set(fragmentViewMap.objectEnumerator()?.allObjects as? [STTextLayoutFragmentView] ?? [])

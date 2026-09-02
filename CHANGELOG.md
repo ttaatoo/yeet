@@ -15,6 +15,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Switching between the Files, Git, and Info inspector no longer freezes Yeet after an upgrade.
+
 ## [0.1.58]
 
 - `yeet +agent start` waits inside Yeet for process recognition instead of polling from the CLI.

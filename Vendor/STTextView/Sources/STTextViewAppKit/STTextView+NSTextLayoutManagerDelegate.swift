@@ -3,7 +3,7 @@
 
 import AppKit
 
-extension STTextView: NSTextLayoutManagerDelegate {
+extension STTextView: @MainActor NSTextLayoutManagerDelegate {
 
     public func textLayoutManager(_ textLayoutManager: NSTextLayoutManager, textLayoutFragmentFor location: NSTextLocation, in textElement: NSTextElement) -> NSTextLayoutFragment {
         STTextLayoutFragment(

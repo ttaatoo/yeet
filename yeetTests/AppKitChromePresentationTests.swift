@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 import XCTest
 @testable import yeet
@@ -155,10 +156,11 @@ final class AppKitChromePresentationTests: XCTestCase {
             onDragEnded: {}
         )
 
-        let children = row.accessibilityAttributeValue(.children) as? [Any]
+        let children = row.accessibilityChildren()
         XCTAssertTrue(
             children?.contains { child in
-                (child as? NSCell)?.stringValue == "2"
+                (child as? NSTextField)?.stringValue == "2"
+                    || (child as? NSCell)?.stringValue == "2"
             } == true
         )
     }
@@ -487,6 +489,34 @@ final class AppKitChromePresentationTests: XCTestCase {
         XCTAssertFalse(inspector.debugFilesPanel.isHidden)
         XCTAssertTrue(inspector.debugGitPanel.isHidden)
         XCTAssertTrue(inspector.debugInfoIsHidden)
+    }
+
+    func testInspectorConfigureDoesNotRepublishSelectedTab() {
+        let manager = TerminalManager()
+        manager.panelTab = .files
+        let inspector = WorkspaceInspectorView(
+            frame: NSRect(x: 0, y: 0, width: 240, height: 400)
+        )
+        var publicationCount = 0
+        let observation = manager.objectWillChange.sink {
+            publicationCount += 1
+        }
+
+        inspector.configure(
+            manager: manager,
+            git: GitStatusModel(),
+            fileTree: FileTreeModel(),
+            info: SessionInfoModel(),
+            placement: .trailing,
+            width: 240,
+            onWidthChange: { _ in }
+        )
+
+        XCTAssertEqual(publicationCount, 0)
+        inspector.debugSelectTab(.git)
+        XCTAssertEqual(manager.panelTab, .git)
+        XCTAssertEqual(publicationCount, 1)
+        withExtendedLifetime(observation) {}
     }
 
     func testFileTreeRowsKeepIdentityAcrossReconfigure() async throws {

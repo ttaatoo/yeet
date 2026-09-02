@@ -89,7 +89,7 @@
         let didRequestCompletion = XCTestExpectation(description: "async completion requested")
 
         private let completionViewController: TestCompletionViewController
-        private var continuation: CheckedContinuation<[any STCompletionItem]?, Never>?
+        private var pendingItems: [any STCompletionItem]?
 
         init(completionViewController: TestCompletionViewController) {
             self.completionViewController = completionViewController
@@ -98,9 +98,11 @@
         func textView(_ textView: STTextView, completionItemsAtLocation location: any NSTextLocation) async -> [any STCompletionItem]? {
             didRequestCompletion.fulfill()
 
-            return await withCheckedContinuation { continuation in
-                self.continuation = continuation
+            while pendingItems == nil {
+                await Task.yield()
             }
+            defer { pendingItems = nil }
+            return pendingItems
         }
 
         func textViewCompletionViewController(_ textView: STTextView) -> any STCompletionViewControllerProtocol {
@@ -108,8 +110,7 @@
         }
 
         func finishCompletion(with items: [any STCompletionItem]) {
-            continuation?.resume(returning: items)
-            continuation = nil
+            pendingItems = items
         }
     }
 
@@ -120,6 +121,11 @@
 
     private struct TestCompletionItem: STCompletionItem {
         let id = UUID()
-        let view = NSView()
+        let view: NSView
+
+        @MainActor
+        init() {
+            view = NSView()
+        }
     }
 #endif

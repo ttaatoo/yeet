@@ -776,7 +776,7 @@ final class AlacrittyTerminalViewFrameTests: XCTestCase {
 
 }
 
-private final class BackendReleaseRecorder: @unchecked Sendable {
+private nonisolated final class BackendReleaseRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private(set) var rawValues: [UInt] = []
     private(set) var ranOnMain: [Bool] = []

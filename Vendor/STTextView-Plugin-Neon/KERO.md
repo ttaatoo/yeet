@@ -68,12 +68,14 @@ So this wrapper:
    (`File not found`) when the path is missing. If a re-copy puts those
    files back, the build fails because this package has no STTextView
    dependency.
-3. Keeps Neon + SwiftTreeSitter as remote dependencies, at the same pins
-   upstream used.
+3. Uses the Swift 6 compatibility copy of Neon at `Vendor/Neon` and keeps
+   SwiftTreeSitter as a remote dependency.
 4. Declares only the grammar targets `TreeSitterResource` actually links.
    Unused upstream grammars (Haskell, Perl, LaTeX, …) are not copied.
+5. Marks immutable token names as `Sendable` and isolates the AppKit/UIKit
+   default theme construction to the main actor.
 
-Theme, query files, and tree-sitter parsers are otherwise verbatim `5a30db4`.
+Query files and tree-sitter parsers are otherwise verbatim `5a30db4`.
 
 ## Identifying the vendored revision
 

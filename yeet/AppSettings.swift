@@ -92,7 +92,7 @@ enum ToolbarVisibility: String, CaseIterable, Identifiable {
 /// Copies leftover Kerox (then older Kero) directories into Yeet paths when
 /// the Yeet directory does not exist yet. Used for `~/.config/yeet` and
 /// Application Support history so a rebrand does not drop existing settings.
-enum LegacyIdentityStore {
+nonisolated enum LegacyIdentityStore {
     static func adoptIfMissing(destination: URL, leftovers: [URL]) {
         let fm = FileManager.default
         if fm.fileExists(atPath: destination.path) { return }

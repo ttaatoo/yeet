@@ -63,11 +63,15 @@ open class STCompletionWindowController: NSWindowController {
             parentWindow.addChildWindow(window, ordered: .above)
 
             _willCloseNotificationObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
-                self?.cleanupOnClose()
+                MainActor.assumeIsolated {
+                    self?.cleanupOnClose()
+                }
             }
 
             _didResignKeyNotificationObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: parentWindow, queue: .main) { [weak self] _ in
-                self?.close()
+                MainActor.assumeIsolated {
+                    self?.close()
+                }
             }
         }
 
@@ -87,6 +91,7 @@ open class STCompletionWindowController: NSWindowController {
     }
 }
 
+@MainActor
 public protocol STCompletionWindowDelegate: AnyObject {
     func completionWindowController(_ windowController: STCompletionWindowController, complete item: any STCompletionItem, movement: NSTextMovement)
     func completionWindowControllerCancel(_ windowController: STCompletionWindowController)

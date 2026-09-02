@@ -47,7 +47,7 @@ final class KeroTerminalProgressBarView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    deinit {
+    isolated deinit {
         reportTimer?.invalidate()
     }
 
@@ -98,7 +98,10 @@ final class KeroTerminalProgressBarView: NSView {
         reportTimer = Timer.scheduledTimer(
             withTimeInterval: 15, repeats: false
         ) { [weak self] _ in
-            self?.clearReport()
+            let progressView = self
+            assumeMainActor {
+                progressView?.clearReport()
+            }
         }
     }
 

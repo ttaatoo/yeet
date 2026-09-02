@@ -11,8 +11,8 @@ import Foundation
 /// path. Discard and merge stay human Git-panel actions; this is not a
 /// sandbox and does not auto-merge.
 enum KeroAgentWorktree {
-    static let gitExecutable = "/usr/bin/git"
-    static let branchPrefix = "yeet/agent/"
+    nonisolated static let gitExecutable = "/usr/bin/git"
+    nonisolated static let branchPrefix = "yeet/agent/"
 
     struct Checkout: Equatable, Sendable {
         var path: String

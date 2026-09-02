@@ -136,7 +136,7 @@ struct WindowChromeAccessor: NSViewRepresentable {
             }
         }
 
-        deinit {
+        isolated deinit {
             for observer in observers {
                 NotificationCenter.default.removeObserver(observer)
             }
@@ -185,7 +185,7 @@ extension NSWindow {
 @MainActor
 final class WorkspaceWindowCloseGuard: NSObject, NSWindowDelegate {
     private weak var manager: TerminalManager?
-    private weak var forwarding: NSWindowDelegate?
+    nonisolated(unsafe) private weak var forwarding: NSWindowDelegate?
     private var isConfirming = false
 
     func install(on window: NSWindow, manager: TerminalManager) {
@@ -213,12 +213,12 @@ final class WorkspaceWindowCloseGuard: NSObject, NSWindowDelegate {
         return false
     }
 
-    override func responds(to aSelector: Selector) -> Bool {
+    nonisolated override func responds(to aSelector: Selector) -> Bool {
         if super.responds(to: aSelector) { return true }
         return forwarding?.responds(to: aSelector) ?? false
     }
 
-    override func forwardingTarget(for aSelector: Selector) -> Any? {
+    nonisolated override func forwardingTarget(for aSelector: Selector) -> Any? {
         forwarding
     }
 }

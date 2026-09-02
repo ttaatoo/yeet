@@ -136,7 +136,7 @@ final class WorkspaceInspectorView: NSView {
         ) { [weak self] panel in
             self?.selectTab(panel)
         }
-        selectTab(.files)
+        displayTab(.files)
 
         collapseButton.onAction = { [weak self] in
             self?.manager?.toggleSidebar()
@@ -159,10 +159,11 @@ final class WorkspaceInspectorView: NSView {
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            guard let self else { return }
             assumeMainActor {
-                self?.applicationIsActive = true
-                self?.syncModels(force: true)
-                self?.updateInfoPolling()
+                self.applicationIsActive = true
+                self.syncModels(force: true)
+                self.updateInfoPolling()
             }
         })
         activeObservers.append(NotificationCenter.default.addObserver(
@@ -170,9 +171,10 @@ final class WorkspaceInspectorView: NSView {
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            guard let self else { return }
             assumeMainActor {
-                self?.applicationIsActive = false
-                self?.updateInfoPolling()
+                self.applicationIsActive = false
+                self.updateInfoPolling()
             }
         })
     }
@@ -180,7 +182,7 @@ final class WorkspaceInspectorView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
 
-    deinit {
+    isolated deinit {
         infoPoll?.invalidate()
         for observer in activeObservers {
             NotificationCenter.default.removeObserver(observer)
@@ -341,7 +343,7 @@ final class WorkspaceInspectorView: NSView {
             }
         }
 
-        selectTab(manager.panelTab)
+        displayTab(manager.panelTab)
         leadingHeader.isHidden = placement != .leading
 
         afterViewUpdate { [weak self] in
@@ -366,8 +368,14 @@ final class WorkspaceInspectorView: NSView {
     }
 
     private func selectTab(_ panel: RightPanel) {
+        if manager?.panelTab != panel {
+            manager?.panelTab = panel
+        }
+        displayTab(panel)
+    }
+
+    private func displayTab(_ panel: RightPanel) {
         selectedTab = panel
-        manager?.panelTab = panel
         filesPanel.isHidden = panel != .files
         gitPanel.isHidden = panel != .git
         infoContainer.isHidden = panel != .info
@@ -505,7 +513,8 @@ final class WorkspaceInspectorView: NSView {
         if shouldPoll {
             if infoPoll == nil {
                 let timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-                    assumeMainActor { self?.syncModels(force: true) }
+                    guard let self else { return }
+                    assumeMainActor { self.syncModels(force: true) }
                 }
                 RunLoop.main.add(timer, forMode: .common)
                 infoPoll = timer
