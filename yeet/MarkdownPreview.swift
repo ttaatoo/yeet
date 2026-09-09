@@ -138,7 +138,7 @@ final class MarkdownPreviewTab: nonisolated ObservableObject, nonisolated Identi
         headingAnchors = result.headings
     }
 
-    private enum DiskLoad: Sendable {
+    private nonisolated enum DiskLoad: Sendable {
         case contents(String)
         case failed(String)
     }
@@ -166,7 +166,7 @@ final class MarkdownPreviewTab: nonisolated ObservableObject, nonisolated Identi
     }
 }
 
-struct MarkdownHeadingAnchor: Equatable {
+nonisolated struct MarkdownHeadingAnchor: Equatable {
     let slug: String
     let range: NSRange
 }
@@ -174,7 +174,7 @@ struct MarkdownHeadingAnchor: Equatable {
 /// Foundation markdown → themed `NSAttributedString`. Not WKWebView: the
 /// preview has to stay an AppKit document the rest of the pane chrome can
 /// snapshot and focus.
-enum MarkdownPreviewRenderer {
+nonisolated enum MarkdownPreviewRenderer {
     struct Result {
         var attributed: NSAttributedString
         var headings: [MarkdownHeadingAnchor]
@@ -226,9 +226,8 @@ enum MarkdownPreviewRenderer {
             guard let identity = headerIdentity, seenIdentities.insert(identity).inserted
             else { continue }
 
-            guard let nsRange = NSRange(run.range, in: attributed),
-                  nsRange.location != NSNotFound, nsRange.length > 0
-            else { continue }
+            let nsRange = NSRange(run.range, in: attributed)
+            guard nsRange.location != NSNotFound, nsRange.length > 0 else { continue }
             let text = String(attributed[run.range].characters)
             let base = MarkdownPreviewRouting.headingSlug(text)
             guard !base.isEmpty else { continue }
@@ -265,8 +264,8 @@ enum MarkdownPreviewRenderer {
         }
 
         for run in attributed.runs {
-            guard let range = NSRange(run.range, in: attributed),
-                  range.location != NSNotFound, range.length > 0,
+            let range = NSRange(run.range, in: attributed)
+            guard range.location != NSNotFound, range.length > 0,
                   range.location + range.length <= ns.length
             else { continue }
 

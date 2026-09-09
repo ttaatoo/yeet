@@ -12,7 +12,7 @@ import Foundation
 /// resolve against the markdown file's directory even when the target is
 /// missing, so the destination pane can show an error instead of leaving
 /// the app or opening Finder.
-enum MarkdownPreviewDestination: Equatable {
+nonisolated enum MarkdownPreviewDestination: Equatable {
     case heading(String)
     case markdown(URL, heading: String?)
     case file(URL)
@@ -20,8 +20,8 @@ enum MarkdownPreviewDestination: Equatable {
     case invalid
 }
 
-enum MarkdownPreviewRouting {
-    private static let markdownExtensions: Set<String> = ["md", "markdown"]
+nonisolated enum MarkdownPreviewRouting {
+    private nonisolated static let markdownExtensions: Set<String> = ["md", "markdown"]
 
     nonisolated static func isMarkdownFile(_ url: URL) -> Bool {
         markdownExtensions.contains(url.pathExtension.lowercased())
