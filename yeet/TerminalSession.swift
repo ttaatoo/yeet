@@ -539,10 +539,14 @@ extension TerminalSession: TerminalBackendEvents {
     /// relative to this pane's live working directory. Diagnostics commonly
     /// append `:line[:column]`, so try the literal path before peeling those
     /// numeric locations off.
+    ///
+    /// Only `file:` URLs go through `URL(string:)`. A compiler location such
+    /// as `plan.md:12` is a valid RFC 3986 URL whose scheme is `plan.md`;
+    /// treating any non-nil scheme as "not a path" would skip the walk below
+    /// and never peel `:line`.
     private func existingFileURL(from value: String) -> URL? {
         let candidate: URL
-        if let url = URL(string: value), url.scheme != nil {
-            guard url.isFileURL else { return nil }
+        if let url = URL(string: value), url.isFileURL {
             candidate = url
         } else {
             let decoded = value.removingPercentEncoding ?? value

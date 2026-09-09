@@ -15,10 +15,10 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
-- Command-clicking a local `.md` or `.markdown` path in a terminal opens a
-  rendered preview pane beside the terminal. Command-clicking the same path
-  again focuses that preview. Open Source still opens the editor; other
-  local files still reveal in Finder.
+- Command-clicking a local `.md` or `.markdown` path in a terminal — including
+  a compiler-style `file.md:12` suffix — opens a rendered preview pane beside
+  the terminal. Command-clicking the same path again focuses that preview.
+  Open Source still opens the editor; other local files still reveal in Finder.
 
 ## [0.1.61]
 

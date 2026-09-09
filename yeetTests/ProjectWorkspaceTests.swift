@@ -130,6 +130,8 @@ final class ProjectWorkspaceTests: XCTestCase {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let markdown = root.appendingPathComponent("plan.md")
         try Data("# Plan\n".utf8).write(to: markdown)
+        let notes = root.appendingPathComponent("notes.txt")
+        try Data("plain\n".utf8).write(to: notes)
         defer { try? FileManager.default.removeItem(at: root) }
 
         let project = Project(fallbackName: "markdown", createInitialSession: false)
@@ -144,16 +146,29 @@ final class ProjectWorkspaceTests: XCTestCase {
             return XCTFail("an existing relative .md path must classify as markdown")
         }
         XCTAssertTrue(MarkdownPreviewRouting.pathsEqual(classified.path, markdown.path))
-        guard case .markdown = session.terminalLinkTarget(for: "plan.md:12") else {
+
+        // `URL(string: "plan.md:12")` has scheme `plan.md`; resolution must
+        // still treat this as a path and peel `:line` / `:line:column`.
+        guard case .markdown(let withLine) = session.terminalLinkTarget(for: "plan.md:12")
+        else {
             return XCTFail("trailing :line must still resolve to the markdown file")
         }
+        XCTAssertTrue(MarkdownPreviewRouting.pathsEqual(withLine.path, markdown.path))
+        guard case .markdown(let withColumn) = session.terminalLinkTarget(for: "plan.md:12:3")
+        else {
+            return XCTFail("trailing :line:column must still resolve to the markdown file")
+        }
+        XCTAssertTrue(MarkdownPreviewRouting.pathsEqual(withColumn.path, markdown.path))
 
-        let notes = root.appendingPathComponent("notes.txt")
-        try Data("plain\n".utf8).write(to: notes)
         guard case .file(let textURL) = session.terminalLinkTarget(for: "notes.txt") else {
             return XCTFail("non-markdown local files stay the Finder target")
         }
         XCTAssertTrue(MarkdownPreviewRouting.pathsEqual(textURL.path, notes.path))
+        guard case .file(let textWithLine) = session.terminalLinkTarget(for: "notes.txt:8")
+        else {
+            return XCTFail("non-markdown :line stays a Finder file target")
+        }
+        XCTAssertTrue(MarkdownPreviewRouting.pathsEqual(textWithLine.path, notes.path))
 
         guard case .url(let web) = session.terminalLinkTarget(for: "https://example.com")
         else {
