@@ -22,6 +22,8 @@ struct TerminalHostView: NSViewRepresentable {
     var onNewBrowserPane: (String?) -> Void = { _ in }
     var onNewFileTab: (String) -> Void = { _ in }
     var onNewFilePane: (String) -> Void = { _ in }
+    var onPreviewMarkdown: (String) -> Void = { _ in }
+    var onOpenFileSource: (String) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -36,6 +38,8 @@ struct TerminalHostView: NSViewRepresentable {
         terminal.splitTarget.onNewBrowserPane = onNewBrowserPane
         terminal.splitTarget.onNewFileTab = onNewFileTab
         terminal.splitTarget.onNewFilePane = onNewFilePane
+        terminal.splitTarget.onPreviewMarkdown = onPreviewMarkdown
+        terminal.splitTarget.onOpenFileSource = onOpenFileSource
         let scrollbar = session.overlayScrollbar
         // Kero's visual insets live inside the backend as window padding, so that
         // a padding-color of `extend` can flood them with the content's background
@@ -73,6 +77,8 @@ struct TerminalHostView: NSViewRepresentable {
         session.surface.splitTarget.onNewBrowserPane = onNewBrowserPane
         session.surface.splitTarget.onNewFileTab = onNewFileTab
         session.surface.splitTarget.onNewFilePane = onNewFilePane
+        session.surface.splitTarget.onPreviewMarkdown = onPreviewMarkdown
+        session.surface.splitTarget.onOpenFileSource = onOpenFileSource
         let container = view as? TerminalContainerView
         container?.activateSurfaceAfterLayout()
         container?.focusOnAppear = isFocused
@@ -100,6 +106,8 @@ struct TerminalHostView: NSViewRepresentable {
         terminal.splitTarget.onNewBrowserPane = nil
         terminal.splitTarget.onNewFileTab = nil
         terminal.splitTarget.onNewFilePane = nil
+        terminal.splitTarget.onPreviewMarkdown = nil
+        terminal.splitTarget.onOpenFileSource = nil
         container.terminal = nil
     }
 

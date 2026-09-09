@@ -124,6 +124,77 @@ final class ProjectWorkspaceTests: XCTestCase {
         XCTAssertFalse(project.hasSelectedBrowser)
     }
 
+    func testMarkdownPreviewOpensBesideThenReusesTheSamePane() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("yeet-md-preview-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let markdown = root.appendingPathComponent("plan.md")
+        try Data("# Plan\n".utf8).write(to: markdown)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let project = Project(fallbackName: "markdown", createInitialSession: false)
+        let session = project.newSession(
+            directory: root.path,
+            commandArguments: ["/bin/sh", "-c", "sleep 2"]
+        )
+        defer { session.terminate() }
+
+        guard case .markdown(let classified) = session.terminalLinkTarget(for: "plan.md")
+        else {
+            return XCTFail("an existing relative .md path must classify as markdown")
+        }
+        XCTAssertTrue(MarkdownPreviewRouting.pathsEqual(classified.path, markdown.path))
+        guard case .markdown = session.terminalLinkTarget(for: "plan.md:12") else {
+            return XCTFail("trailing :line must still resolve to the markdown file")
+        }
+
+        let notes = root.appendingPathComponent("notes.txt")
+        try Data("plain\n".utf8).write(to: notes)
+        guard case .file(let textURL) = session.terminalLinkTarget(for: "notes.txt") else {
+            return XCTFail("non-markdown local files stay the Finder target")
+        }
+        XCTAssertTrue(MarkdownPreviewRouting.pathsEqual(textURL.path, notes.path))
+
+        guard case .url(let web) = session.terminalLinkTarget(for: "https://example.com")
+        else {
+            return XCTFail("http(s) stays on the existing browser URL path")
+        }
+        XCTAssertEqual(web.scheme, "https")
+
+        project.openMarkdownPreviewToSide(markdown.path)
+        XCTAssertEqual(project.selectedTab?.allPanes.count, 2)
+        guard case .markdownPreview(let preview) = project.focusedContent else {
+            return XCTFail("expected a markdown preview beside the terminal")
+        }
+        XCTAssertTrue(MarkdownPreviewRouting.pathsEqual(preview.path, markdown.path))
+
+        project.openMarkdownPreviewToSide(markdown.path)
+        XCTAssertEqual(project.selectedTab?.allPanes.count, 2)
+        guard case .markdownPreview = project.focusedContent else {
+            return XCTFail("the existing preview should be focused, not stacked")
+        }
+    }
+
+    func testRestoreMarkdownPreviewPane() {
+        let project = Project(fallbackName: "restore-md", createInitialSession: false)
+        let pane = SessionSnapshot.ProjectSnapshot.PaneSnapshot(
+            content: .markdownPreview(path: "/tmp/plan.md"),
+            weight: 1
+        )
+        let snapshot = SessionSnapshot.ProjectSnapshot.TabSnapshot(
+            layout: .pane(pane), focusedPaneIndex: 0
+        )
+        guard let tab = project.restoreTab(from: snapshot) else {
+            return XCTFail("markdown preview tab should restore")
+        }
+        guard case .markdownPreview(let preview) = tab.focusedContent else {
+            return XCTFail("restored content should be a markdown preview")
+        }
+        XCTAssertEqual(preview.path, "/tmp/plan.md")
+        XCTAssertFalse(project.canReplace)
+        XCTAssertFalse(project.canFind)
+    }
+
     func testRestoreLeavesAbsentHistoryUnattached() {
         let project = Project(fallbackName: "restore", createInitialSession: false)
         let pane = SessionSnapshot.ProjectSnapshot.PaneSnapshot(

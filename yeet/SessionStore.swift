@@ -13,8 +13,9 @@ import Foundation
 /// from disk.
 struct SessionSnapshot: Codable {
     struct ProjectSnapshot: Codable {
-        /// A single pane's content: the terminal, file, browser, or diff it
-        /// holds. Optional fields added after v0.1.47 keep that format readable.
+        /// A single pane's content: the terminal, file, browser, markdown
+        /// preview, or diff it holds. Optional fields added after v0.1.47
+        /// keep that format readable.
         enum PaneContentSnapshot: Codable {
             /// `agentKind`/`agentSessionID` are set only when a coding agent
             /// was live in the pane at save time and reported its native
@@ -27,6 +28,9 @@ struct SessionSnapshot: Codable {
             )
             case file(path: String, editorState: EditorState?)
             case browser(url: String?)
+            /// Distinctive `markdownPreviewPath` key so this cannot decode as
+            /// a file editor pane, which also carries `path`.
+            case markdownPreview(path: String)
             case diff(repoRoot: String, path: String, staged: Bool, untracked: Bool, origPath: String?)
             case commitDiff(
                 repoRoot: String,
@@ -46,6 +50,9 @@ struct SessionSnapshot: Codable {
             private enum BrowserCodingKeys: String, CodingKey {
                 case url
             }
+            private enum MarkdownPreviewCodingKeys: String, CodingKey {
+                case markdownPreviewPath
+            }
             private enum DiffCodingKeys: String, CodingKey {
                 case repoRoot, path, staged, untracked, origPath
             }
@@ -57,6 +64,7 @@ struct SessionSnapshot: Codable {
                 // Optional associated values decode as absent when the key is
                 // missing, so pre-agent-restore sessions (and older optional
                 // fields) still load. Distinctive keys decide the case:
+                // markdownPreview before file (it must not share `path`),
                 // commitDiff before diff and file, because its payload also
                 // carries `path`.
                 if let container = try? decoder.container(
@@ -80,6 +88,16 @@ struct SessionSnapshot: Codable {
                 ), container.contains(.url) {
                     self = .browser(
                         url: try container.decodeIfPresent(String.self, forKey: .url)
+                    )
+                    return
+                }
+                if let container = try? decoder.container(
+                    keyedBy: MarkdownPreviewCodingKeys.self
+                ), container.contains(.markdownPreviewPath) {
+                    self = .markdownPreview(
+                        path: try container.decode(
+                            String.self, forKey: .markdownPreviewPath
+                        )
                     )
                     return
                 }
@@ -149,6 +167,11 @@ struct SessionSnapshot: Codable {
                     // Always write the key: a nil URL must still decode as a
                     // browser pane rather than an unrecognized snapshot.
                     try container.encode(url, forKey: .url)
+                case .markdownPreview(let path):
+                    var container = encoder.container(
+                        keyedBy: MarkdownPreviewCodingKeys.self
+                    )
+                    try container.encode(path, forKey: .markdownPreviewPath)
                 case .diff(let repoRoot, let path, let staged, let untracked, let origPath):
                     var container = encoder.container(keyedBy: DiffCodingKeys.self)
                     try container.encode(repoRoot, forKey: .repoRoot)
@@ -175,7 +198,8 @@ struct SessionSnapshot: Codable {
             var content: PaneContentSnapshot
             var weight: Double
             /// Key into the sidecar terminal-history store for a session pane;
-            /// nil for files, browsers, diffs, or when history restore is off.
+            /// nil for files, browsers, markdown previews, diffs, or when
+            /// history restore is off.
             /// Optional so snapshots written before this feature still decode.
             var historyKey: String?
         }

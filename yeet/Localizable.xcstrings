@@ -3924,6 +3924,23 @@
         }
       }
     },
+    "Markdown Preview" : {
+      "comment" : "Accessibility label for the read-only markdown preview pane.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markdownプレビュー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markdown 预览"
+          }
+        }
+      }
+    },
     "MERGE CHANGES" : {
       "localizations" : {
         "ja" : {
@@ -4829,6 +4846,23 @@
         }
       }
     },
+    "Open Source" : {
+      "comment" : "Opens the markdown file in the source editor from a preview pane or terminal link menu.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ソースを開く"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开源文件"
+          }
+        }
+      }
+    },
     "Open in %@" : {
       "localizations" : {
         "ja" : {
@@ -5082,6 +5116,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "预览"
+          }
+        }
+      }
+    },
+    "Preview Markdown" : {
+      "comment" : "Terminal Command-click context menu item that opens a rendered markdown preview pane.",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markdownをプレビュー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预览 Markdown"
           }
         }
       }

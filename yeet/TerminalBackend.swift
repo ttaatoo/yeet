@@ -61,6 +61,9 @@ protocol TerminalBackendEvents: AnyObject {
 enum TerminalLinkTarget {
     case url(URL)
     case file(URL)
+    /// Existing local `.md` / `.markdown`. Command-click opens a preview
+    /// pane; Finder is not used for this case.
+    case markdown(URL)
 }
 
 /// Backend-neutral OSC 133 command lifecycle reports. Alacritty extracts all

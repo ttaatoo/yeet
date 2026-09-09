@@ -13,6 +13,8 @@ final class SplitMenuTarget: NSObject {
     var onNewBrowserPane: ((String?) -> Void)?
     var onNewFileTab: ((String) -> Void)?
     var onNewFilePane: ((String) -> Void)?
+    var onPreviewMarkdown: ((String) -> Void)?
+    var onOpenFileSource: ((String) -> Void)?
 
     func browserMenuItems(initialURL: String) -> [NSMenuItem] {
         let tabItem = item(
@@ -40,6 +42,20 @@ final class SplitMenuTarget: NSObject {
         )
         paneItem.representedObject = path
         return [tabItem, paneItem]
+    }
+
+    func markdownMenuItems(path: String) -> [NSMenuItem] {
+        let previewItem = item(
+            String(localized: "Preview Markdown"),
+            #selector(previewMarkdown(_:))
+        )
+        previewItem.representedObject = path
+        let sourceItem = item(
+            String(localized: "Open Source"),
+            #selector(openFileSource(_:))
+        )
+        sourceItem.representedObject = path
+        return [previewItem, sourceItem]
     }
 
     func menuItems() -> [NSMenuItem] {
@@ -77,5 +93,15 @@ final class SplitMenuTarget: NSObject {
     @objc private func newFilePane(_ sender: NSMenuItem) {
         guard let path = sender.representedObject as? String else { return }
         onNewFilePane?(path)
+    }
+
+    @objc private func previewMarkdown(_ sender: NSMenuItem) {
+        guard let path = sender.representedObject as? String else { return }
+        onPreviewMarkdown?(path)
+    }
+
+    @objc private func openFileSource(_ sender: NSMenuItem) {
+        guard let path = sender.representedObject as? String else { return }
+        onOpenFileSource?(path)
     }
 }

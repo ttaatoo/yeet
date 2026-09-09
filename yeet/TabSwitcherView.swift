@@ -745,6 +745,8 @@ private struct TabPaneThumbnail: View {
                 filePreview(file)
             case .browser(let browser):
                 browserPreview(browser)
+            case .markdownPreview(let preview):
+                markdownPreview(preview)
             case .diff(let diff):
                 diffPreview(diff)
             }
@@ -777,6 +779,29 @@ private struct TabPaneThumbnail: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+            }
+            .padding(6)
+        }
+    }
+
+    @ViewBuilder
+    private func markdownPreview(_ preview: MarkdownPreviewTab) -> some View {
+        switch preview.loadState {
+        case .ready:
+            Text(textExcerpt(preview.sourceText))
+                .font(.system(size: 5.2, design: .monospaced))
+                .foregroundStyle(Color(nsColor: terminalForeground))
+                .lineSpacing(0)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(5)
+        case .loading, .failed:
+            VStack(spacing: 4) {
+                MaterialFileIconView(path: preview.path, size: 18, opacity: 0.82)
+                Text(verbatim: preview.name)
+                    .font(.system(size: 7))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
             .padding(6)
         }

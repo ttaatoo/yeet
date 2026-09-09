@@ -7,13 +7,15 @@ import AppKit
 import Combine
 import Foundation
 
-/// The leaf content of a pane: a terminal session, an open file, a browser, or
-/// a git diff. A project tab used to *be* one of these; now a tab is a recursive
-/// split layout, and this is what sits at each leaf.
+/// The leaf content of a pane: a terminal session, an open file, a browser,
+/// a rendered markdown preview, or a git diff. A project tab used to *be*
+/// one of these; now a tab is a recursive split layout, and this is what
+/// sits at each leaf.
 enum PaneContent: nonisolated Identifiable {
     case session(TerminalSession)
     case file(FileTab)
     case browser(BrowserTab)
+    case markdownPreview(MarkdownPreviewTab)
     case diff(DiffTab)
 
     nonisolated var id: UUID {
@@ -21,6 +23,7 @@ enum PaneContent: nonisolated Identifiable {
         case .session(let session): return session.id
         case .file(let file): return file.id
         case .browser(let browser): return browser.id
+        case .markdownPreview(let preview): return preview.id
         case .diff(let diff): return diff.id
         }
     }
@@ -43,6 +46,7 @@ extension PaneContent {
         case .session(let session): return session.title
         case .file(let file): return file.name
         case .browser(let browser): return browser.title
+        case .markdownPreview(let preview): return preview.name
         case .diff(let diff): return diff.title
         }
     }
@@ -52,15 +56,18 @@ extension PaneContent {
         case .session: return "terminal"
         case .file: return "doc.text"
         case .browser: return "globe"
+        case .markdownPreview: return "doc.richtext"
         case .diff: return "plus.forwardslash.minus"
         }
     }
 
-    /// File and diff panes both represent a concrete path. Their surrounding
-    /// chrome uses the same filename-aware icon as the file and Git panels.
+    /// File, preview, and diff panes all represent a concrete path. Their
+    /// surrounding chrome uses the same filename-aware icon as the file
+    /// and Git panels.
     @MainActor var fileIconPath: String? {
         switch self {
         case .file(let file): return file.path
+        case .markdownPreview(let preview): return preview.path
         case .diff(let diff): return diff.path
         case .session, .browser: return nil
         }
@@ -70,7 +77,7 @@ extension PaneContent {
         switch self {
         case .file(let file): return file.isDirty
         case .diff(let diff): return diff.isDirty
-        case .session, .browser: return false
+        case .session, .browser, .markdownPreview: return false
         }
     }
 
@@ -78,7 +85,7 @@ extension PaneContent {
         switch self {
         case .file(let file): return file.saveError
         case .diff(let diff): return diff.saveError
-        case .session, .browser: return nil
+        case .session, .browser, .markdownPreview: return nil
         }
     }
 
@@ -86,7 +93,7 @@ extension PaneContent {
         switch self {
         case .file(let file): file.save()
         case .diff(let diff): diff.save()
-        case .session, .browser: break
+        case .session, .browser, .markdownPreview: break
         }
     }
 }

@@ -624,6 +624,7 @@ enum KeroAutomationRouter {
         case .session: "terminal"
         case .file: "file"
         case .browser: "browser"
+        case .markdownPreview: "markdown"
         case .diff: "diff"
         }
         var object: [String: KeroJSONValue] = [

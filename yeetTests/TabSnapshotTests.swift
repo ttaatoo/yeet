@@ -22,6 +22,30 @@ final class TabSnapshotTests: XCTestCase {
         XCTAssertNil(agentSessionID)
     }
 
+    func testMarkdownPreviewSnapshotRoundTripsAndStaysDistinctFromFile() throws {
+        let content = PaneContentSnapshot.markdownPreview(path: "/tmp/plan.md")
+        let data = try JSONEncoder().encode(content)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        XCTAssertEqual(object["markdownPreviewPath"] as? String, "/tmp/plan.md")
+        XCTAssertNil(object["path"])
+
+        let decoded = try JSONDecoder().decode(PaneContentSnapshot.self, from: data)
+        guard case .markdownPreview(let path) = decoded else {
+            return XCTFail("expected a markdown preview pane")
+        }
+        XCTAssertEqual(path, "/tmp/plan.md")
+
+        let fileData = try JSONSerialization.data(withJSONObject: ["path": "/tmp/plan.md"])
+        let fileDecoded = try JSONDecoder().decode(PaneContentSnapshot.self, from: fileData)
+        guard case .file(let filePath, let editorState) = fileDecoded else {
+            return XCTFail("a path-only payload must stay a file editor pane")
+        }
+        XCTAssertEqual(filePath, "/tmp/plan.md")
+        XCTAssertNil(editorState)
+    }
+
     func testSessionAgentIdentityRoundTrips() throws {
         let content = PaneContentSnapshot.session(
             workingDirectory: "/tmp/repo",

@@ -196,7 +196,9 @@ private struct SelectedProjectWorkspace<EmptyState: View>: View {
                             onNewBrowserTab: { manager.newBrowserTab(initialURL: $0) },
                             onNewBrowserPane: { manager.newBrowserPane(initialURL: $0) },
                             onNewFileTab: { manager.openFile($0) },
-                            onNewFilePane: { manager.openFileToSide($0) }
+                            onNewFilePane: { manager.openFileToSide($0) },
+                            onPreviewMarkdown: { manager.openMarkdownPreviewToSide($0) },
+                            onOpenFileSource: { manager.openFileSource($0) }
                         )
                     } else {
                         emptyState()
@@ -1477,6 +1479,19 @@ private struct SessionTabsView: View {
             }
             Divider()
         }
+        if case .markdownPreview(let preview) = tab.focusedContent {
+            Button("Open Source") { project.openFileSource(preview.path) }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting(
+                    [URL(fileURLWithPath: preview.path)]
+                )
+            }
+            Button("Copy Absolute Path") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(preview.path, forType: .string)
+            }
+            Divider()
+        }
         if case .browser(let browser) = tab.focusedContent,
            !browser.urlString.isEmpty {
             Button("Open in Default Browser") {
@@ -1547,6 +1562,16 @@ private struct PaneTabItem: View {
                 FileTabLabel(file: file, customTitle: tab.customName, paneCount: paneCount, agentRollup: tab.agentRollup, isSelected: isSelected, select: select, close: close)
             case .browser(let browser):
                 BrowserTabLabel(browser: browser, customTitle: tab.customName, paneCount: paneCount, agentRollup: tab.agentRollup, isSelected: isSelected, select: select, close: close)
+            case .markdownPreview(let preview):
+                MarkdownPreviewTabLabel(
+                    preview: preview,
+                    customTitle: tab.customName,
+                    paneCount: paneCount,
+                    agentRollup: tab.agentRollup,
+                    isSelected: isSelected,
+                    select: select,
+                    close: close
+                )
             case .diff(let diff):
                 DiffTabLabel(
                     diff: diff,
@@ -1701,6 +1726,30 @@ private struct FileTabLabel: View {
             close: close
         )
         .help(file.path)
+    }
+}
+
+private struct MarkdownPreviewTabLabel: View {
+    @ObservedObject var preview: MarkdownPreviewTab
+    var customTitle: String?
+    let paneCount: Int
+    let agentRollup: KeroAgentRollup?
+    let isSelected: Bool
+    let select: () -> Void
+    let close: () -> Void
+
+    var body: some View {
+        TabItemChrome(
+            systemImage: "doc.richtext",
+            fileIconPath: preview.path,
+            title: customTitle ?? preview.name,
+            paneCount: paneCount,
+            agentRollup: agentRollup,
+            isSelected: isSelected,
+            select: select,
+            close: close
+        )
+        .help(preview.path)
     }
 }
 

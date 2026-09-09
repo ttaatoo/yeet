@@ -15,6 +15,11 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Command-clicking a local `.md` or `.markdown` path in a terminal opens a
+  rendered preview pane beside the terminal. Command-clicking the same path
+  again focuses that preview. Open Source still opens the editor; other
+  local files still reveal in Finder.
+
 ## [0.1.61]
 
 - Workspace restore accepts the recursive multi-window format used by

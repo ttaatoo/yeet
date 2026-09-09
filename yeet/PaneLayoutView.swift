@@ -22,6 +22,8 @@ struct PaneLayoutView: View {
     /// terminal menus.
     var onNewFileTab: (String) -> Void = { _ in }
     var onNewFilePane: (String) -> Void = { _ in }
+    var onPreviewMarkdown: (String) -> Void = { _ in }
+    var onOpenFileSource: (String) -> Void = { _ in }
 
     /// Gap between tiles, which doubles as the divider hit area. The same
     /// value insets the whole grid from the parent, so the spacing around the
@@ -82,7 +84,9 @@ struct PaneLayoutView: View {
                     onNewBrowserTab: onNewBrowserTab,
                     onNewBrowserPane: onNewBrowserPane,
                     onNewFileTab: onNewFileTab,
-                    onNewFilePane: onNewFilePane
+                    onNewFilePane: onNewFilePane,
+                    onPreviewMarkdown: onPreviewMarkdown,
+                    onOpenFileSource: onOpenFileSource
                 )
             } else {
                 grid
@@ -140,7 +144,9 @@ struct PaneLayoutView: View {
                         onNewBrowserTab: onNewBrowserTab,
                         onNewBrowserPane: onNewBrowserPane,
                         onNewFileTab: onNewFileTab,
-                        onNewFilePane: onNewFilePane
+                        onNewFilePane: onNewFilePane,
+                        onPreviewMarkdown: onPreviewMarkdown,
+                        onOpenFileSource: onOpenFileSource
                     )
                     .frame(
                         width: placement.frame.width,
@@ -325,6 +331,7 @@ struct PaneLayoutView: View {
             return session.surface.paneSnapshot()
         case .file(let file): return file.editorView?.paneSnapshot()
         case .browser(let browser): return browser.webView.paneSnapshot()
+        case .markdownPreview(let preview): return preview.surfaceView?.paneSnapshot()
         default: return nil
         }
     }
@@ -439,6 +446,8 @@ private struct PaneView: View {
     let onNewBrowserPane: (String?) -> Void
     let onNewFileTab: (String) -> Void
     let onNewFilePane: (String) -> Void
+    let onPreviewMarkdown: (String) -> Void
+    let onOpenFileSource: (String) -> Void
 
     private var isFocused: Bool { tab.focusedPaneID == pane.id }
 
@@ -515,6 +524,16 @@ private struct PaneView: View {
         onNewFilePane(path)
     }
 
+    private func previewMarkdownFromMenu(path: String) {
+        focus()
+        onPreviewMarkdown(path)
+    }
+
+    private func openFileSourceFromMenu(path: String) {
+        focus()
+        onOpenFileSource(path)
+    }
+
     @ViewBuilder
     private var content: some View {
         switch pane.content {
@@ -527,7 +546,9 @@ private struct PaneView: View {
                 onNewBrowserTab: newBrowserTabFromMenu,
                 onNewBrowserPane: newBrowserPaneFromMenu,
                 onNewFileTab: newFileTabFromMenu,
-                onNewFilePane: newFilePaneFromMenu
+                onNewFilePane: newFilePaneFromMenu,
+                onPreviewMarkdown: previewMarkdownFromMenu,
+                onOpenFileSource: openFileSourceFromMenu
             )
                 .background(Color(nsColor: Theme.background))
                 .overlay(alignment: .topTrailing) {
@@ -550,6 +571,16 @@ private struct PaneView: View {
                 onNewBrowserPane: newBrowserPaneFromMenu
             )
                 .background(Color(nsColor: Theme.background))
+        case .markdownPreview(let preview):
+            MarkdownPreviewHostView(
+                preview: preview,
+                isFocused: isFocused,
+                onFocused: focus
+            )
+                .background(Color(nsColor: Theme.background))
+                .onAppear {
+                    Task { await preview.reloadFromDisk() }
+                }
         case .diff:
             // Rendered by the always-mounted diff stack behind the layout; stay
             // transparent and non-interactive so clicks and scrolls reach it.
@@ -733,6 +764,8 @@ private struct PaneHeaderTitle: View {
             FilePaneHeaderTitle(file: file, isFocused: isFocused)
         case .browser(let browser):
             BrowserPaneHeaderTitle(browser: browser, isFocused: isFocused)
+        case .markdownPreview(let preview):
+            MarkdownPreviewPaneHeaderTitle(preview: preview, isFocused: isFocused)
         case .diff(let diff):
             PaneHeaderLabel(
                 systemImage: "plus.forwardslash.minus",
@@ -771,6 +804,21 @@ private struct FilePaneHeaderTitle: View {
             isDirty: file.isDirty
         )
         .help(file.path)
+    }
+}
+
+private struct MarkdownPreviewPaneHeaderTitle: View {
+    @ObservedObject var preview: MarkdownPreviewTab
+    let isFocused: Bool
+
+    var body: some View {
+        PaneHeaderLabel(
+            systemImage: "doc.richtext",
+            fileIconPath: preview.path,
+            title: preview.name,
+            isFocused: isFocused
+        )
+        .help(preview.path)
     }
 }
 
