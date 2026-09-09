@@ -22,6 +22,36 @@ final class TabSnapshotTests: XCTestCase {
         XCTAssertNil(agentSessionID)
     }
 
+    func testChatSnapshotRoundTrips() throws {
+        let content = PaneContentSnapshot.chat(
+            provider: "codex",
+            threadID: "019a-thread",
+            workingDirectory: "/tmp/repo"
+        )
+        let data = try JSONEncoder().encode(content)
+        let decoded = try JSONDecoder().decode(PaneContentSnapshot.self, from: data)
+        guard case .chat(let provider, let threadID, let cwd) = decoded else {
+            return XCTFail("expected a chat pane")
+        }
+        XCTAssertEqual(provider, "codex")
+        XCTAssertEqual(threadID, "019a-thread")
+        XCTAssertEqual(cwd, "/tmp/repo")
+    }
+
+    func testUnboundChatStillDecodesAsChat() throws {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "chatProvider": NSNull(),
+            "chatCwd": "/tmp/repo",
+        ])
+        let content = try JSONDecoder().decode(PaneContentSnapshot.self, from: data)
+        guard case .chat(let provider, let threadID, let cwd) = content else {
+            return XCTFail("expected a chat pane")
+        }
+        XCTAssertNil(provider)
+        XCTAssertNil(threadID)
+        XCTAssertEqual(cwd, "/tmp/repo")
+    }
+
     func testSessionAgentIdentityRoundTrips() throws {
         let content = PaneContentSnapshot.session(
             workingDirectory: "/tmp/repo",

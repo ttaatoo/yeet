@@ -554,6 +554,13 @@ private struct PaneView: View {
             // Rendered by the always-mounted diff stack behind the layout; stay
             // transparent and non-interactive so clicks and scrolls reach it.
             Color.clear.allowsHitTesting(false)
+        case .chat(let chat):
+            ChatHostView(
+                tab: chat,
+                isFocused: isFocused,
+                onFocused: focus
+            )
+            .background(Color(nsColor: Theme.background))
         }
     }
 
@@ -740,6 +747,8 @@ private struct PaneHeaderTitle: View {
                 title: diff.title,
                 isFocused: isFocused
             )
+        case .chat(let chat):
+            ChatPaneHeaderTitle(chat: chat, isFocused: isFocused)
         }
     }
 }
@@ -771,6 +780,19 @@ private struct FilePaneHeaderTitle: View {
             isDirty: file.isDirty
         )
         .help(file.path)
+    }
+}
+
+private struct ChatPaneHeaderTitle: View {
+    @ObservedObject var chat: ChatTab
+    let isFocused: Bool
+
+    var body: some View {
+        PaneHeaderLabel(
+            systemImage: "bubble.left.and.bubble.right",
+            title: chat.title,
+            isFocused: isFocused
+        )
     }
 }
 

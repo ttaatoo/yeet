@@ -159,6 +159,14 @@ Powerline 分隔符和图标字形也能正常显示。
 
 具体怎么使用，见[与 AI Agent 协作](/zh/docs/automation)。
 
+### `experimental.chat-pane`
+
+布尔值——默认 `false`
+
+显示 **New Chat Tab** / **New Chat Pane**。这个窗格是本机 PATH 上 Claude Code、
+Codex 或 Grok CLI 的图形界面。Yeet 不保存 API key。关掉之后，已经打开的
+chat 窗格仍会恢复，只是不能再新建。
+
 ## 一份完整的例子
 
 ```toml title="~/.config/yeet/config.toml"
@@ -178,6 +186,7 @@ terminal.macos-option-as-alt = false
 terminal.restore-history = true
 editor.wrap-lines = true
 ai.enabled = true
+experimental.chat-pane = true
 ```
 
 每个键都是可选的。删掉某个键，就让那项设置恢复默认值。

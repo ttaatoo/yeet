@@ -247,6 +247,17 @@ private struct SelectedProjectWorkspace<EmptyState: View>: View {
         .onChange(of: project.selectedSession?.foregroundDirectoryPath) { scheduleInspectorSync() }
         .onChange(of: project.customDirectory) { scheduleInspectorSync() }
         .onChange(of: git.uniqueDirtyPathCount) { syncPendingReviewFromGit() }
+        .onReceive(NotificationCenter.default.publisher(
+            for: .yeetWorkingTreeMayHaveChanged
+        )) { _ in
+            git.refresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: .yeetChatRevealPath
+        )) { note in
+            guard let path = note.userInfo?["path"] as? String else { return }
+            revealChatPath(path)
+        }
     }
 
     private func scheduleInspectorSync() {
@@ -265,6 +276,40 @@ private struct SelectedProjectWorkspace<EmptyState: View>: View {
         )
         git.sync(root: root)
         fileTree.sync(root: root)
+    }
+
+    private func revealChatPath(_ raw: String) {
+        let root = git.repoRoot.isEmpty ? fileTree.rootPath : git.repoRoot
+        let absolute: String
+        if raw.hasPrefix("/") {
+            absolute = raw
+        } else if !root.isEmpty {
+            absolute = (root as NSString).appendingPathComponent(raw)
+        } else {
+            absolute = raw
+        }
+        let relative: String = {
+            if !git.repoRoot.isEmpty, absolute.hasPrefix(git.repoRoot + "/") {
+                return String(absolute.dropFirst(git.repoRoot.count + 1))
+            }
+            return raw
+        }()
+        let staged = git.stagedEntries.first { $0.path == relative || $0.path == raw }
+        let changed = git.changedEntries.first { $0.path == relative || $0.path == raw }
+        let merge = git.mergeEntries.first { $0.path == relative || $0.path == raw }
+        if let entry = merge ?? staged ?? changed {
+            manager.showPanel(.git)
+            manager.openDiff(
+                repoRoot: git.repoRoot,
+                path: entry.path,
+                staged: staged != nil && merge == nil,
+                untracked: entry.isUntracked,
+                origPath: entry.origPath
+            )
+            return
+        }
+        manager.showPanel(.files)
+        manager.openFile(absolute)
     }
 
     private func syncPendingReviewFromGit() {
@@ -1557,6 +1602,16 @@ private struct PaneTabItem: View {
                     select: select,
                     close: close
                 )
+            case .chat(let chat):
+                ChatTabLabel(
+                    chat: chat,
+                    customTitle: tab.customName,
+                    paneCount: paneCount,
+                    agentRollup: tab.agentRollup,
+                    isSelected: isSelected,
+                    select: select,
+                    close: close
+                )
             case nil:
                 EmptyView()
             }
@@ -1726,6 +1781,28 @@ private struct BrowserTabLabel: View {
             close: close
         )
         .help(browser.urlString)
+    }
+}
+
+private struct ChatTabLabel: View {
+    @ObservedObject var chat: ChatTab
+    var customTitle: String?
+    let paneCount: Int
+    let agentRollup: KeroAgentRollup?
+    let isSelected: Bool
+    let select: () -> Void
+    let close: () -> Void
+
+    var body: some View {
+        TabItemChrome(
+            systemImage: "bubble.left.and.bubble.right",
+            title: customTitle ?? chat.title,
+            paneCount: paneCount,
+            agentRollup: agentRollup,
+            isSelected: isSelected,
+            select: select,
+            close: close
+        )
     }
 }
 

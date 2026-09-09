@@ -747,6 +747,8 @@ private struct TabPaneThumbnail: View {
                 browserPreview(browser)
             case .diff(let diff):
                 diffPreview(diff)
+            case .chat(let chat):
+                chatPreview(chat)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -808,6 +810,18 @@ private struct TabPaneThumbnail: View {
             }
             .padding(6)
         }
+    }
+
+    private func chatPreview(_ chat: ChatTab) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.system(size: 17, weight: .light))
+                .foregroundStyle(Color(nsColor: Theme.accent))
+            Text(chat.title)
+                .font(.system(size: 8, weight: .medium))
+                .lineLimit(1)
+        }
+        .padding(6)
     }
 
     private func diffPreview(_ diff: DiffTab) -> some View {

@@ -209,6 +209,14 @@ are left untouched.
 The human workflow is described in
 [Working with AI agents](/docs/automation).
 
+### `experimental.chat-pane`
+
+boolean — default `false`
+
+Shows **New Chat Tab** / **New Chat Pane**. The pane is a GUI for a Claude Code,
+Codex, or Grok CLI already on PATH. Yeet does not hold API keys. Existing chat
+panes still restore when this is off; you just cannot create new ones.
+
 ## A complete example
 
 ```toml title="~/.config/yeet/config.toml"
@@ -228,6 +236,7 @@ terminal.macos-option-as-alt = false
 terminal.restore-history = true
 editor.wrap-lines = true
 ai.enabled = true
+experimental.chat-pane = true
 ```
 
 Every key is optional. Delete a key to return that setting to its default.

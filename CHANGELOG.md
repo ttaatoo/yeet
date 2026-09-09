@@ -15,6 +15,10 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [Unreleased]
 
+- Experimental chat pane (Settings → Automation). Yeet talks to a local Claude
+  Code, Codex, or Grok CLI; it does not hold API keys. File changes open in
+  Files/Git.
+
 ## [0.1.61]
 
 - Workspace restore accepts the recursive multi-window format used by
