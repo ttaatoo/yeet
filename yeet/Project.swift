@@ -15,10 +15,11 @@ struct PendingReview: Equatable {
 }
 
 /// A project groups tabs and appears as one row in the project sidebar. Each tab
-/// is a recursive split layout of terminal, file, browser, and diff panes; see
-/// `PaneTab`. It always starts with one session; closing the last tab leaves
-/// the project open but empty — only the explicit "Close Project" action (see
-/// `TerminalManager.close(_:)`) removes it from the manager.
+/// is a recursive split layout of terminal, file, browser, markdown preview,
+/// and diff panes; see `PaneTab`. It always starts with one session; closing
+/// the last tab leaves the project open but empty — only the explicit
+/// "Close Project" action (see `TerminalManager.close(_:)`) removes it from
+/// the manager.
 @MainActor
 final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     nonisolated let id = UUID()
@@ -146,8 +147,9 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         tabs.flatMap { tab in tab.diffs.map { (diff: $0, tabID: tab.id) } }
     }
 
-    /// The focused terminal session; while a file, browser, or diff pane is
-    /// focused it has no directory of its own, so panels that need a working
+    /// The focused terminal session; while a file, preview, browser, or diff
+    /// pane is focused it has no directory of its own, so panels that need a
+    /// working
     /// directory (file tree, git, info) track a terminal that does: one sharing
     /// the tab (a split), else the session the content was opened from (the
     /// tab's `contextSession`), else the project's first session.
@@ -171,11 +173,12 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         return false
     }
 
-    /// Terminals and editors own find bars; browser and diff panes do not.
+    /// Terminals and editors own find bars; browser, preview, and diff panes
+    /// do not.
     var canFind: Bool {
         switch focusedContent {
         case .session, .file: return true
-        case .browser, .diff, .none: return false
+        case .browser, .markdownPreview, .diff, .none: return false
         }
     }
 
@@ -323,6 +326,9 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
             // Already dead — just drop its pane, no second terminate.
             self?.closeContent(.session(session), terminate: false)
         }
+        session.onOpenMarkdownPreview = { [weak self] path in
+            self?.openMarkdownPreviewToSide(path)
+        }
         // Only chrome-relevant session fields. Terminal I/O and cell-size
         // ticks must not invalidate the project sidebar and tab strip.
         // Coding-agent CLIs rewrite the OSC title many times a second;
@@ -386,7 +392,8 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
 
         let contextDirectory: String? = switch target.content {
         case .session(let session): session.currentDirectoryPath
-        default: tab.sessions.first?.currentDirectoryPath
+        case .file, .browser, .markdownPreview, .diff:
+            tab.sessions.first?.currentDirectoryPath
             ?? tab.contextSession?.currentDirectoryPath
         }
         let session = makeSession(directory: directory ?? contextDirectory)
@@ -463,6 +470,96 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         tab.split(Pane(content: .file(FileTab(path: path))), toward: .right)
     }
 
+    /// Opens the source editor for `path`, reusing an existing file pane
+    /// when one is already open.
+    func openFileSource(_ path: String) {
+        if let (tab, paneID) = findFilePane(path: path) {
+            selectedTabID = tab.id
+            tab.focusedPaneID = paneID
+            return
+        }
+        openFileToSide(path)
+    }
+
+    // MARK: - Markdown preview
+
+    /// Opens a rendered markdown preview beside the focused pane, or
+    /// focuses the existing preview for the same path. Falls back to a
+    /// fresh tab when the current tab cannot split.
+    func openMarkdownPreviewToSide(_ path: String, heading: String? = nil) {
+        let path = MarkdownPreviewRouting.standardizedPath(path)
+        if let (tab, pane, preview) = findMarkdownPreviewPane(path: path) {
+            selectedTabID = tab.id
+            tab.focusedPaneID = pane.id
+            if let heading { preview.revealHeading(heading) }
+            return
+        }
+        let preview = makeMarkdownPreview(path: path)
+        if let heading { preview.revealHeading(heading) }
+        guard let tab = selectedTab, tab.canSplit else {
+            let context = selectedSession
+            let newTab = makeTab(content: .markdownPreview(preview))
+            newTab.contextSession = context
+            insertNextToSelected(newTab)
+            selectedTabID = newTab.id
+            return
+        }
+        tab.split(Pane(content: .markdownPreview(preview)), toward: .right)
+    }
+
+    /// Follows a link inside a preview. Relative and `file:` targets resolve
+    /// against that markdown file's directory, not the terminal cwd.
+    func openMarkdownPreviewLink(_ href: String, relativeTo markdownPath: String) {
+        let base = URL(fileURLWithPath: markdownPath)
+        switch MarkdownPreviewRouting.resolve(href, relativeToFile: base) {
+        case .heading(let slug):
+            if let (_, _, preview) = findMarkdownPreviewPane(path: markdownPath) {
+                preview.revealHeading(slug)
+            }
+        case .markdown(let url, let heading):
+            openMarkdownPreviewToSide(url.path, heading: heading)
+        case .file(let url):
+            openFileSource(url.path)
+        case .web(let url):
+            if selectedTab?.canSplit == true {
+                _ = newBrowserPane(initialURL: url.absoluteString)
+            } else {
+                _ = newBrowserTab(initialURL: url.absoluteString)
+            }
+        case .invalid:
+            break
+        }
+    }
+
+    private func makeMarkdownPreview(path: String) -> MarkdownPreviewTab {
+        let preview = MarkdownPreviewTab(path: path)
+        preview.onOpenSource = { [weak self, weak preview] in
+            guard let path = preview?.path else { return }
+            self?.openFileSource(path)
+        }
+        preview.onOpenLink = { [weak self, weak preview] href in
+            guard let path = preview?.path else { return }
+            self?.openMarkdownPreviewLink(href, relativeTo: path)
+        }
+        return preview
+    }
+
+    private func findMarkdownPreviewPane(
+        path: String
+    ) -> (tab: PaneTab, pane: Pane, preview: MarkdownPreviewTab)? {
+        for tab in tabs {
+            if let pane = tab.allPanes.first(where: {
+                if case .markdownPreview(let preview) = $0.content {
+                    return MarkdownPreviewRouting.pathsEqual(preview.path, path)
+                }
+                return false
+            }), case .markdownPreview(let preview) = pane.content {
+                return (tab, pane, preview)
+            }
+        }
+        return nil
+    }
+
     private func findFilePane(path: String) -> (tab: PaneTab, paneID: UUID)? {
         for tab in tabs {
             if let pane = tab.allPanes.first(where: {
@@ -532,11 +629,24 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     /// the renamed file itself, or any file beneath a renamed directory.
     func updateFilePaths(from oldPath: String, to newPath: String) {
         for tab in tabs {
-            for case .file(let file) in tab.allContents {
-                if file.path == oldPath {
-                    file.updatePath(newPath)
-                } else if file.path.hasPrefix(oldPath + "/") {
-                    file.updatePath(newPath + String(file.path.dropFirst(oldPath.count)))
+            for content in tab.allContents {
+                switch content {
+                case .file(let file):
+                    if file.path == oldPath {
+                        file.updatePath(newPath)
+                    } else if file.path.hasPrefix(oldPath + "/") {
+                        file.updatePath(newPath + String(file.path.dropFirst(oldPath.count)))
+                    }
+                case .markdownPreview(let preview):
+                    if preview.path == oldPath {
+                        preview.updatePath(newPath)
+                    } else if preview.path.hasPrefix(oldPath + "/") {
+                        preview.updatePath(
+                            newPath + String(preview.path.dropFirst(oldPath.count))
+                        )
+                    }
+                case .session, .browser, .diff:
+                    break
                 }
             }
         }
@@ -646,7 +756,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
             Task { @MainActor in
                 _ = await confirmCloseUnsaved(content, in: window)
             }
-        case .browser:
+        case .browser, .markdownPreview:
             removePaneWithContent(content.id)
         case .diff(let diff):
             guard diff.isDirty else {
@@ -927,6 +1037,8 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
             return .file(file)
         case .browser(let url):
             return .browser(makeBrowser(initialURL: url, initialFocus: .none))
+        case .markdownPreview(let path):
+            return .markdownPreview(makeMarkdownPreview(path: path))
         case .diff(let repoRoot, let path, let staged, let untracked, let origPath):
             return .diff(DiffTab(
                 repoRoot: repoRoot, path: path, staged: staged,

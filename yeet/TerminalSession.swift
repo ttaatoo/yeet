@@ -33,6 +33,10 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
     /// Find-in-terminal state for this session's pane (⌘F).
     let find: TerminalFind
     var onExited: ((TerminalSession) -> Void)?
+    /// Command-click of a resolved local markdown file. Wired by `Project`
+    /// so the session does not need a project pointer. Context-menu preview
+    /// uses `SplitMenuTarget` instead so it can focus the pane first.
+    var onOpenMarkdownPreview: ((String) -> Void)?
 
     private static let persistedHistoryLineLimit = 500
 
@@ -143,6 +147,8 @@ final class TerminalSession: NSObject, nonisolated ObservableObject, nonisolated
         surface.splitTarget.onNewBrowserPane = nil
         surface.splitTarget.onNewFileTab = nil
         surface.splitTarget.onNewFilePane = nil
+        surface.splitTarget.onPreviewMarkdown = nil
+        surface.splitTarget.onOpenFileSource = nil
 
         if processAlive {
             _ = shellPid // Cache it before `hasExited` changes.
@@ -499,6 +505,10 @@ extension TerminalSession: TerminalBackendEvents {
     func terminalDidRequestOpenURL(_ value: String) {
         guard let target = terminalLinkTarget(for: value) else { return }
         switch target {
+        case .markdown(let fileURL):
+            // Preview only — never Finder, even if the project callback
+            // has not been wired yet (a parked or tearing-down session).
+            onOpenMarkdownPreview?(fileURL.path)
         case .file(let fileURL):
             NSWorkspace.shared.activateFileViewerSelecting([fileURL])
         case .url(let url):
@@ -513,6 +523,9 @@ extension TerminalSession: TerminalBackendEvents {
     /// this same answer, so neither offers an action it cannot perform.
     func terminalLinkTarget(for value: String) -> TerminalLinkTarget? {
         if let fileURL = existingFileURL(from: value) {
+            if MarkdownPreviewRouting.isMarkdownFile(fileURL) {
+                return .markdown(fileURL)
+            }
             return .file(fileURL)
         }
         guard let url = URL(string: value),
@@ -526,10 +539,14 @@ extension TerminalSession: TerminalBackendEvents {
     /// relative to this pane's live working directory. Diagnostics commonly
     /// append `:line[:column]`, so try the literal path before peeling those
     /// numeric locations off.
+    ///
+    /// Only `file:` URLs go through `URL(string:)`. A compiler location such
+    /// as `plan.md:12` is a valid RFC 3986 URL whose scheme is `plan.md`;
+    /// treating any non-nil scheme as "not a path" would skip the walk below
+    /// and never peel `:line`.
     private func existingFileURL(from value: String) -> URL? {
         let candidate: URL
-        if let url = URL(string: value), url.scheme != nil {
-            guard url.isFileURL else { return nil }
+        if let url = URL(string: value), url.isFileURL {
             candidate = url
         } else {
             let decoded = value.removingPercentEncoding ?? value

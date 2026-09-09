@@ -3188,6 +3188,13 @@ final class AlacrittyTerminalView: NSView, TerminalFindSurface,
                 for item in splitTarget.browserMenuItems(initialURL: url.absoluteString) {
                     menu.addItem(item)
                 }
+            case .markdown(let url):
+                for item in splitTarget.markdownMenuItems(path: url.path) {
+                    menu.addItem(item)
+                }
+                for item in splitTarget.fileMenuItems(path: url.path) {
+                    menu.addItem(item)
+                }
             case .file(let url):
                 for item in splitTarget.fileMenuItems(path: url.path) {
                     menu.addItem(item)

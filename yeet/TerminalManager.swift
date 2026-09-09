@@ -715,7 +715,7 @@ final class TerminalManager: nonisolated ObservableObject {
         switch selectedProject?.focusedContent {
         case .session(let session): session.find.perform(action)
         case .file(let file): file.performFindAction(action)
-        case .browser, .diff, .none: break
+        case .browser, .markdownPreview, .diff, .none: break
         }
     }
 
@@ -799,6 +799,16 @@ final class TerminalManager: nonisolated ObservableObject {
     /// Opens `path` as a pane beside the focused one in the current tab.
     func openFileToSide(_ path: String) {
         selectedProject?.openFileToSide(path)
+    }
+
+    /// Opens the source editor for `path`, reusing an existing file pane.
+    func openFileSource(_ path: String) {
+        selectedProject?.openFileSource(path)
+    }
+
+    /// Opens a rendered markdown preview beside the focused pane.
+    func openMarkdownPreviewToSide(_ path: String) {
+        selectedProject?.openMarkdownPreviewToSide(path)
     }
 
     /// Opens a git diff tab in the current project.
@@ -1126,6 +1136,8 @@ final class TerminalManager: nonisolated ObservableObject {
             return .file(path: file.path, editorState: file.editorState)
         case .browser(let browser):
             return .browser(url: browser.snapshotURL)
+        case .markdownPreview(let preview):
+            return .markdownPreview(path: preview.path)
         case .diff(let diff):
             if let commitHash = diff.commitHash {
                 return .commitDiff(
