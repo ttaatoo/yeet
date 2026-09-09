@@ -36,6 +36,9 @@ struct SessionSnapshot: Codable {
                 status: String,
                 origPath: String?
             )
+            /// `chatProvider` is always encoded (null when unbound) so the
+            /// key-sniffing decoder can tell chat from file/session panes.
+            case chat(provider: String?, threadID: String?, workingDirectory: String?)
 
             private enum SessionCodingKeys: String, CodingKey {
                 case workingDirectory, agentKind, agentSessionID
@@ -52,13 +55,33 @@ struct SessionSnapshot: Codable {
             private enum CommitDiffCodingKeys: String, CodingKey {
                 case repoRoot, path, commitHash, parentHash, status, origPath
             }
+            private enum ChatCodingKeys: String, CodingKey {
+                case chatProvider, threadID, chatCwd
+            }
 
             init(from decoder: any Decoder) throws {
                 // Optional associated values decode as absent when the key is
                 // missing, so pre-agent-restore sessions (and older optional
                 // fields) still load. Distinctive keys decide the case:
-                // commitDiff before diff and file, because its payload also
-                // carries `path`.
+                // chat before session because chat also has a cwd-like field
+                // (`chatCwd`), and commitDiff before diff/file because those
+                // payloads also carry `path`.
+                if let container = try? decoder.container(
+                    keyedBy: ChatCodingKeys.self
+                ), container.contains(.chatProvider) {
+                    self = .chat(
+                        provider: try container.decodeIfPresent(
+                            String.self, forKey: .chatProvider
+                        ),
+                        threadID: try container.decodeIfPresent(
+                            String.self, forKey: .threadID
+                        ),
+                        workingDirectory: try container.decodeIfPresent(
+                            String.self, forKey: .chatCwd
+                        )
+                    )
+                    return
+                }
                 if let container = try? decoder.container(
                     keyedBy: SessionCodingKeys.self
                 ), container.contains(.workingDirectory) {
@@ -167,6 +190,13 @@ struct SessionSnapshot: Codable {
                     try container.encodeIfPresent(parentHash, forKey: .parentHash)
                     try container.encode(status, forKey: .status)
                     try container.encodeIfPresent(origPath, forKey: .origPath)
+                case .chat(let provider, let threadID, let workingDirectory):
+                    var container = encoder.container(keyedBy: ChatCodingKeys.self)
+                    try container.encode(provider, forKey: .chatProvider)
+                    try container.encodeIfPresent(threadID, forKey: .threadID)
+                    try container.encodeIfPresent(
+                        workingDirectory, forKey: .chatCwd
+                    )
                 }
             }
         }

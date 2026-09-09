@@ -73,6 +73,9 @@
         }
       }
     },
+    "%@ (later)" : {
+
+    },
     "%@ (Staged)" : {
       "comment" : "Tab title for the staged diff of a file.",
       "localizations" : {
@@ -147,6 +150,7 @@
       }
     },
     "%@, %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
@@ -677,6 +681,15 @@
         }
       }
     },
+    "Allow command?" : {
+
+    },
+    "Allow file change?" : {
+
+    },
+    "Allow this action?" : {
+
+    },
     "Always Allow" : {
       "localizations" : {
         "ja" : {
@@ -772,6 +785,9 @@
           }
         }
       }
+    },
+    "Approval" : {
+
     },
     "Ask" : {
       "localizations" : {
@@ -1136,6 +1152,12 @@
           }
         }
       }
+    },
+    "Chat" : {
+
+    },
+    "Chat talks to a CLI already on this Mac. Yeet does not hold an API key." : {
+
     },
     "Cherry-pick in progress" : {
       "localizations" : {
@@ -1541,6 +1563,9 @@
           }
         }
       }
+    },
+    "Command" : {
+
     },
     "Command Palette…" : {
       "localizations" : {
@@ -2706,6 +2731,9 @@
         }
       }
     },
+    "Error" : {
+
+    },
     "Excellent performance" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2755,6 +2783,9 @@
         }
       }
     },
+    "Experimental chat pane" : {
+
+    },
     "Family" : {
       "localizations" : {
         "ja" : {
@@ -2788,6 +2819,9 @@
       }
     },
     "file" : {
+
+    },
+    "File change" : {
 
     },
     "File is too large to diff" : {
@@ -3751,6 +3785,15 @@
         }
       }
     },
+    "Install Claude Code, then run `claude auth login`." : {
+
+    },
+    "Install Codex, then run `codex login`." : {
+
+    },
+    "Install Grok, then run `grok login`." : {
+
+    },
     "It could not be written to disk." : {
       "localizations" : {
         "ja" : {
@@ -4232,6 +4275,12 @@
           }
         }
       }
+    },
+    "New Chat Pane" : {
+
+    },
+    "New Chat Tab" : {
+
     },
     "New File Pane" : {
       "localizations" : {
@@ -4919,6 +4968,9 @@
       }
     },
     "Opening…" : {
+
+    },
+    "Opens a GUI pane for Claude Code, Codex, or Grok. Yeet does not send API keys. The CLI must already be installed and logged in." : {
 
     },
     "Opens changes" : {
@@ -5774,6 +5826,9 @@
         }
       }
     },
+    "Resize Inspector" : {
+
+    },
     "Resize Pane" : {
       "localizations" : {
         "ja" : {
@@ -6100,6 +6155,15 @@
         }
       }
     },
+    "Run `claude auth login` in a terminal, then send again." : {
+
+    },
+    "Run `codex login` in a terminal, then send again." : {
+
+    },
+    "Run `grok login` in a terminal, then send again." : {
+
+    },
     "Save" : {
       "localizations" : {
         "ja" : {
@@ -6243,6 +6307,9 @@
           }
         }
       }
+    },
+    "Send" : {
+
     },
     "Sends Option-key combinations to terminal programs as Meta shortcuts instead of macOS text input" : {
       "localizations" : {
@@ -6832,6 +6899,9 @@
         }
       }
     },
+    "Supervised" : {
+
+    },
     "Swap sidebars" : {
       "localizations" : {
         "ja" : {
@@ -7168,6 +7238,15 @@
         }
       }
     },
+    "That CLI is not on PATH. Install it, then reopen this pane." : {
+
+    },
+    "The Claude turn failed." : {
+
+    },
+    "The Codex turn failed." : {
+
+    },
     "The selected Git remote is no longer available" : {
       "localizations" : {
         "ja" : {
@@ -7264,6 +7343,9 @@
         }
       }
     },
+    "Thinking" : {
+
+    },
     "This %@ will be moved to the Trash." : {
 
     },
@@ -7284,6 +7366,9 @@
       }
     },
     "This branch has no upstream. Sync will publish it to the remote." : {
+
+    },
+    "This CLI is not supported in the chat pane yet." : {
 
     },
     "This folder and everything inside it will be moved to the Trash." : {
@@ -8153,6 +8238,9 @@
           }
         }
       }
+    },
+    "You" : {
+
     },
     "Your changes will be lost if you don't save them." : {
       "localizations" : {

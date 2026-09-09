@@ -298,6 +298,14 @@ struct SettingsView: View {
                     onChange: { try settings.setAIEnabled($0) }
                 )
                 .frame(minHeight: 44)
+
+                DescribedSettingsRow(
+                    "Experimental chat pane",
+                    description: "Opens a GUI pane for Claude Code, Codex, or Grok. Yeet does not send API keys. The CLI must already be installed and logged in."
+                ) {
+                    Toggle("Experimental chat pane", isOn: $settings.experimentalChatPane)
+                        .labelsHidden()
+                }
             }
 
             Section {
@@ -328,6 +336,7 @@ struct SettingsView: View {
                         && settings.clipboardWrite == AppSettings.defaultClipboardWrite
                         && settings.clipboardRead == AppSettings.defaultClipboardRead
                         && !settings.aiEnabled
+                        && !settings.experimentalChatPane
                         && settings.globalHotkey == KeyCombo.default)
                 }
             }

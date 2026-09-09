@@ -625,6 +625,7 @@ enum KeroAutomationRouter {
         case .file: "file"
         case .browser: "browser"
         case .diff: "diff"
+        case .chat: "chat"
         }
         var object: [String: KeroJSONValue] = [
             "project_id": .string(context.project.id.uuidString),

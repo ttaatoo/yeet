@@ -552,6 +552,15 @@ final class TerminalManager: nonisolated ObservableObject {
         )
     }
 
+    func newChatTab() {
+        let project = selectedProject ?? newProject()
+        project.newChatTab()
+    }
+
+    func newChatPane(toward edge: PaneDropEdge = .right) {
+        selectedProject?.newChatPane(toward: edge)
+    }
+
     /// Brings `session` to the foreground: selects its project and tab, then
     /// focuses its pane. Backs the command palette's session switcher; a no-op
     /// if the session is no longer open anywhere.
@@ -715,7 +724,7 @@ final class TerminalManager: nonisolated ObservableObject {
         switch selectedProject?.focusedContent {
         case .session(let session): session.find.perform(action)
         case .file(let file): file.performFindAction(action)
-        case .browser, .diff, .none: break
+        case .browser, .diff, .chat, .none: break
         }
     }
 
@@ -1140,6 +1149,12 @@ final class TerminalManager: nonisolated ObservableObject {
             return .diff(
                 repoRoot: diff.repoRoot, path: diff.path, staged: diff.staged,
                 untracked: diff.untracked, origPath: diff.origPath
+            )
+        case .chat(let chat):
+            return .chat(
+                provider: chat.provider,
+                threadID: chat.threadID,
+                workingDirectory: chat.workingDirectory
             )
         }
     }

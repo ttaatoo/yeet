@@ -279,6 +279,11 @@ final class AppSettings: nonisolated ObservableObject {
         didSet { save() }
     }
 
+    /// Off by default. Existing chat panes still restore; New Chat is hidden.
+    @Published var experimentalChatPane: Bool {
+        didSet { save() }
+    }
+
     /// Global hotkey that summons or hides Yeet from any app.
     /// `nil` means none is registered. Default is Option+Space.
     @Published var globalHotkey: KeyCombo? {
@@ -347,6 +352,7 @@ final class AppSettings: nonisolated ObservableObject {
             rawValue: toml["clipboard-read"]?.string ?? ""
         ) ?? Self.defaultClipboardRead
         aiEnabled = toml["ai.enabled"]?.bool ?? false
+        experimentalChatPane = toml["experimental.chat-pane"]?.bool ?? false
         globalHotkey = Self.parseGlobalHotkey(toml)
         applyAppearance()
         reloadThemeSelection()
@@ -410,6 +416,7 @@ final class AppSettings: nonisolated ObservableObject {
         autoResumeAgents = true
         clipboardWrite = Self.defaultClipboardWrite
         clipboardRead = Self.defaultClipboardRead
+        experimentalChatPane = false
         globalHotkey = KeyCombo.default
         if aiEnabled {
             do {
@@ -521,6 +528,9 @@ final class AppSettings: nonisolated ObservableObject {
         }
         if aiEnabled {
             lines.append("ai.enabled = true")
+        }
+        if experimentalChatPane {
+            lines.append("experimental.chat-pane = true")
         }
         if let hotkey = globalHotkey {
             lines.append("global-hotkey.key-code = \(TOML.number(Double(hotkey.keyCode)))")

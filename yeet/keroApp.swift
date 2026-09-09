@@ -60,6 +60,7 @@ private struct WindowRootView: View {
 private struct KeroCommands: Commands {
     @FocusedObject private var manager: TerminalManager?
     @FocusedObject private var project: Project?
+    @ObservedObject private var settings = AppSettings.shared
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -84,6 +85,18 @@ private struct KeroCommands: Commands {
                 manager?.newBrowserTab()
             }
             .disabled(manager == nil)
+
+            if settings.experimentalChatPane {
+                Button("New Chat Tab") {
+                    manager?.newChatTab()
+                }
+                .disabled(manager == nil)
+
+                Button("New Chat Pane") {
+                    manager?.newChatPane()
+                }
+                .disabled(project?.canSplit != true)
+            }
 
             Button("New Window") {
                 openWindow(id: "main")

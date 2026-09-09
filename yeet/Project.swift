@@ -60,6 +60,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
     /// Re-publish it through the project just like a terminal's live title and
     /// working directory.
     private var browserObservations: [UUID: AnyCancellable] = [:]
+    private var chatObservations: [UUID: AnyCancellable] = [:]
     /// Child sinks must not `objectWillChange.send()` during a SwiftUI pass.
     private lazy var coalescedObjectWillChange = CoalescedObjectWillChange(objectWillChange)
 
@@ -171,11 +172,11 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         return false
     }
 
-    /// Terminals and editors own find bars; browser and diff panes do not.
+    /// Terminals and editors own find bars; browser, diff, and chat panes do not.
     var canFind: Bool {
         switch focusedContent {
         case .session, .file: return true
-        case .browser, .diff, .none: return false
+        case .browser, .diff, .chat, .none: return false
         }
     }
 
@@ -353,6 +354,11 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         for session in sessions {
             session.terminate()
         }
+        for tab in tabs {
+            for chat in tab.chats {
+                chat.tearDown()
+            }
+        }
     }
 
     // MARK: - Splits
@@ -386,6 +392,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
 
         let contextDirectory: String? = switch target.content {
         case .session(let session): session.currentDirectoryPath
+        case .chat(let chat): chat.workingDirectory
         default: tab.sessions.first?.currentDirectoryPath
             ?? tab.contextSession?.currentDirectoryPath
         }
@@ -647,6 +654,9 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
                 _ = await confirmCloseUnsaved(content, in: window)
             }
         case .browser:
+            removePaneWithContent(content.id)
+        case .chat(let chat):
+            chat.tearDown()
             removePaneWithContent(content.id)
         case .diff(let diff):
             guard diff.isDirty else {
@@ -945,7 +955,64 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
                 commitParentHash: parentHash,
                 commitStatus: status.first
             ))
+        case .chat(let provider, let threadID, let cwd):
+            return .chat(makeChat(
+                provider: provider,
+                threadID: threadID,
+                workingDirectory: cwd ?? chatWorkingDirectory()
+            ))
         }
+    }
+
+    private func chatWorkingDirectory() -> String {
+        customDirectory
+            ?? selectedSession?.currentDirectoryPath
+            ?? FileManager.default.homeDirectoryForCurrentUser.path
+    }
+
+    // MARK: - Chat
+
+    @discardableResult
+    func newChatTab() -> ChatTab {
+        let context = selectedSession
+        let chat = makeChat(
+            provider: nil,
+            threadID: nil,
+            workingDirectory: chatWorkingDirectory()
+        )
+        let tab = makeTab(content: .chat(chat))
+        tab.contextSession = context
+        insertNextToSelected(tab)
+        selectedTabID = tab.id
+        return chat
+    }
+
+    @discardableResult
+    func newChatPane(toward edge: PaneDropEdge = .right) -> ChatTab? {
+        guard let tab = selectedTab, tab.canSplit else { return nil }
+        let chat = makeChat(
+            provider: nil,
+            threadID: nil,
+            workingDirectory: chatWorkingDirectory()
+        )
+        tab.split(Pane(content: .chat(chat)), toward: edge)
+        return chat
+    }
+
+    private func makeChat(
+        provider: String?,
+        threadID: String?,
+        workingDirectory: String
+    ) -> ChatTab {
+        let chat = ChatTab(
+            provider: provider,
+            threadID: threadID,
+            workingDirectory: workingDirectory
+        )
+        chatObservations[chat.id] = chat.objectWillChange.sink { [weak self] _ in
+            self?.coalescedObjectWillChange.send()
+        }
+        return chat
     }
 
     /// Inserts a newly created tab immediately after the current selection so
@@ -977,6 +1044,7 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
             // Keyed by content id; no-ops for the other content kinds.
             sessionObservations[contentID] = nil
             browserObservations[contentID] = nil
+            chatObservations[contentID] = nil
             if !tab.removePane(paneID) {
                 remove(tabID: tab.id)
             }
@@ -992,6 +1060,10 @@ final class Project: nonisolated ObservableObject, nonisolated Identifiable {
         }
         for browser in tab.browsers {
             browserObservations[browser.id] = nil
+        }
+        for chat in tab.chats {
+            chat.tearDown()
+            chatObservations[chat.id] = nil
         }
         tabObservations[tabID] = nil
         recentTabIDs.removeAll { $0 == tabID }

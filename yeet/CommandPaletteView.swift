@@ -194,6 +194,18 @@ struct CommandPaletteView: View {
             PaletteCommand(id: "new-browser-pane", title: "New Browser Pane", systemImage: "globe") {
                 manager.newBrowserPane()
             },
+        ]
+        if settings.experimentalChatPane {
+            items.append(contentsOf: [
+                PaletteCommand(id: "new-chat-tab", title: "New Chat Tab", systemImage: "bubble.left.and.bubble.right") {
+                    manager.newChatTab()
+                },
+                PaletteCommand(id: "new-chat-pane", title: "New Chat Pane", systemImage: "bubble.left.and.bubble.right") {
+                    manager.newChatPane()
+                },
+            ])
+        }
+        items += [
             PaletteCommand(id: "clear-terminal", title: "Clear Terminal", systemImage: "eraser", shortcut: "⌘K") {
                 manager.clearActiveTerminal()
             },
